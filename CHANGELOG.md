@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Гэрээний шалгалт** (`go test -tags contract`, `.github/workflows/contract.yml` — PR / main / өдөр бүр): SDK-ийн
+  RP-API зам бүр live `/.well-known/eid`-д, OIDC утгууд (issuer, ES256, S256, client_secret_basic, `Claims` талбарууд)
+  `openid-configuration`-д таарахыг шалгана; SDK хамраагүй discovery замууд WARN. RP-API замууд `routes.go`-д нэг
+  газар төвлөрсөн (зан төлөв өөрчлөгдөөгүй). Энгийн `go test` сүлжээгүй хэвээр.
+
 ## 0.1.1 — 2026-10-14
 
 demo PDF device-link/push урсгалаас илэрсэн дутагдал — additive:

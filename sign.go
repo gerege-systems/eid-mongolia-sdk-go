@@ -2,7 +2,6 @@ package eid
 
 import (
 	"context"
-	"net/url"
 	"strings"
 )
 
@@ -78,12 +77,12 @@ func (s *SignService) start(ctx context.Context, path, digestB64 string, interac
 // DigestByEtsi — бэлэн digest (стандарт base64)-ээр push sign: РД / civil_id / ETSI. Баримт (PDF/файл)-ын
 // байтын SHA-256-ийг гаднаас бэлдэж өгнө (SHA256Base64).
 func (s *SignService) DigestByEtsi(ctx context.Context, id, digestB64 string, interactions []Interaction, o *SignOptions) (*NotificationSession, error) {
-	return s.start(ctx, "/signature/notification/etsi/"+url.PathEscape(id), digestB64, interactions, o)
+	return s.start(ctx, routeSignNotificationEtsi.expand(id), digestB64, interactions, o)
 }
 
 // DigestByDocument — бэлэн digest-ээр push sign, баримтын дугаараар (auth-аас гарсан DocumentNumber).
 func (s *SignService) DigestByDocument(ctx context.Context, documentNumber, digestB64 string, interactions []Interaction, o *SignOptions) (*NotificationSession, error) {
-	return s.start(ctx, "/signature/notification/document/"+url.PathEscape(documentNumber), digestB64, interactions, o)
+	return s.start(ctx, routeSignNotificationDocument.expand(documentNumber), digestB64, interactions, o)
 }
 
 // TextByEtsi — текстийн SHA-256 digest-ийг дотроо тооцоод push sign (богино текст баримтад).

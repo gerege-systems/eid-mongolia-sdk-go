@@ -1,0 +1,20 @@
+name: Contract
+# SDK ↔ live /.well-known/eid + OIDC discovery гэрээ. Өдөр бүр 00:00 UTC (08:00 +08); унавал GitHub-ийн анхдагч мэдэгдэл.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test -count=1 -v -tags contract -run Contract ./...

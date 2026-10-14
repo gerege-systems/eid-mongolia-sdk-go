@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/textproto"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -136,7 +135,7 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 		Digest     string         `json:"digest"`
 		DeviceLink *PDFDeviceLink `json:"deviceLink"`
 	}
-	if err := p.h.doJSON(ctx, "POST", "/pdf/sign/prepare", &body, mw.FormDataContentType(), pdfTimeout, &r); err != nil {
+	if err := p.h.doJSON(ctx, routePDFPrepare.method, routePDFPrepare.expand(), &body, mw.FormDataContentType(), pdfTimeout, &r); err != nil {
 		return nil, err
 	}
 	s := &PDFPrepareSession{
@@ -160,7 +159,7 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 // DocumentVerified-аар session-ий pdf.OutSHA256-тай заавал тулга. Эрх хасагдсан бол
 // ForbiddenError.Code = CodeRepresentationRevoked.
 func (p *PDFService) Document(ctx context.Context, sessionID string) ([]byte, error) {
-	return p.h.getBytes(ctx, "/pdf/sign/"+url.PathEscape(sessionID)+"/document", pdfTimeout)
+	return p.h.getBytes(ctx, routePDFDocument.expand(sessionID), pdfTimeout)
 }
 
 // DocumentVerified — татсан PDF-ийн SHA-256 нь session-ий pdf.OutSHA256-тай таарч, баримт READY бол true.
