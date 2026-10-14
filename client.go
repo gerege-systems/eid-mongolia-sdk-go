@@ -52,6 +52,9 @@ type Config struct {
 	HTTPClient *http.Client
 	// Trust — validator-ийн итгэлийн тохиргоо. Production-д TrustAnchorsPEM ЗААВАЛ.
 	Trust TrustConfig
+	// Language — хүнд харуулах текстийн хэл (RoleLabel г.м.): дуудлага бүрд Accept-Language болж илгээгдэнэ
+	// ("mn" | "en"). "" = илгээхгүй (сервер mn).
+	Language string
 }
 
 // Client — SDK-ийн гол үүд:
@@ -110,7 +113,7 @@ func NewClient(cfg Config) (*Client, error) {
 	if pmax <= 0 {
 		pmax = DefaultPDFMaxBytes
 	}
-	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc}
+	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc, lang: strings.TrimSpace(cfg.Language)}
 	return &Client{
 		Auth:         &AuthService{h: h, creds: cfg.Credentials, level: level},
 		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level},
@@ -148,6 +151,7 @@ type httpDoer struct {
 	secret  string
 	timeout time.Duration
 	hc      *http.Client
+	lang    string // Accept-Language; "" = илгээхгүй
 }
 
 func (h *httpDoer) postJSON(ctx context.Context, path string, body, out any) error {
@@ -238,6 +242,9 @@ func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader
 	req.Header.Set("Authorization", "Bearer "+h.secret)
 	if ctype != "" {
 		req.Header.Set("Content-Type", ctype)
+	}
+	if h.lang != "" {
+		req.Header.Set("Accept-Language", h.lang)
 	}
 	res, err := h.hc.Do(req)
 	if err != nil {

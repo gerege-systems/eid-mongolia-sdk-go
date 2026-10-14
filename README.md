@@ -275,6 +275,10 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
 `*eid.ResponseTooLargeError`. JSON хариу 4 MiB-ээс хэтэрвэл мөн `*eid.ResponseTooLargeError` (таслахгүй).
 `GetRepresentations`-ийн `Raw` — серверийн түүхий JSON.
 
+**Албан тушаал харуулахдаа `RoleLabel` ашигла** (`Representation.RoleLabel`, session-ий `OnBehalfOf.RoleLabel`) —
+`Role` нь машин утга (`ceo` / `founder` / `stakeholder` эсвэл MANAGER-т бичсэн текст), өөрөө орчуулахгүй. Хэл:
+`eid.Config{…, Language: "en"}` → дуудлага бүрд `Accept-Language`; `""` = илгээхгүй (сервер mn). Хуучин CA-д хоосон.
+
 ### 3.5. Session-ий person блок
 
 ```go
@@ -420,6 +424,8 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
   in-memory PDF (default 64 MiB), JSON responses over 4 MiB fail with `*eid.ResponseTooLargeError` (never truncated).
   USB-token PAdES: `PDF.TokenPrepare` → token signs `HashToSign` (raw r||s) → `PDF.TokenFinalize` → `PDF.TokenDocument`. Transient CA errors
   (`PDF_PREPARE_BUSY`, `DOCUMENT_PENDING`, `TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`) → `APIError.Retryable()` + `RetryAfter`.
+- Show `RoleLabel` (representations, session `OnBehalfOf`) for a person's position, never translate `Role` (a machine
+  value). `Config.Language` (`"mn"` | `"en"`) sends `Accept-Language`; unset = server default (mn).
 - `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
   certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
