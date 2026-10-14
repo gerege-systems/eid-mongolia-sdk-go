@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/digitorus/pdf"
 	"github.com/digitorus/pdfsign/sign"
+
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 )
 
 // liveTransport — goldenPKI-ийн хариуг шууд үүсгэнэ (тодорхойлогдоогүй — golden биш тестэд).
@@ -293,5 +296,60 @@ func TestCRLMirror(t *testing.T) {
 	}
 	if _, err := f.target("ldap://x"); err == nil {
 		t.Fatal("ldap")
+	}
+}
+
+// TestRegistrationAndPSS — RSASSA-PSS гарын үсэг → REQUEST_INVALID (PKCS#1 v1.5 шаардлагатай); Completed →
+// eid.PDFSignatureRegistration (CA dto-тэй ижил талбарууд).
+func TestRegistrationAndPSS(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	o := testOpts(p, p.citizen.cert)
+	o.FileName = "Гэрээ.pdf"
+	prep, err := Prepare(readInput(t, "quartz-pdf13.pdf"), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pss, err := rsa.SignPSS(rand.Reader, p.citizen.key, crypto.SHA256, prep.DTBS, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Complete(context.Background(), prep.State, pss, completeOpts(p)); ErrorCode(err) != CodeRequestInvalid ||
+		!strings.Contains(err.Error(), "PKCS#1 v1.5") {
+		t.Fatalf("PSS: %v", err)
+	}
+	sig, _ := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
+	done, err := Complete(context.Background(), prep.State, sig, completeOpts(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Registration(done, RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: "s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DocID != done.DocID || reg.RevIndex != 1 || reg.PageSHA256 != done.PageSHA256 || reg.PageSHA256 == "" ||
+		reg.FileName != "Гэрээ.pdf" || reg.SignerEtsi != "PNOMN-00000000000" || !bytes.Equal(reg.CMS, done.CMS) ||
+		reg.SigRevSHA256 != done.SigRevSHA256 || reg.OutSHA256 != done.OutSHA256 || reg.InSHA256 != done.InSHA256 || reg.PriorCMSSHA256 != nil {
+		t.Fatalf("%+v", reg)
+	}
+	// 2 дахь гарын үсэг: prior CMS, page үгүй.
+	o2 := testOpts(p, p.citizen.cert)
+	o2.FileName = "Гэрээ.pdf"
+	prep2, err := Prepare(done.PDF, o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig2, _ := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep2.DTBS)
+	done2, err := Complete(context.Background(), prep2.State, sig2, completeOpts(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg2, err := Registration(done2, RegistrationOptions{Medium: eid.PDFMediumToken})
+	if err != nil || reg2.RevIndex != 2 || reg2.PageSHA256 != "" || reg2.DocID != done.DocID ||
+		len(reg2.PriorCMSSHA256) != 1 || reg2.PriorCMSSHA256[0] != sha256Hex(done.CMS) || len(done2.PriorRevisionSHA256) != 1 {
+		t.Fatalf("%v %+v", err, reg2)
+	}
+	// Хуудасгүй эхний гарын үсэг CA-д бүртгэгдэхгүй.
+	if _, err := Registration(&Completed{RevIndex: 1, FileName: "a.pdf"}, RegistrationOptions{}); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatal(err)
 	}
 }

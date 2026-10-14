@@ -26,6 +26,7 @@ var (
 	routeCertChoiceEtsi           = rpRoute{"POST", "/signature/certificate-choice/notification/etsi/{semanticsIdentifier}"}
 	routePDFPrepare               = rpRoute{"POST", "/pdf/sign/prepare"}
 	routePDFDocument              = rpRoute{"GET", "/pdf/sign/{sessionID}/document"}
+	routePDFSignatures            = rpRoute{"POST", "/pdf/signatures"}
 	routeOrgRepresentations       = rpRoute{"GET", "/organization/representations/etsi/{personEtsi}"}
 	routeSession                  = rpRoute{"GET", "/session/{sessionId}"}
 	routePersonCertificates       = rpRoute{"GET", "/certificates/etsi/{personEtsi}"}
@@ -48,7 +49,7 @@ var rpRoutes = []rpRoute{
 	routeSignNotificationEtsi, routeSignNotificationDocument, routeSignNotificationLinked,
 	routeSignDeviceLinkEtsi, routeSignDeviceLinkDocument,
 	routeCertChoiceDeviceLink, routeCertChoiceEtsi,
-	routePDFPrepare, routePDFDocument,
+	routePDFPrepare, routePDFDocument, routePDFSignatures,
 	routeOrgRepresentations,
 	routeSession,
 	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,

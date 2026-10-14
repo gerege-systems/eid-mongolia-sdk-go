@@ -338,6 +338,11 @@ type Representation struct {
 	// SourceLabel — эх үүсвэрийн хүнд харуулах нэр (REGISTRY → «Улсын бүртгэл», MANUAL → «Захирал нэмсэн»; хэл нь
 	// RoleLabel-тэй ижил). Хуучин CA-д хоосон.
 	SourceLabel string `json:"sourceLabel,omitempty"`
+	// ClaimedRole — энэ байгууллагын нэрийн өмнөөс PAdES гарын үсэгт CMS signedAttrs-ийн signer-attributes-v2-д бичих
+	// мэдүүлсэн үүрэг («<албан тушаал>, <байгууллага> (NTRMN-…)», CA тооцоолно; хэл нь RoleLabel-тэй ижил). Клиент талын
+	// PAdES-д ӨӨРЧЛӨЛГҮЙ дамжуулна (pades.PrepareOptions.ClaimedRole); CA бүртгэлд дахин тооцоолж тулгана. Хэт урт эсвэл
+	// хуучин CA-д хоосон.
+	ClaimedRole string `json:"claimedRole,omitempty"`
 	// ValidFrom, ValidTo — ISO 8601; ValidTo "" = хугацаагүй.
 	ValidFrom string `json:"validFrom"`
 	ValidTo   string `json:"validTo,omitempty"`

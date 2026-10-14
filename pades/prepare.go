@@ -63,7 +63,7 @@ type PrepareOptions struct {
 	// VerifyPage — баталгаажуулалтын (QR) хуудас нэмэх эсэх. Зөвхөн гарын үсэггүй баримтад (эхний eID гарын үсэг)
 	// нэмэгдэнэ — гарын үсэгтэй баримтад хуудас нэмбэл өмнөх гарын үсгийг эвдэнэ (CA-ийн дүрэм).
 	VerifyPage bool `json:"verifyPage,omitempty"`
-	// FileName — хуудсанд харуулах баримтын нэр (VerifyPage үед заавал; NFC, ≤ 120 тэмдэгт).
+	// FileName — баримтын нэр: хуудсанд (VerifyPage үед заавал) ба CA-ийн бүртгэлд (Completed.FileName); NFC, ≤ 120.
 	FileName string `json:"fileName,omitempty"`
 	// Lang — хуудасны хэл: "mn" (анхдагч, хоосон бол) | "en" (PAGE_SPEC.md §3a).
 	Lang string `json:"lang,omitempty"`
@@ -126,6 +126,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	docID := o.DocID
 	base, pageHex := doc, ""
 	hasPage := newDoc && o.VerifyPage
+	fileName, fileOK := cleanFileName(o.FileName)
 	if !newDoc {
 		// Эхний eID гарын үсгийн хуудаснаас (CA: бүртгэлээс; DOC_ID_MISMATCH).
 		if fromPage := docIDFromPage(doc); fromPage != "" {
@@ -141,8 +142,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		}
 	}
 	if hasPage {
-		fileName, ok := cleanFileName(o.FileName)
-		if !ok {
+		if !fileOK {
 			return nil, newErr(CodeRequestInvalid, "fileName заавал, ≤ 120 тэмдэгт", nil)
 		}
 		base, err = core.AppendVerifyPage(doc, core.PageData{
@@ -172,7 +172,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		return nil, newErr(CodeRequestInvalid, "claimedRole", err)
 	}
 	st := &prepState{DocID: docID, SignerCert: cert.Raw, SignedAttrs: attrs, ByteRange: prep.ByteRange, RevIndex: revIndex,
-		InSHA256: inHex, HasPage: hasPage, PageSHA256: pageHex, ClaimedRole: o.ClaimedRole, PDF: prep.PDF, PreparedSHA256: sha256Hex(prep.PDF)}
+		InSHA256: inHex, HasPage: hasPage, PageSHA256: pageHex, ClaimedRole: o.ClaimedRole, FileName: fileName, PDF: prep.PDF, PreparedSHA256: sha256Hex(prep.PDF)}
 	for _, c := range chain {
 		st.Chain = append(st.Chain, c.Raw)
 	}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -142,4 +143,35 @@ func TestContractRPRoutes(t *testing.T) {
 	sort.Strings(uncovered)
 	warn("discovery-д байгаа ч SDK хамраагүй", uncovered)
 	t.Logf("SDK %d зам тулгав (+%d discovery-гүй); discovery-д SDK хамраагүй %d (WARN)", len(rpRoutes), len(rpRoutesUndiscovered), len(uncovered))
+}
+
+// TestContractPDFSignaturesBody — discovery-ийн endpoints.pdf.signatures-ийн биеийн талбарууд ({a, b?, …}) нь
+// PDFSignatureRegistration-ийн JSON түлхүүрүүдтэй ЯГ тэнцүү (CA DisallowUnknownFields — илүү талбар 400, дутуу нь
+// SDK шинэ талбарыг дамжуулж чадахгүй).
+func TestContractPDFSignaturesBody(t *testing.T) {
+	var d struct {
+		Endpoints struct {
+			PDF map[string]string `json:"pdf"`
+		} `json:"endpoints"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	desc := d.Endpoints.PDF["signatures"]
+	i, j := strings.IndexByte(desc, '{'), strings.IndexByte(desc, '}')
+	if i < 0 || j < i {
+		t.Fatalf("endpoints.pdf.signatures-д бие алга: %q", desc)
+	}
+	var want []string
+	for _, f := range strings.Split(desc[i+1:j], ",") {
+		want = append(want, strings.TrimSuffix(strings.TrimSpace(f), "?"))
+	}
+	var got []string
+	rt := reflect.TypeOf(PDFSignatureRegistration{})
+	for k := range rt.NumField() {
+		got = append(got, strings.Split(rt.Field(k).Tag.Get("json"), ",")[0])
+	}
+	sort.Strings(want)
+	sort.Strings(got)
+	if strings.Join(want, ",") != strings.Join(got, ",") {
+		t.Fatalf("POST /pdf/signatures бие зөрөв:\ndiscovery %v\nSDK       %v", want, got)
+	}
 }

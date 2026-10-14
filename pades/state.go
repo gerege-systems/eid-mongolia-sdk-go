@@ -22,6 +22,7 @@ type prepState struct {
 	HasPage     bool     `json:"hasPage"`
 	PageSHA256  string   `json:"pageSha256,omitempty"`
 	ClaimedRole string   `json:"claimedRole,omitempty"`
+	FileName    string   `json:"fileName,omitempty"` // цэвэрлэсэн (CA бүртгэлд)
 	// PreparedSHA256 — prepared PDF-ийн sha256 (state эвдэрснийг Complete-д илрүүлнэ).
 	PreparedSHA256 string `json:"preparedSha256"`
 	PDF            []byte `json:"-"`
