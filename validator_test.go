@@ -473,6 +473,38 @@ func TestValidateSign(t *testing.T) {
 	wantInvalid(t, err, "ECDSA credential зөвхөн SHA-256")
 }
 
+func TestValidateSignExpectedFlowType(t *testing.T) {
+	V := trusted(t)
+	p := testPKI(t)
+	d := sha256.Sum256([]byte("%PDF-1.7 гэрээ"))
+	digest := base64.StdEncoding.EncodeToString(d[:])
+	mk := func(flow string) *SessionResult {
+		return &SessionResult{
+			State: StateComplete, EndResult: EndResultOK, DocumentNumber: "PNOMN-TEST", SignatureProtocol: "RAW_DIGEST_SIGNATURE",
+			SignatureAlgorithm: "ecdsa-with-SHA256", FlowType: flow, CertificateLevel: "QUALIFIED",
+			SignatureValueB64: signDigest(t, p.ecLeaf.key, "ecdsa", crypto.SHA256, d[:]),
+			CertificateDERB64: base64.StdEncoding.EncodeToString(p.ecLeaf.cert.Raw),
+		}
+	}
+	for _, f := range []FlowType{FlowQR, FlowWeb2App, FlowApp2App, FlowNotification} {
+		if _, err := V.ValidateSign(mk(string(f)), digest, SHA256, ValidateSignOptions{ExpectedFlowType: f}); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+	}
+	_, err := V.ValidateSign(mk("Web2App"), digest, SHA256, ValidateSignOptions{ExpectedFlowType: FlowQR})
+	wantInvalid(t, err, "эхлүүлсэн урсгал QR")
+	_, err = V.ValidateSign(mk(""), digest, "", ValidateSignOptions{ExpectedFlowType: FlowNotification})
+	wantInvalid(t, err, "эхлүүлсэн урсгал Notification")
+	_, err = V.ValidateSign(mk("QR"), digest, "", ValidateSignOptions{}, ValidateSignOptions{})
+	wantInvalid(t, err, "дээд тал нь нэг")
+	// сонголтгүй / хоосон — одоогийн зан (flowType шалгахгүй)
+	for _, o := range [][]ValidateSignOptions{nil, {{}}} {
+		if _, err := V.ValidateSign(mk("Web2App"), digest, SHA256, o...); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // ── гэрчилгээний гинж ──
 
 func TestChain(t *testing.T) {
