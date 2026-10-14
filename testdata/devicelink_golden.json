@@ -1,0 +1,432 @@
+{
+  "_comment": "Smart-ID RP-API v3 device link + authCode golden vectors. authCode = BASE64URL-NOPAD(HMAC-SHA256(BASE64-DECODE(sessionSecret), UTF8(authCodePayload))). QR-д initialCallbackUrl хоосон. Энэ файлыг ЗАСАХГҮЙ (iOS/Android/TS SDK шууд уншина); шинэ вектор нэмэх бол шинэ нэрээр. docs/DEVICE_LINK_V3.md.",
+  "vectors": [
+    {
+      "name": "sk-web2app-auth",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "Web2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|ACSP_V2|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCode": "aegUh6gCKkXBJhhvtJqSTWB5_2W8TDQt5eZ7db6krv0",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng&authCode=aegUh6gCKkXBJhhvtJqSTWB5_2W8TDQt5eZ7db6krv0"
+    },
+    {
+      "name": "sk-web2app-sign",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "Web2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "sign",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "rpChallengeOrDigest": "FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|RAW_DIGEST_SIGNATURE|FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCode": "R0iNcUp8nK1nqrcVFWerXUfWMSjwDOMC6MAHKrckaH8",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng&authCode=R0iNcUp8nK1nqrcVFWerXUfWMSjwDOMC6MAHKrckaH8"
+    },
+    {
+      "name": "sk-web2app-cert",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "Web2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "cert",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "",
+        "rpChallengeOrDigest": "",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|||REVNTw==|RXhhbXBsZSBSUA==||https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCode": "PI1qYa9_l6zR-v6Pkre6ycSm7S3BGiOQSe5OQlw4UJg",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=Web2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng&authCode=PI1qYa9_l6zR-v6Pkre6ycSm7S3BGiOQSe5OQlw4UJg"
+    },
+    {
+      "name": "sk-app2app-auth",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "App2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|ACSP_V2|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCode": "00NRcgi4Jk7WdIwgMPlyM8wRy9KMu4C_oQvd-N6PKoo",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng&authCode=00NRcgi4Jk7WdIwgMPlyM8wRy9KMu4C_oQvd-N6PKoo"
+    },
+    {
+      "name": "sk-app2app-sign",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "App2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "sign",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "rpChallengeOrDigest": "FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|RAW_DIGEST_SIGNATURE|FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCode": "8QZ16rkBW_ffkq6osT7UH1DbUlF9gEOZevgj-A0VNbM",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng&authCode=8QZ16rkBW_ffkq6osT7UH1DbUlF9gEOZevgj-A0VNbM"
+    },
+    {
+      "name": "sk-app2app-cert",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "App2App",
+        "elapsedSeconds": null,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "cert",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "",
+        "rpChallengeOrDigest": "",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|||REVNTw==|RXhhbXBsZSBSUA==||https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCode": "AtayuRPP3N59wXF8Cijwjt3pQ16knW2L-5VLDTRD_KU",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=App2App&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng&authCode=AtayuRPP3N59wXF8Cijwjt3pQ16knW2L-5VLDTRD_KU"
+    },
+    {
+      "name": "sk-qr-auth",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 22,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|ACSP_V2|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d||https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng",
+      "authCode": "OY1eHaD4UYedrBwtqUbSkpa0w7ttm4FllPkCD_3wlE0",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=auth&version=1.0&lang=eng&authCode=OY1eHaD4UYedrBwtqUbSkpa0w7ttm4FllPkCD_3wlE0"
+    },
+    {
+      "name": "sk-qr-sign",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 22,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "sign",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "rpChallengeOrDigest": "FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|RAW_DIGEST_SIGNATURE|FNZFFya5wGLv9b27fZngaWrOBqle4tGwxZuDFRBdPl1RQvxJsfoqvTbjafd+8BcehMOQGvak6zlP+F8tga4bfQ==|REVNTw==|RXhhbXBsZSBSUA==|W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d||https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng",
+      "authCode": "5PZVhiNDTnt1MjLz8_YCjnNtR7p0iGevaL2G1ajfMco",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=sign&version=1.0&lang=eng&authCode=5PZVhiNDTnt1MjLz8_YCjnNtR7p0iGevaL2G1ajfMco"
+    },
+    {
+      "name": "sk-qr-cert",
+      "source": "SK ID Solutions RP-API v3 docs (device_link_flows.html, authcode.html), 2026-09-30",
+      "input": {
+        "deviceLinkBase": "https://smart-id.com/device-link",
+        "schemeName": "smart-id",
+        "sessionSecret": "B98ODiVCebRedSwdTk51zFSaGYyHtY1H2A0ocAi3/Ps=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 22,
+        "sessionToken": "wGIrqveE6AuGDATZKmR1mtAZ",
+        "sessionType": "cert",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "",
+        "rpChallengeOrDigest": "",
+        "relyingPartyName": "DEMO",
+        "brokeredRpName": "Example RP",
+        "interactions": "",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ"
+      },
+      "unprotectedDeviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|||REVNTw==|RXhhbXBsZSBSUA==|||https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng",
+      "authCode": "T5pDDPAjoMS0byqS-FoaWVjlubODXoCCF4XDB4HeYNo",
+      "deviceLink": "https://smart-id.com/device-link?deviceLinkType=QR&elapsedSeconds=22&sessionToken=wGIrqveE6AuGDATZKmR1mtAZ&sessionType=cert&version=1.0&lang=eng&authCode=T5pDDPAjoMS0byqS-FoaWVjlubODXoCCF4XDB4HeYNo"
+    },
+    {
+      "name": "eid-qr-auth-e0",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 0,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "mon",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCodePayload": "smart-id|ACSP_V2|ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==|0JTRjdC80L4g0LHQsNC90Lo=||W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d||https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCode": "AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk"
+    },
+    {
+      "name": "eid-qr-auth-e7",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 7,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "mon",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=7&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCodePayload": "smart-id|ACSP_V2|ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==|0JTRjdC80L4g0LHQsNC90Lo=||W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d||https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=7&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCode": "uGCgNwe4rhw97HWCNpIpqbuSdxaa31tTwz5Afz0A0fo",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=7&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=uGCgNwe4rhw97HWCNpIpqbuSdxaa31tTwz5Afz0A0fo"
+    },
+    {
+      "name": "eid-web2app-auth",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "Web2App",
+        "elapsedSeconds": null,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "mon",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCodePayload": "smart-id|ACSP_V2|ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==|0JTRjdC80L4g0LHQsNC90Lo=||W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d|https://rp.example.mn/auth/eid/callback?value=Xy12Ab34|https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCode": "Ip7Dq3WsypPOreHJK80BKZjeBhwo7AYhthcuKnkIEgM",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=Ip7Dq3WsypPOreHJK80BKZjeBhwo7AYhthcuKnkIEgM"
+    },
+    {
+      "name": "eid-app2app-auth",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "App2App",
+        "elapsedSeconds": null,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "auth",
+        "version": "1.0",
+        "lang": "mon",
+        "signatureProtocol": "ACSP_V2",
+        "rpChallengeOrDigest": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=App2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCodePayload": "smart-id|ACSP_V2|ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGiow==|0JTRjdC80L4g0LHQsNC90Lo=||W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d|https://rp.example.mn/auth/eid/callback?value=Xy12Ab34|https://ca.eidmongolia.mn/dl?deviceLinkType=App2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon",
+      "authCode": "2ummSDjA9jIUX0Va7XCPVHhJl7C1Ih02nrza6zIGmBI",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=App2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=2ummSDjA9jIUX0Va7XCPVHhJl7C1Ih02nrza6zIGmBI"
+    },
+    {
+      "name": "eid-qr-sign-e12",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "QR",
+        "elapsedSeconds": 12,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "sign",
+        "version": "1.0",
+        "lang": "mon",
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "rpChallengeOrDigest": "xcgSloQ34jF8/flYZPHL9VLTiiuflTeDtOlfCk6zX50=",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=12&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=sign&version=1.0&lang=mon",
+      "authCodePayload": "smart-id|RAW_DIGEST_SIGNATURE|xcgSloQ34jF8/flYZPHL9VLTiiuflTeDtOlfCk6zX50=|0JTRjdC80L4g0LHQsNC90Lo=||W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCd0Y3QstGC0YDRjdGFIn1d||https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=12&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=sign&version=1.0&lang=mon",
+      "authCode": "YTgEIaiEthg2bErK3HuHJWbH7allwAA1Ma7yWiyH3tE",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=12&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=sign&version=1.0&lang=mon&authCode=YTgEIaiEthg2bErK3HuHJWbH7allwAA1Ma7yWiyH3tE"
+    },
+    {
+      "name": "eid-web2app-cert",
+      "source": "eID Mongolia device-link golden (docs/DEVICE_LINK_V3.md), Python hmac/hashlib-аар үүсгэсэн",
+      "input": {
+        "deviceLinkBase": "https://ca.eidmongolia.mn/dl",
+        "schemeName": "smart-id",
+        "sessionSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "deviceLinkType": "Web2App",
+        "elapsedSeconds": null,
+        "sessionToken": "eIDgoldenToken0123456789ABCDEFab",
+        "sessionType": "cert",
+        "version": "1.0",
+        "lang": "eng",
+        "signatureProtocol": "",
+        "rpChallengeOrDigest": "",
+        "relyingPartyName": "Дэмо банк",
+        "brokeredRpName": "",
+        "interactions": "",
+        "initialCallbackUrl": "https://rp.example.mn/auth/eid/callback?value=Xy12Ab34"
+      },
+      "unprotectedDeviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=cert&version=1.0&lang=eng",
+      "authCodePayload": "smart-id|||0JTRjdC80L4g0LHQsNC90Lo=|||https://rp.example.mn/auth/eid/callback?value=Xy12Ab34|https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=cert&version=1.0&lang=eng",
+      "authCode": "7LWDa7CfaOqxkUcXoiLBoeVqHDrcZAJw0lrScd-Ecoc",
+      "deviceLink": "https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=cert&version=1.0&lang=eng&authCode=7LWDa7CfaOqxkUcXoiLBoeVqHDrcZAJw0lrScd-Ecoc"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "tampered-type-qr-to-web2app",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=Web2App&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "authCode"
+    },
+    {
+      "name": "tampered-elapsed",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=1&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "authCode"
+    },
+    {
+      "name": "tampered-token",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFac&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "authCode"
+    },
+    {
+      "name": "param-order",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&version=1.0&sessionType=auth&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "format"
+    },
+    {
+      "name": "url-encoded",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=m%6Fn&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "format"
+    },
+    {
+      "name": "leading-zero-elapsed",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=00&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "format"
+    },
+    {
+      "name": "fragment",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk#x",
+      "reason": "format"
+    },
+    {
+      "name": "other-base",
+      "link": "https://evil.example/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk",
+      "reason": "format"
+    },
+    {
+      "name": "extra-param",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk&foo=bar",
+      "reason": "format"
+    },
+    {
+      "name": "legacy-sessionid-tail",
+      "link": "https://ca.eidmongolia.mn/dl?deviceLinkType=QR&elapsedSeconds=0&sessionToken=eIDgoldenToken0123456789ABCDEFab&sessionType=auth&version=1.0&lang=mon&authCode=AOKi9-sz9VOCXrZu7qsi4Axtcy0J8H3JjTJlZlTnhtk&sessionId=0f8fad5b-d9cb-469f-a165-70867728950e&vc=04217",
+      "reason": "format"
+    }
+  ]
+}
