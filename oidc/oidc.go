@@ -52,6 +52,7 @@ const (
 const (
 	clockSkew      = 60 // секунд
 	cacheTTL       = time.Hour
+	minRefetch     = 30 * time.Second // танихгүй kid-ээр JWKS-ийг хүчээр дахин татах доод завсар
 	defaultTimeout = 10 * time.Second
 	maxBody        = 1 << 20
 )
@@ -254,6 +255,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if !strings.HasPrefix(cfg.RedirectURI, "https://") {
 		return nil, errors.New("eid/oidc: RedirectURI https:// байх ёстой")
 	}
+	if cfg.UseMTLSEndpointAliases && cfg.HTTPClient == nil {
+		return nil, errors.New("eid/oidc: UseMTLSEndpointAliases-д client cert-тэй HTTPClient заавал")
+	}
 	iss := cfg.Issuer
 	if iss == "" {
 		iss = Issuer
@@ -359,6 +363,9 @@ func (c *Client) HandleCallback(ctx context.Context, query url.Values, checks Ca
 	code := query.Get("code")
 	if code == "" || len(code) > 512 {
 		return nil, &Error{Code: ErrInvalidCallback, Message: "callback-д code алга"}
+	}
+	if checks.CodeVerifier == "" || checks.Nonce == "" { // code-ийг дэмий зарцуулахгүй
+		return nil, &Error{Code: ErrInvalidCallback, Message: "CallbackChecks-ийн CodeVerifier / Nonce хоосон"}
 	}
 	idToken, err := c.exchangeCode(ctx, code, checks.CodeVerifier)
 	if err != nil {
@@ -515,7 +522,8 @@ func (c *Client) VerifyIDToken(ctx context.Context, idToken, nonce string) (*Cla
 	return &cl, nil
 }
 
-// key — kid-тэй P-256 түлхүүр. Cache-д алга бол JWKS-ийг нэг удаа дахин татна.
+// key — kid-тэй P-256 түлхүүр. Cache-д алга бол JWKS-ийг нэг удаа дахин татна (minRefetch-ээс ойр биш —
+// хуурамч kid-ээр login. руу ачаалал үүсгэхгүй).
 func (c *Client) key(ctx context.Context, kid string) (*ecdsa.PublicKey, error) {
 	for _, force := range []bool{false, true} {
 		keys, err := c.jwks(ctx, force)
@@ -537,7 +545,7 @@ func (c *Client) key(ctx context.Context, kid string) (*ecdsa.PublicKey, error) 
 
 func (c *Client) jwks(ctx context.Context, force bool) ([]jwk, error) {
 	c.mu.Lock()
-	if !force && c.hasKeys && c.now().Sub(c.keysAt) < cacheTTL {
+	if c.hasKeys && c.now().Sub(c.keysAt) < cacheTTL && (!force || c.now().Sub(c.keysAt) < minRefetch) {
 		k := c.keys
 		c.mu.Unlock()
 		return k, nil
