@@ -118,6 +118,21 @@ func TestContractRPRoutes(t *testing.T) {
 		}
 	}
 
+	// CA-ийн гэрээнд (код + docs) байгаа ч discovery-д жагсаагдаагүй замууд — WARN; discovery-д орсон бол rpRoutes руу
+	// шилжүүлэх сануулга (WARN).
+	var undiscovered, nowDiscovered []string
+	for _, r := range rpRoutesUndiscovered {
+		k := normRoute(r.method, r.path)
+		covered[k] = true
+		if rp[k] {
+			nowDiscovered = append(nowDiscovered, r.method+" "+r.path)
+		} else {
+			undiscovered = append(undiscovered, r.method+" "+r.path)
+		}
+	}
+	warn("SDK зам CA-д бий ч discovery-д алга", undiscovered)
+	warn("discovery-д орсон — rpRoutesUndiscovered-оос rpRoutes руу шилжүүл", nowDiscovered)
+
 	var uncovered []string
 	for _, e := range eps {
 		if k, ok := rpKey(e); !ok || !covered[k] {
@@ -126,5 +141,5 @@ func TestContractRPRoutes(t *testing.T) {
 	}
 	sort.Strings(uncovered)
 	warn("discovery-д байгаа ч SDK хамраагүй", uncovered)
-	t.Logf("SDK %d зам тулгав; discovery-д SDK хамраагүй %d (WARN)", len(rpRoutes), len(uncovered))
+	t.Logf("SDK %d зам тулгав (+%d discovery-гүй); discovery-д SDK хамраагүй %d (WARN)", len(rpRoutes), len(rpRoutesUndiscovered), len(uncovered))
 }

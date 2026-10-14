@@ -1,11 +1,33 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-10-14
 
+Порталыг (eid-mongolia-mn, MR !140) SDK руу шилжүүлэхэд илэрсэн дутагдлууд — бүгд additive (TS SDK 0.10.0-тэй ижил):
+
+- **`SessionResult.Person`** (CA `person` блок: `FirstName`/`LastName`(эцгийн)/`FamilyName`(ургийн овог), `…En`,
+  `CivilID`, `RegNo`, `BirthDate`, `Gender`, `GeID`), **`SessionResult.Raw`** (түүхий JSON), **`TokenCertificate`**
+  блок; `PersonMatchesCertificate(person, subject)` — person блок гарын үсэгт ордоггүй тул `PNOMN-<civilId>` тулгалт.
+- **`APIError` / `ForbiddenError`: `RetryAfter`** (Retry-After секунд эсвэл HTTP-огноо задалсан) **+ `Header`**;
+  `APIError.Retryable()`, кодууд `CodePDFPrepareBusy`, `CodeDocumentPending`, `CodeTSAUnavailable`,
+  `CodeLTVUnavailable`, `CodeRateLimited`, `CodeStateUnavailable`, `CodeIssuancePending` (`RetryableCodes`).
+  **`Config.PDFTimeout`** (анхдагч `DefaultPDFTimeout` = 80s; өмнө нь тогтмол 60s).
+- **`SignOptions.FileName`** → хүсэлтийн `fileName` (CA `NotificationSignRequest.FileName`).
+- **`Client.Person`** (PKI_READ): `Certificates`, `Devices`, `Activity(ActivityQuery)`, `Summary`, `Children`.
+  **`Client.Token`**: `IssueCertificate` (CA-ийн CSR hash тулгалттай), `CertificateResult`, `VerifyTokenCertificates`,
+  `AuthChallenge`, `AuthVerify` (endResult + identity.etsi = гэрчилгээний SERIALNUMBER), `TokenAuthDigest` (TOKEN_AUTH
+  тест вектор), `TokenLimitOf`.
+- **Validator**: `TrustConfig.AllowedIssuerSKIs` (+ `CitizenIssuingCASKI`), `CheckKeyUsage` (auth → clientAuth,
+  sign → nonRepudiation), `SchemeName`; `CheckRevocationStatus` → `good` / `unchecked` / `skipped` (+ алдаа).
+- **PII**: `NetworkError.Op` замыг `/etsi/…`, `/document/…` болгож, `Err`-д `*url.Error`-ийн оронд шалтгааныг
+  (бүтэн URL-гүй) хадгална; хариу задрахгүй алдааны зам мөн; гэрчилгээний хугацааны алдаа CN биш serial-аар.
+- **`AuthenticationError`**: `Code`, `Message`, `Body`, `Header` (CA-ийн 401 vs proxy-ийн 401).
+- Гэрээ: `routes.go`-д person ×5, token/certificate ×2; `/token/auth/*` CA-д байгаа ч discovery-д алга тул
+  `rpRoutesUndiscovered` (гэрээний тест WARN).
 - **Гэрээний шалгалт** (`go test -tags contract`, `.github/workflows/contract.yml` — PR / main / өдөр бүр): SDK-ийн
   RP-API зам бүр live `/.well-known/eid`-д, OIDC утгууд (issuer, ES256, S256, client_secret_basic, `Claims` талбарууд)
   `openid-configuration`-д таарахыг шалгана; SDK хамраагүй discovery замууд WARN. RP-API замууд `routes.go`-д нэг
   газар төвлөрсөн (зан төлөв өөрчлөгдөөгүй). Энгийн `go test` сүлжээгүй хэвээр.
+- Шалгасан: `gofmt -l .`, `go vet ./...` (1.25 + 1.22), `go test -race ./...`, `go test -tags contract` (live).
 
 ## 0.1.1 — 2026-10-14
 

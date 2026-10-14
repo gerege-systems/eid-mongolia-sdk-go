@@ -1,0 +1,346 @@
+package eid
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+)
+
+// TokenService — иргэний USB токен (PKCS#11, EC P-256):
+//
+//   - гэрчилгээ олголт (CA docs/TOKEN_CERT.md, RP-д TOKEN_ISSUE + SIGN эрх): IssueCertificate → иргэн утсаараа PIN2-оор
+//     батална → Session.Poll (TokenCertificate.Status = ISSUED) → CertificateResult → VerifyTokenCertificates;
+//   - токеноор нэвтрэлт (docs/TOKEN_AUTH.md, AUTH эрх): AuthChallenge → токен TokenAuthDigest-ийг CKM_ECDSA-аар зурна
+//     (түүхий r||s) → AuthVerify.
+//
+// Алдаа: {"error","code"} — *APIError.Code (ж: TOKEN_LIMIT_REACHED → TokenLimitOf, CHALLENGE_EXPIRED, CERT_INVALID);
+// түр алдаа (RATE_LIMITED, STATE_UNAVAILABLE, ISSUANCE_PENDING) — APIError.Retryable + RetryAfter.
+type TokenService struct {
+	h     *httpDoer
+	creds Credentials
+}
+
+// TokenCertInput — POST /token/certificate-ийн оролт.
+type TokenCertInput struct {
+	// SignerEtsi — иргэн (PNOMN-…), батлах push түүний утсанд очно.
+	SignerEtsi string
+	// CSRAuth, CSRSign — PKCS#10 DER (EC P-256, ecdsa-with-SHA256, өөр өөр түлхүүр, ≤ 4 KiB).
+	CSRAuth, CSRSign []byte
+	// TokenSerial — токены serial ([A-Za-z0-9-]{1,64}).
+	TokenSerial string
+	// TokenLabel — заавал биш (≤ 64); "" бол илгээхгүй.
+	TokenLabel string
+	// OnBehalfOf — байгууллагын токен (NTRMN-…); "" = хувийн токен.
+	OnBehalfOf string
+}
+
+// TokenCertStart — олголтын эхлэлийн хариу: утсанд очсон SIGN session.
+type TokenCertStart struct {
+	SessionID string
+	// VC — иргэнд ХАРУУЛАХ баталгаажуулах код (ПИН биш).
+	VC string
+	// CSRAuthSHA256, CSRSignSHA256 — hex(SHA-256(CSR DER)); SDK илгээсэн CSR-тэй тулгасан.
+	CSRAuthSHA256 string
+	CSRSignSHA256 string
+	ExpiresAt     string
+}
+
+// TokenCertItem — олгосон нэг гэрчилгээ.
+type TokenCertItem struct {
+	// Certificate — base64 DER.
+	Certificate    string `json:"certificate"`
+	CertificatePEM string `json:"certificatePem"`
+	SerialHex      string `json:"serialHex"`
+	NotBefore      string `json:"notBefore"`
+	NotAfter       string `json:"notAfter"`
+}
+
+// TokenOrganization — токенд холбогдсон байгууллага.
+type TokenOrganization struct {
+	Etsi string `json:"etsi"`
+	Name string `json:"name"`
+}
+
+// TokenCertResult — GET /token/certificate/{sessionID} (зөвхөн үүсгэсэн RP, 24 цаг идэмпотент).
+type TokenCertResult struct {
+	Status string         `json:"status"`
+	Auth   *TokenCertItem `json:"auth"`
+	Sign   *TokenCertItem `json:"sign"`
+	// Chain — base64 DER: 04, 03, 02 (root-гүй).
+	Chain    []string `json:"chain"`
+	ChainPEM string   `json:"chainPem"`
+	// Organization — хувийн токенд nil.
+	Organization     *TokenOrganization `json:"organization"`
+	KeyMedium        string             `json:"keyMedium"`
+	CertificateLevel string             `json:"certificateLevel"`
+	Raw              json.RawMessage    `json:"-"`
+}
+
+// TokenAuthChallenge — POST /token/auth/challenge хариу. Токен TokenAuthDigest(RPUUID, Challenge)-ийг зурна.
+type TokenAuthChallenge struct {
+	ChallengeID string `json:"challengeId"`
+	// Challenge — base64 (32 байт).
+	Challenge string `json:"challenge"`
+	// RPUUID — CA-ийн холбосон RP (жижиг үсэг) — hash-д ЯГ ЭНЭ мөр орно.
+	RPUUID    string    `json:"rpUUID"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// TokenIdentity — CA-ийн баталгаажуулсан иргэн. GivenName/Surname — KYC бүртгэлээс (кирилл).
+type TokenIdentity struct {
+	Etsi      string `json:"etsi"`
+	GivenName string `json:"givenName"`
+	Surname   string `json:"surname"`
+}
+
+// TokenAuthResult — POST /token/auth/verify хариу (endResult OK, identity нь гэрчилгээний subject — SDK тулгасан).
+type TokenAuthResult struct {
+	Identity  TokenIdentity
+	SerialHex string
+	NotAfter  time.Time
+	// Organization — токен байгууллагад холбогдсон бол; эс бөгөөс nil.
+	Organization *TokenOrganization
+	Raw          json.RawMessage
+}
+
+type tokenCertRequest struct {
+	RelyingPartyUUID string            `json:"relyingPartyUUID"`
+	RelyingPartyName string            `json:"relyingPartyName"`
+	Signer           map[string]string `json:"signer"`
+	CSRAuth          string            `json:"csrAuth"`
+	CSRSign          string            `json:"csrSign"`
+	TokenSerial      string            `json:"tokenSerial"`
+	TokenLabel       string            `json:"tokenLabel,omitempty"`
+	OnBehalfOf       string            `json:"onBehalfOf"`
+	Flow             string            `json:"flow"`
+}
+
+// IssueCertificate — POST /token/certificate: токены AUTH + SIGN гэрчилгээ олголт эхлүүлнэ (иргэн утсаараа батална).
+// CA-ийн буцаасан CSR hash-ууд илгээсэнтэй таарахгүй бол *ValidationError.
+func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
+	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
+		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
+	}
+	// CA DisallowUnknownFields — яг эдгээр талбар.
+	req := tokenCertRequest{
+		RelyingPartyUUID: t.creds.RPUUID,
+		RelyingPartyName: t.creds.RPName,
+		Signer:           map[string]string{"etsi": strings.TrimSpace(in.SignerEtsi)},
+		CSRAuth:          base64.StdEncoding.EncodeToString(in.CSRAuth),
+		CSRSign:          base64.StdEncoding.EncodeToString(in.CSRSign),
+		TokenSerial:      strings.TrimSpace(in.TokenSerial),
+		TokenLabel:       in.TokenLabel,
+		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
+		Flow:             "notification",
+	}
+	var r struct {
+		SessionID     string  `json:"sessionID"`
+		VC            vcValue `json:"vc"`
+		CSRAuthSHA256 string  `json:"csrAuthSha256"`
+		CSRSignSHA256 string  `json:"csrSignSha256"`
+		ExpiresAt     string  `json:"expiresAt"`
+	}
+	if err := t.h.postJSON(ctx, routeTokenCertificate.expand(), req, &r); err != nil {
+		return nil, err
+	}
+	if !hexSHA256Equal(r.CSRAuthSHA256, in.CSRAuth) || !hexSHA256Equal(r.CSRSignSHA256, in.CSRSign) {
+		return nil, invalid("token: CA-ийн csrAuthSha256/csrSignSha256 илгээсэн CSR-тэй таарсангүй")
+	}
+	return &TokenCertStart{
+		SessionID: r.SessionID, VC: string(r.VC),
+		CSRAuthSHA256: strings.ToLower(r.CSRAuthSHA256), CSRSignSHA256: strings.ToLower(r.CSRSignSHA256), ExpiresAt: r.ExpiresAt,
+	}, nil
+}
+
+// tokenResultTimeout — CA олголт дуусаагүй бол ≤ 15с хүлээдэг.
+const tokenResultTimeout = 30 * time.Second
+
+// CertificateResult — GET /token/certificate/{sessionID}: олгосон AUTH + SIGN гэрчилгээ + гинж. Токенд бичихээс өмнө
+// VerifyTokenCertificates-аар CSR-ийн түлхүүртэй тулга.
+func (t *TokenService) CertificateResult(ctx context.Context, sessionID string) (*TokenCertResult, error) {
+	var r TokenCertResult
+	path := routeTokenCertificateResult.expand(sessionID)
+	if err := t.h.getJSON(ctx, path, tokenResultTimeout, &r.Raw); err != nil {
+		return nil, err
+	}
+	if len(r.Raw) > 0 {
+		if err := decodeJSON(r.Raw, path, &r); err != nil {
+			return nil, err
+		}
+	}
+	return &r, nil
+}
+
+// VerifyTokenCertificates — олгосон AUTH/SIGN гэрчилгээ бүр задарч, илгээсэн CSR-ийн public key-тэй (SPKI) ЯГ таарахыг
+// шалгана. Таарахгүй бол *ValidationError — гэрчилгээг токенд бүү бич.
+func VerifyTokenCertificates(r *TokenCertResult, csrAuth, csrSign []byte) error {
+	if r == nil || r.Auth == nil || r.Sign == nil {
+		return invalid("token: auth/sign гэрчилгээ алга")
+	}
+	for _, p := range []struct {
+		name string
+		item *TokenCertItem
+		csr  []byte
+	}{{"auth", r.Auth, csrAuth}, {"sign", r.Sign, csrSign}} {
+		csr, err := x509.ParseCertificateRequest(p.csr)
+		if err != nil {
+			return fmt.Errorf("eid: token: %s CSR задарсангүй: %w", p.name, err)
+		}
+		der, err := base64.StdEncoding.DecodeString(p.item.Certificate)
+		if err != nil {
+			return invalid("token: %s гэрчилгээ base64 буруу", p.name)
+		}
+		crt, err := x509.ParseCertificate(der)
+		if err != nil {
+			return invalid("token: %s гэрчилгээ задарсангүй", p.name)
+		}
+		if !bytes.Equal(crt.RawSubjectPublicKeyInfo, csr.RawSubjectPublicKeyInfo) {
+			return invalid("token: %s гэрчилгээний түлхүүр CSR-ийнхтэй таарсангүй", p.name)
+		}
+	}
+	return nil
+}
+
+// AuthChallenge — POST /token/auth/challenge: энэ RP-д холбогдсон нэг удаагийн challenge (2 мин).
+func (t *TokenService) AuthChallenge(ctx context.Context) (*TokenAuthChallenge, error) {
+	var r TokenAuthChallenge
+	body := map[string]string{"relyingPartyUUID": t.creds.RPUUID, "relyingPartyName": t.creds.RPName}
+	if err := t.h.postJSON(ctx, routeTokenAuthChallenge.expand(), body, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// AuthVerify — POST /token/auth/verify: токены AUTH гэрчилгээ (DER) + challenge дээрх түүхий r||s гарын үсэг. CA гинж,
+// төлөв, цуцлалт, гарын үсгийг шалгана; SDK нэмж endResult == OK ба identity.etsi == гэрчилгээний SERIALNUMBER-ийг
+// тулгана (эс бөгөөс *ValidationError). Challenge нэг удаагийн — алдааны дараа шинээр авна.
+func (t *TokenService) AuthVerify(ctx context.Context, challengeID string, certDER, signature []byte) (*TokenAuthResult, error) {
+	crt, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, fmt.Errorf("eid: token auth: гэрчилгээ задарсангүй: %w", err)
+	}
+	if challengeID == "" || len(signature) == 0 {
+		return nil, errors.New("eid: token auth: challengeID ба signature шаардлагатай")
+	}
+	body := map[string]string{
+		"challengeId": challengeID,
+		"certificate": base64.StdEncoding.EncodeToString(certDER),
+		"signature":   base64.StdEncoding.EncodeToString(signature),
+	}
+	var raw json.RawMessage
+	path := routeTokenAuthVerify.expand()
+	if err := t.h.postJSON(ctx, path, body, &raw); err != nil {
+		return nil, err
+	}
+	var r struct {
+		Result struct {
+			EndResult string `json:"endResult"`
+		} `json:"result"`
+		Identity TokenIdentity `json:"identity"`
+		Cert     struct {
+			SerialHex string    `json:"serialHex"`
+			NotAfter  time.Time `json:"notAfter"`
+		} `json:"cert"`
+		Organization *TokenOrganization `json:"organization"`
+	}
+	if err := decodeJSON(raw, path, &r); err != nil {
+		return nil, err
+	}
+	if r.Result.EndResult != EndResultOK {
+		return nil, invalid("token auth: endResult OK биш")
+	}
+	if r.Identity.Etsi == "" || r.Identity.Etsi != crt.Subject.SerialNumber {
+		return nil, invalid("token auth: identity.etsi нь гэрчилгээний SERIALNUMBER биш")
+	}
+	org := r.Organization
+	if org != nil && org.Etsi == "" {
+		org = nil
+	}
+	return &TokenAuthResult{Identity: r.Identity, SerialHex: r.Cert.SerialHex, NotAfter: r.Cert.NotAfter, Organization: org, Raw: raw}, nil
+}
+
+var rpUUIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// TokenAuthDigest — токены зурах 32 байт: SHA-256("eID-TOKEN-AUTH" || rpUUID || challenge) (docs/TOKEN_AUTH.md).
+// rpUUID — challenge хариуны RPUUID (жижиг үсэг, 36), challengeB64 — challenge (32 байт base64). Токен үүнийг
+// CKM_ECDSA-аар (урьдчилан hash-лэсэн) зурж, түүхий r||s (64 байт)-ийг AuthVerify-д өгнө.
+func TokenAuthDigest(rpUUID, challengeB64 string) ([]byte, error) {
+	if !rpUUIDRe.MatchString(rpUUID) {
+		return nil, errors.New("eid: token auth: rpUUID жижиг үсгийн 36 тэмдэгт UUID биш")
+	}
+	ch, err := base64.StdEncoding.DecodeString(challengeB64)
+	if err != nil || len(ch) != 32 {
+		return nil, errors.New("eid: token auth: challenge 32 байт base64 биш")
+	}
+	h := sha256.New()
+	h.Write([]byte("eID-TOKEN-AUTH"))
+	h.Write([]byte(rpUUID))
+	h.Write(ch)
+	return h.Sum(nil), nil
+}
+
+// Токены хязгаарын төрөл (TokenLimit.Kind).
+const (
+	TokenKindPersonal     = "PERSONAL"
+	TokenKindOrganization = "ORGANIZATION"
+)
+
+// CodeTokenLimitReached — 409: иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
+const CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
+
+// TokenLimit — 409 TOKEN_LIMIT_REACHED-ийн дэлгэрэнгүй: иргэн Kind төрлийн Limit хүчинтэй токентой (Limit 0 = тухайн
+// төрлийн олголт хаалттай). Organization — зөвхөн ORGANIZATION-д (NTRMN-…).
+type TokenLimit struct {
+	Kind         string
+	Limit        int
+	Organization string
+}
+
+// TokenLimitOf — err нь 409 TOKEN_LIMIT_REACHED бол түүний {kind, limit, organization}. Гэрээнээс гадуур хэлбэр бол
+// (nil, false) — татгалзал хүчинтэй хэвээр, дэлгэрэнгүйгүй.
+func TokenLimitOf(err error) (*TokenLimit, bool) {
+	var api *APIError
+	if !errors.As(err, &api) || api.Code != CodeTokenLimitReached {
+		return nil, false
+	}
+	var b struct {
+		Kind         string  `json:"kind"`
+		Limit        *int    `json:"limit"`
+		Organization *string `json:"organization"`
+	}
+	if json.Unmarshal([]byte(api.Body), &b) != nil || b.Limit == nil || *b.Limit < 0 {
+		return nil, false
+	}
+	out := &TokenLimit{Kind: b.Kind, Limit: *b.Limit}
+	switch b.Kind {
+	case TokenKindPersonal:
+	case TokenKindOrganization:
+		if b.Organization == nil || !strings.HasPrefix(*b.Organization, "NTRMN-") {
+			return nil, false
+		}
+		out.Organization = *b.Organization
+	default:
+		return nil, false
+	}
+	return out, true
+}
+
+// hexSHA256Equal — hexDigest нь data-ийн SHA-256 эсэх (том/жижиг үсэг хамаагүй).
+func hexSHA256Equal(hexDigest string, data []byte) bool {
+	want, err := hex.DecodeString(strings.TrimSpace(hexDigest))
+	if err != nil || len(want) != sha256.Size {
+		return false
+	}
+	got := sha256.Sum256(data)
+	return subtle.ConstantTimeCompare(got[:], want) == 1
+}

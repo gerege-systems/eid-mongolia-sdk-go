@@ -17,6 +17,9 @@ type SignOptions struct {
 	// OnBehalfOf — байгууллагын нэрийн өмнөөс (NTRMN-<бүртгэл>). Гарын үсэг иргэний PIN2 гэрчилгээгээр;
 	// байгууллага digest-д ОРОХГҮЙ. Татгалзвал ForbiddenError/APIError.Code (OnBehalfErrorCodes).
 	OnBehalfOf string
+	// FileName — гарын үсэг зурагдах баримтын нэр: CA-ийн /verify хуудас ба иргэний түүхэнд харагдана. Заавал биш —
+	// өгөөгүй бол CA interaction текстээс таамаглана.
+	FileName string
 }
 
 // SignService — иргэн PIN2 (non-repudiation)-оор баримтын digest-д хууль ёсны гарын үсэг зурна. Хариуг
@@ -42,6 +45,7 @@ type signRequest struct {
 	Interactions                string             `json:"interactions"`
 	InitialCallbackURL          string             `json:"initialCallbackUrl,omitempty"`
 	OnBehalfOf                  string             `json:"onBehalfOf,omitempty"`
+	FileName                    string             `json:"fileName,omitempty"`
 }
 
 func (s *SignService) start(ctx context.Context, path, digestB64 string, interactions []Interaction, o *SignOptions) (*NotificationSession, error) {
@@ -65,6 +69,7 @@ func (s *SignService) start(ctx context.Context, path, digestB64 string, interac
 		Interactions:       ib64,
 		InitialCallbackURL: strings.TrimSpace(o.CallbackURL),
 		OnBehalfOf:         strings.TrimSpace(o.OnBehalfOf),
+		FileName:           strings.TrimSpace(o.FileName),
 	}
 	var r sessionStartResponse
 	if err := s.h.postJSON(ctx, path, req, &r); err != nil {

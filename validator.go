@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -37,6 +38,9 @@ type Validator struct {
 	allowUntrusted bool
 	revocation     RevocationChecker
 	revocationMode RevocationMode
+	allowedIssuers map[string]bool
+	checkKeyUsage  bool
+	schemeName     string
 	now            func() time.Time
 }
 
@@ -47,6 +51,10 @@ const (
 	RevocationGood    RevocationStatus = "good"
 	RevocationRevoked RevocationStatus = "revoked"
 	RevocationUnknown RevocationStatus = "unknown"
+	// RevocationUnchecked — CheckRevocationStatus: checker "unknown" хариулсан ч soft-fail горимд зөвшөөрөгдсөн.
+	RevocationUnchecked RevocationStatus = "unchecked"
+	// RevocationSkipped — CheckRevocationStatus: RevocationChecker тохируулаагүй (асуугаагүй).
+	RevocationSkipped RevocationStatus = "skipped"
 )
 
 // RevocationMode — "unknown" төлөвийн шийдвэр.
@@ -81,7 +89,21 @@ type TrustConfig struct {
 	Revocation RevocationChecker
 	// RevocationMode — "" = RevocationHardFail.
 	RevocationMode RevocationMode
+	// AllowedIssuerSKIs — иргэний гэрчилгээг шууд гаргасан CA-ийн Subject Key Identifier (hex, ":" зөвшөөрнө) жагсаалт.
+	// Хоосон бол trust anchor хүртэл гинжлэгдсэн дурын CA зөвшөөрөгдөнө (хуучин зан). Ижил root-ийн доорх өөр CA
+	// (ж: байгууллагын Issuing CA) иргэний гэрчилгээ гаргахаас хамгаалахад: []string{CitizenIssuingCASKI}.
+	AllowedIssuerSKIs []string
+	// CheckKeyUsage — true бол гэрчилгээний зориулалтыг CA-ийн профайлаар шалгана: auth → KeyUsage digitalSignature +
+	// ExtKeyUsage clientAuth (P-CITIZEN-AUTH); sign → KeyUsage contentCommitment / nonRepudiation (P-CITIZEN-SIGN).
+	// false (анхдагч) — шалгахгүй (хуучин зан).
+	CheckKeyUsage bool
+	// SchemeName — ACSP_V2 payload-ийн scheme нэр (CA-ийн capabilities.acsp_scheme_name); "" = "smart-id".
+	SchemeName string
 }
+
+// CitizenIssuingCASKI — eID Mongolia Issuing CA (04)-ийн Subject Key Identifier: иргэний утасны болон USB токены
+// AUTH/SIGN гэрчилгээг гаргадаг цорын ганц CA. TrustConfig.AllowedIssuerSKIs-д.
+const CitizenIssuingCASKI = "b8a37f2c64ad677912db7d9e34f246358a2fb909"
 
 // VerifiedIdentity — баталгаажсан иргэн (auth).
 type VerifiedIdentity struct {
@@ -138,6 +160,17 @@ func NewValidator(t TrustConfig) (*Validator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("eid: IntermediatesPEM: %w", err)
 	}
+	var issuers map[string]bool
+	for _, s := range t.AllowedIssuerSKIs {
+		ski := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), ":", ""))
+		if b, err := hex.DecodeString(ski); err != nil || len(b) == 0 {
+			return nil, fmt.Errorf("eid: AllowedIssuerSKIs: %q hex key identifier биш", s)
+		}
+		if issuers == nil {
+			issuers = map[string]bool{}
+		}
+		issuers[ski] = true
+	}
 	return &Validator{
 		anchors:        anchors,
 		intermediates:  inter,
@@ -146,6 +179,9 @@ func NewValidator(t TrustConfig) (*Validator, error) {
 		allowUntrusted: t.AllowUntrusted,
 		revocation:     t.Revocation,
 		revocationMode: orDefault(t.RevocationMode, RevocationHardFail),
+		allowedIssuers: issuers,
+		checkKeyUsage:  t.CheckKeyUsage,
+		schemeName:     t.SchemeName,
 		now:            time.Now,
 	}, nil
 }
@@ -222,6 +258,7 @@ func (v *Validator) ValidateAuth(r *SessionResult, acsp *ACSPContext, o Validate
 		return nil, err
 	}
 	payload := BuildACSPV2Payload(ACSPV2Params{
+		SchemeName:          v.schemeName,
 		ServerRandom:        r.ServerRandom,
 		RPChallenge:         acsp.RPChallenge,
 		UserChallenge:       r.UserChallenge,
@@ -290,25 +327,38 @@ func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAl
 
 // CheckRevocation — тохируулсан RevocationChecker-ээр гэрчилгээний төлвийг шалгана. Checker алга бол no-op (nil).
 // RevocationRevoked, мөн hard-fail горимд RevocationUnknown → *ValidationError; checker-ийн алдаа → алдаа (итгэхгүй).
-// ValidateAuth/ValidateSign-ийн дараа дуудна.
+// ValidateAuth/ValidateSign-ийн дараа дуудна. Төлвийг мэдэх шаардлагатай бол CheckRevocationStatus.
 func (v *Validator) CheckRevocation(ctx context.Context, cert *x509.Certificate) error {
+	_, err := v.CheckRevocationStatus(ctx, cert)
+	return err
+}
+
+// CheckRevocationStatus — CheckRevocation + юу шийдсэнийг буцаана (лог/аудитад):
+//
+//	RevocationGood, nil      — issuer хүчинтэй гэж хариулсан
+//	RevocationUnchecked, nil — "unknown", soft-fail горимд зөвшөөрөв
+//	RevocationSkipped, nil   — RevocationChecker тохируулаагүй
+//	RevocationRevoked, *ValidationError — цуцлагдсан
+//	RevocationUnknown, *ValidationError — "unknown", hard-fail
+//	"", error                — checker-ийн алдаа (итгэхгүй)
+func (v *Validator) CheckRevocationStatus(ctx context.Context, cert *x509.Certificate) (RevocationStatus, error) {
 	if v.revocation == nil {
-		return nil
+		return RevocationSkipped, nil
 	}
 	status, err := v.revocation(ctx, cert, v.findIssuer(cert))
 	if err != nil {
-		return fmt.Errorf("eid: revocation шалгалт: %w", err)
+		return "", fmt.Errorf("eid: revocation шалгалт: %w", err)
 	}
 	switch status {
 	case RevocationGood:
-		return nil
+		return RevocationGood, nil
 	case RevocationRevoked:
-		return invalid("гэрчилгээ цуцлагдсан (revoked)")
+		return RevocationRevoked, invalid("гэрчилгээ цуцлагдсан (revoked)")
 	}
 	if v.revocationMode == RevocationSoftFail {
-		return nil
+		return RevocationUnchecked, nil
 	}
-	return invalid("гэрчилгээний revocation төлөв тогтоогдсонгүй (hard-fail)")
+	return RevocationUnknown, invalid("гэрчилгээний revocation төлөв тогтоогдсонгүй (hard-fail)")
 }
 
 // algorithmOf — хариуны signatureAlgorithm + hash-ийг RP-ийн хүссэнтэй ба гэрчилгээний түлхүүрийн төрөлтэй
@@ -414,6 +464,9 @@ func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certifica
 	if err := v.checkLevel(r.CertificateLevel); err != nil {
 		return nil, err
 	}
+	if err := v.checkPurpose(leaf, protocol); err != nil {
+		return nil, err
+	}
 	// Trust anchor ЗААВАЛ — хоосон бол fail-closed (AllowUntrusted-аар л алгасна).
 	if len(v.anchors) == 0 {
 		if !v.allowUntrusted {
@@ -424,15 +477,63 @@ func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certifica
 	if err := v.verifyChain(leaf, now); err != nil {
 		return nil, err
 	}
+	if err := v.checkIssuer(leaf); err != nil {
+		return nil, err
+	}
 	return leaf, nil
 }
 
+// checkValidity — алдааны текстэд subject (иргэний нэр/PNOMN) биш serial (hex) орно.
 func (v *Validator) checkValidity(c *x509.Certificate, now time.Time) error {
 	if now.Add(v.skew).Before(c.NotBefore) {
-		return invalid("гэрчилгээ хүчинтэй болоогүй байна (%s)", c.Subject.CommonName)
+		return invalid("гэрчилгээ хүчинтэй болоогүй байна (serial %s)", certSerial(c))
 	}
 	if now.Add(-v.skew).After(c.NotAfter) {
-		return invalid("гэрчилгээний хугацаа дууссан (%s)", c.Subject.CommonName)
+		return invalid("гэрчилгээний хугацаа дууссан (serial %s)", certSerial(c))
+	}
+	return nil
+}
+
+func certSerial(c *x509.Certificate) string {
+	if c.SerialNumber == nil {
+		return "?"
+	}
+	return c.SerialNumber.Text(16)
+}
+
+// checkPurpose — CheckKeyUsage үед гэрчилгээний зориулалт протоколд тохирох эсэх (CA crypto/ca_profile.go):
+// ACSP_V2 (auth) → KU digitalSignature + EKU clientAuth (эсвэл any); RAW_DIGEST_SIGNATURE (sign) → KU contentCommitment.
+func (v *Validator) checkPurpose(leaf *x509.Certificate, protocol string) error {
+	if !v.checkKeyUsage {
+		return nil
+	}
+	if protocol == "ACSP_V2" {
+		if leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+			return invalid("нэвтрэлтийн гэрчилгээнд KeyUsage digitalSignature алга")
+		}
+		if !slices.Contains(leaf.ExtKeyUsage, x509.ExtKeyUsageClientAuth) && !slices.Contains(leaf.ExtKeyUsage, x509.ExtKeyUsageAny) {
+			return invalid("нэвтрэлтийн гэрчилгээнд ExtKeyUsage clientAuth алга (гарын үсгийн гэрчилгээ байж болзошгүй)")
+		}
+		return nil
+	}
+	if leaf.KeyUsage&x509.KeyUsageContentCommitment == 0 {
+		return invalid("гарын үсгийн гэрчилгээнд KeyUsage nonRepudiation (contentCommitment) алга")
+	}
+	return nil
+}
+
+// checkIssuer — AllowedIssuerSKIs тохируулсан бол leaf-ийн шууд issuer-ийн SKI (issuer-т алга бол leaf-ийн AKI)
+// жагсаалтад байх ёстой.
+func (v *Validator) checkIssuer(leaf *x509.Certificate) error {
+	if len(v.allowedIssuers) == 0 {
+		return nil
+	}
+	ski := leaf.AuthorityKeyId
+	if is := v.findIssuer(leaf); is != nil && len(is.SubjectKeyId) > 0 {
+		ski = is.SubjectKeyId
+	}
+	if len(ski) == 0 || !v.allowedIssuers[hex.EncodeToString(ski)] {
+		return invalid("гэрчилгээг гаргасан CA зөвшөөрөгдсөн иргэний issuer биш (AllowedIssuerSKIs)")
 	}
 	return nil
 }

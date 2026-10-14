@@ -23,6 +23,15 @@ var (
 	routePDFDocument              = rpRoute{"GET", "/pdf/sign/{sessionID}/document"}
 	routeOrgRepresentations       = rpRoute{"GET", "/organization/representations/etsi/{personEtsi}"}
 	routeSession                  = rpRoute{"GET", "/session/{sessionId}"}
+	routePersonCertificates       = rpRoute{"GET", "/certificates/etsi/{personEtsi}"}
+	routePersonDevices            = rpRoute{"GET", "/devices/etsi/{personEtsi}"}
+	routePersonActivity           = rpRoute{"GET", "/rp/activity/etsi/{personEtsi}"}
+	routePersonSummary            = rpRoute{"GET", "/person/summary/etsi/{personEtsi}"}
+	routePersonChildren           = rpRoute{"GET", "/person/children/etsi/{personEtsi}"}
+	routeTokenCertificate         = rpRoute{"POST", "/token/certificate"}
+	routeTokenCertificateResult   = rpRoute{"GET", "/token/certificate/{sessionID}"}
+	routeTokenAuthChallenge       = rpRoute{"POST", "/token/auth/challenge"}
+	routeTokenAuthVerify          = rpRoute{"POST", "/token/auth/verify"}
 )
 
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
@@ -32,7 +41,13 @@ var rpRoutes = []rpRoute{
 	routePDFPrepare, routePDFDocument,
 	routeOrgRepresentations,
 	routeSession,
+	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,
+	routeTokenCertificate, routeTokenCertificateResult,
 }
+
+// rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs/TOKEN_AUTH.md) байгаа ч live /.well-known/eid-д хараахан
+// жагсаагдаагүй замууд. Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ.
+var rpRoutesUndiscovered = []rpRoute{routeTokenAuthChallenge, routeTokenAuthVerify}
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.
 func (r rpRoute) expand(args ...string) string {

@@ -1,6 +1,9 @@
 package eid
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // RP-API-ийн wire-contract төрлүүд. JSON талбарын нэр серверийн RP-API v3-тай ЯГ ИЖИЛ (camelCase).
 
@@ -158,6 +161,58 @@ type SessionResult struct {
 	OnBehalfOf *OrgResult
 	// PDF — PAdES (/pdf/sign/prepare) session-ий pdf блок; PDF урсгал биш бол nil.
 	PDF *PDFSessionBlock
+	// Person — COMPLETE+OK auth session-ий person блок (CA бүртгэлээс: кирилл нэр, төрсөн огноо, хүйс — гэрчилгээнд
+	// байдаггүй). Зөвхөн session эзэмшигч RP-д; CA иргэнийг олоогүй бол nil. ГАРЫН ҮСЭГТ ОРДОГГҮЙ — Validator-оор
+	// баталгаажсаны дараа Person.CivilID-г гэрчилгээний SERIALNUMBER (PNOMN-<civilId>)-тэй тулгаж л хэрэглэнэ
+	// (PersonMatchesCertificate).
+	Person *Person
+	// TokenCertificate — USB токены гэрчилгээ олголтын session-ий блок (Token.IssueCertificate); бусад урсгалд nil.
+	TokenCertificate *TokenCertSessionBlock
+	// Raw — серверийн хариуны түүхий JSON (ParseSessionResult / Poll-ийн оролт), SDK задлаагүй талбарт.
+	Raw json.RawMessage
+}
+
+// Person — session-ий person блок (CA dto.PersonBlock). Нэршил core.gerege.mn-тэй нэг мөр — гурван нэр ӨӨР ойлголт:
+// FirstName = нэр, LastName = ЭЦГИЙН нэр (гэрчилгээнд ордог), FamilyName = УРГИЙН овог (гэрчилгээнд ОРОХГҮЙ).
+// Мэдэгдэхгүй талбар "" (GeID 0) — RP заавал байх талбар гэж үзэхгүй.
+type Person struct {
+	FirstName   string `json:"firstName,omitempty"`
+	LastName    string `json:"lastName,omitempty"`
+	FamilyName  string `json:"familyName,omitempty"`
+	FirstNameEn string `json:"firstNameEn,omitempty"`
+	LastNameEn  string `json:"lastNameEn,omitempty"`
+	CivilID     string `json:"civilId,omitempty"`
+	RegNo       string `json:"regNo,omitempty"`
+	// BirthDate — YYYY-MM-DD (цаг/бүсгүй).
+	BirthDate string `json:"birthDate,omitempty"`
+	// Gender — M | F | X.
+	Gender string `json:"gender,omitempty"`
+	// GeID — core.gerege.mn-ий дотоод дугаар; 0 = тулгагдаагүй.
+	GeID int64 `json:"geID,omitempty"`
+}
+
+// PersonMatchesCertificate — person блокийн civilId нь баталгаажсан гэрчилгээний SERIALNUMBER-тэй (PNOMN-<civilId>)
+// таарах эсэх. Хоёулаа хоосон биш байх ёстой. Person блок гарын үсэгт ордоггүй тул RP үүнийг ValidateAuth-ийн дараа
+// шалгаж байж нэр/төрсөн огноонд итгэнэ.
+func PersonMatchesCertificate(p *Person, s Subject) bool {
+	return p != nil && p.CivilID != "" && s.SerialNumber != "" && s.SerialNumber == "PNOMN-"+p.CivilID
+}
+
+// Токены гэрчилгээ олголтын төлөв (TokenCertSessionBlock.Status).
+const (
+	TokenCertPending = "PENDING"
+	TokenCertIssued  = "ISSUED"
+	TokenCertFailed  = "FAILED"
+	TokenCertExpired = "EXPIRED"
+)
+
+// TokenCertSessionBlock — GET /session/{id}-ийн tokenCertificate (docs TOKEN_CERT §Төлөв).
+type TokenCertSessionBlock struct {
+	Status string `json:"status"`
+	// ErrorCode — FAILED үед: endResult (USER_REFUSED, TIMEOUT …) эсвэл CSR_DIGEST_MISMATCH, TOKEN_LIMIT_REACHED г.м.
+	ErrorCode     string `json:"errorCode,omitempty"`
+	AuthSerialHex string `json:"authSerialHex,omitempty"`
+	SignSerialHex string `json:"signSerialHex,omitempty"`
 }
 
 // OrgResult — session-ий байгууллагын блок (бүртгэлээс real-time). Эрх хураагдсан бол Role/RightType "".

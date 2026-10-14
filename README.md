@@ -145,7 +145,7 @@ c, err := eid.NewClient(eid.Config{
 ```
 
 Бүх дуудлага `context.Context` авна (цуцлалт, deadline); дуудлага бүрийн анхдагч хугацаа `Config.Timeout` (15s),
-long-poll ба PDF өөрийн уртыг хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
+long-poll өөрийн уртыг, PAdES prepare / баримт татах `Config.PDFTimeout`-ийг (анхдагч 80s) хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
 
 ### 3.1. Нэвтрэлт — push
 
@@ -231,6 +231,7 @@ s, err := c.Sign.DigestByEtsi(ctx, "PNOMN-12345678", digest,
 show(s.VC)
 r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
 sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // digest-ийн эсрэг
+// SignOptions.FileName — баримтын нэр CA-ийн /verify хуудас, иргэний түүхэнд харагдана (заавал биш)
 
 // device-link / push-оор эхлүүлсэн бол урсгалаа тулга (ValidateAuth-тай ижил; зөрвөл *ValidationError)
 sig, err = c.Validator.ValidateSign(r, digest, eid.SHA256, eid.ValidateSignOptions{ExpectedFlowType: eid.FlowQR})
@@ -266,6 +267,45 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
 `REPRESENTATION_DENIED`, `REPRESENTATION_PENDING`, `REPRESENTATION_EXPIRED`, `ORG_NOT_ACTIVE`, `SIGNER_UNIDENTIFIED`
 (403) · `ORG_NOT_FOUND` (404) · `REPRESENTATION_REVOKED` (403, document татах үед).
 
+Түр алдаа — `*eid.APIError.Retryable()` үнэн, `RetryAfter`-ийн (CA-ийн `Retry-After`, секунд эсвэл огноо) дараа
+давтана: prepare 429 `PDF_PREPARE_BUSY`, 503 `LTV_UNAVAILABLE` / `TSA_UNAVAILABLE`; document 503 `DOCUMENT_PENDING`,
+`TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`. `Header` — хариуны бүх header.
+
+### 3.5. Session-ий person блок
+
+```go
+r, _ := c.Session.WaitForResult(ctx, s.SessionID, nil)
+who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{})
+if err == nil && eid.PersonMatchesCertificate(r.Person, who.Subject) {
+	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID
+}
+// r.Raw — серверийн түүхий JSON (SDK задлаагүй талбарт)
+```
+
+Person блок гарын үсэгт **ордоггүй** — гэрчилгээний `SERIALNUMBER` (`PNOMN-<civilId>`)-тэй тулгаж байж итгэнэ.
+
+### 3.6. Иргэний PKI самбар (`PKI_READ` эрх)
+
+`c.Person.Certificates` · `Devices` · `Activity(ctx, etsi, &eid.ActivityQuery{Flow, Limit, Offset})` · `Summary` ·
+`Children` — иргэн сүүлийн 24 цагт танай RP-ээр нэвтэрсэн байх ёстой (эс бөгөөс 403). Хариу бүрт `Raw`.
+
+### 3.7. USB токен
+
+```go
+// гэрчилгээ олголт (TOKEN_ISSUE эрх) — иргэн утсаараа PIN2-оор батална
+st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CSRAuth: csrA, CSRSign: csrS,
+	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""}) // "" = хувийн токен
+// … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
+res, err := c.Token.CertificateResult(ctx, st.SessionID)
+err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
+
+// токеноор нэвтрэх (AUTH эрх)
+ch, err := c.Token.AuthChallenge(ctx)
+digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
+who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
+```
+
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
 `EndResult == "OK"` гэдэгт **дангаар нь итгэхгүй** — RP-API эвдэрсэн/proxy хийгдсэн бол хуурамч OK ирж болзошгүй.
@@ -286,19 +326,24 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
    - Алгоритм ↔ түлхүүрийн төрөл тулгана (RSA нэр зөвхөн RSA гэрчилгээтэй); hash нь хүссэнтэй ЯГ таарна (downgrade
      хаалт). ECDSA нь зөвхөн `ecdsa-with-SHA256` + EC P-256 + SHA-256 session (CA-ийн ECDSA credential SHA-256-аас
      өөрийг зурдаггүй; SHA-384/512 session-д ECDSA хариу ирвэл `ValidationError`).
-5. Цуцлалт — `TrustConfig.Revocation` (OCSP/CRL hook, `RevocationHardFail` анхдагч) → `CheckRevocation`.
-   QUALIFIED non-repudiation-д RP тохируулна.
+5. Цуцлалт — `TrustConfig.Revocation` (OCSP/CRL hook, `RevocationHardFail` анхдагч) → `CheckRevocation`, эсвэл
+   `CheckRevocationStatus` (`good` / `unchecked` (soft-fail) / `skipped` (hook алга) + алдаа). QUALIFIED
+   non-repudiation-д RP тохируулна.
+6. Нэмэлт (сонголттой): `AllowedIssuerSKIs: []string{eid.CitizenIssuingCASKI}` — зөвхөн иргэний Issuing CA (04)-ийн
+   гэрчилгээ (ижил root-ийн доорх байгууллагын CA-г хаана); `CheckKeyUsage: true` — auth → clientAuth, sign →
+   nonRepudiation (CA-ийн профайл); `SchemeName` — CA-ийн `acsp_scheme_name` (анхдагч `smart-id`).
 
-Аль нэг алхам бүтэлгүйтвэл `*eid.ValidationError` — хариунд **итгэхгүй**.
+Аль нэг алхам бүтэлгүйтвэл `*eid.ValidationError` — хариунд **итгэхгүй**. Алдааны текстэд иргэний нэр, PNOMN, РД
+ордоггүй (гэрчилгээг serial-аар, замыг `/etsi/…`-ээр) — шууд лог руу бичиж болно.
 
 ## 5. Алдааны төрлүүд (`errors.As`)
 
 | Алдаа | Утга |
 |---|---|
-| `*eid.AuthenticationError` | 401 — API secret буруу/байхгүй |
+| `*eid.AuthenticationError` | 401 — API secret буруу/байхгүй; CA-ийн JSON бол `.Code`/`.Message`, proxy-ийнх бол хоосон (`.Body`, `.Header`) |
 | `*eid.ForbiddenError` | 403 — IP allowlist / mTLS / RP-ийн эрх; `OnBehalfOf` татгалзвал `.Code` |
-| `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code` — ж: 404 `ORG_NOT_FOUND`) |
-| `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.) |
+| `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code`, `.RetryAfter`, `.Header`, `.Retryable()` — ж: 404 `ORG_NOT_FOUND`) |
+| `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.); `.Op`-д иргэний дугаар `…` болно |
 | `*eid.SessionFailedError` | endResult ≠ OK (`TIMEOUT`, `USER_REFUSED…`) — `.EndResult` |
 | `*eid.ValidationError` | гинж / гарын үсэг / түвшин / урсгалын шалгалт унасан |
 | `*eid.DeviceLinkError` | device link угсрах боломжгүй (оролтын хэлбэр) |
@@ -351,7 +396,11 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 - `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
   (`eid.NationalRootCAPEM`), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
   guard; `CheckRevocation` with your OCSP/CRL hook. Never trust `endResult == OK` alone.
-- `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`.
+- `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`. Transient CA errors
+  (`PDF_PREPARE_BUSY`, `DOCUMENT_PENDING`, `TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`) → `APIError.Retryable()` + `RetryAfter`.
+- `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
+  certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
+- Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
 - `oidc.NewClient` — "Sign in with eID" (OpenID Connect, code + PKCE S256, `client_secret_basic`), ES256 `id_token`
   verification with JWKS caching (`iss`, `aud`/`azp`, `exp`/`iat` ±60 s, `nonce`).
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
