@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 — 2026-10-14
+
+demo PDF device-link/push урсгалаас илэрсэн дутагдал — additive:
+
+- **`ValidateSign(r, digest, hash, opts ...ValidateSignOptions)` — `ExpectedFlowType`** (additive: variadic, одоогийн
+  дуудлагууд хэвээр хөрвөнө). Өгвөл хариуны `flowType` ЯГ таарах ёстой, эс бөгөөс `ValidateAuth`-тай ижил
+  `*ValidationError` (`flowType X ≠ эхлүүлсэн урсгал Y (relay байж болзошгүй)`); нэгээс олон options → `*ValidationError`.
+  Сонголтгүй / хоосон бол одоогийн зан. Яагаад: demo PDF device-link/push урсгалд flowType-ийг гараар тулгаж байсан
+  (TS SDK 0.9.1-тэй ижил). RAW_DIGEST_SIGNATURE-д `flowType` гарын үсэгт ордоггүй — хариуны тулгалт.
+- Шалгасан: `gofmt -l .`, `go vet ./...`, `go test -race ./...`.
+
 ## 0.1.0 — 2026-10-14
 
 Анхны хувилбар — TypeScript SDK (`@gerege-systems/eid-mongolia-sdk` 0.8.1)-тэй функциональ ижил, Go idiom, зөвхөн

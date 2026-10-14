@@ -119,6 +119,15 @@ type ValidateAuthOptions struct {
 	UserChallengeVerifier string
 }
 
+// ValidateSignOptions — ValidateSign-ийн нэмэлт шалгалт.
+type ValidateSignOptions struct {
+	// ExpectedFlowType — RP-ийн эхлүүлсэн урсгал (device-link: FlowQR / FlowWeb2App / FlowApp2App; push →
+	// FlowNotification). Өгвөл хариуны flowType ЯГ ИЖИЛ байх ёстой — ValidateAuthOptions.ExpectedFlowType-тэй ижил.
+	// RAW_DIGEST_SIGNATURE-д flowType гарын үсэгт ОРДОГГҮЙ (зөвхөн digest зурагдана) — энэ нь RP-API хариуны
+	// тулгалт, криптограф баталгаа биш.
+	ExpectedFlowType FlowType
+}
+
 // NewValidator — PEM-үүдийг задалж Validator үүсгэнэ.
 func NewValidator(t TrustConfig) (*Validator, error) {
 	anchors, err := parseCerts(t.TrustAnchorsPEM)
@@ -236,11 +245,18 @@ func (v *Validator) ValidateAuth(r *SessionResult, acsp *ACSPContext, o Validate
 }
 
 // ValidateSign — sign session-ийн хариуг бүрэн шалгаж баталгаажсан гарын үсгийг буцаана. digestB64 = хүсэлтэд
-// илгээсэн digest; hash = түүнийг үүсгэсэн hash ("" = SHA-256).
-func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAlgorithm) (*VerifiedSignature, error) {
+// илгээсэн digest; hash = түүнийг үүсгэсэн hash ("" = SHA-256). opts — сонголттой, дээд тал нь нэг
+// (ValidateSignOptions); өгөөгүй бол flowType шалгахгүй.
+func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAlgorithm, opts ...ValidateSignOptions) (*VerifiedSignature, error) {
+	if len(opts) > 1 {
+		return nil, invalid("ValidateSign: ValidateSignOptions дээд тал нь нэг")
+	}
 	leaf, err := v.precheck(r, "RAW_DIGEST_SIGNATURE")
 	if err != nil {
 		return nil, err
+	}
+	if len(opts) == 1 && opts[0].ExpectedFlowType != "" && FlowType(r.FlowType) != opts[0].ExpectedFlowType {
+		return nil, invalid("flowType %s ≠ эхлүүлсэн урсгал %s (relay байж болзошгүй)", r.FlowType, opts[0].ExpectedFlowType)
 	}
 	want := string(orDefault(hash, SHA256))
 	digest, err := base64.StdEncoding.DecodeString(digestB64)

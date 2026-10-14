@@ -16,7 +16,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.1.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.1.1
 ```
 
 ```go
@@ -231,7 +231,12 @@ s, err := c.Sign.DigestByEtsi(ctx, "PNOMN-12345678", digest,
 show(s.VC)
 r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
 sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // digest-ийн эсрэг
+
+// device-link / push-оор эхлүүлсэн бол урсгалаа тулга (ValidateAuth-тай ижил; зөрвөл *ValidationError)
+sig, err = c.Validator.ValidateSign(r, digest, eid.SHA256, eid.ValidateSignOptions{ExpectedFlowType: eid.FlowQR})
 ```
+
+RAW_DIGEST_SIGNATURE-д `flowType` гарын үсэгт ордоггүй (зөвхөн digest зурагдана) — энэ нь RP-API хариуны тулгалт.
 
 ### 3.4. PDF (PAdES, CA угсарна) ба байгууллагын нэрийн өмнөөс
 
@@ -276,7 +281,8 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
    - **auth** → ACSP_V2 payload (`smart-id|ACSP_V2|serverRandom|rpChallenge|userChallenge|B64(rpName)|B64(brokeredRpName)|B64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType`),
      hash = хүсэлтийн `HashAlgorithm`; `flowType` санал болгосон урсгалд, `ExpectedFlowType` өгвөл ЯГ таарах,
      Web2App/App2App-д `UserChallengeVerifier` заавал; `initialCallbackUrl` нь `""` эсвэл таны callback л.
-   - **sign** → таны digest дээр (prehashed).
+   - **sign** → таны digest дээр (prehashed); `ValidateSignOptions.ExpectedFlowType` өгвөл хариуны `flowType` ЯГ таарах
+     (гарын үсэгт ордоггүй — хариуны тулгалт).
    - Алгоритм ↔ түлхүүрийн төрөл тулгана (RSA нэр зөвхөн RSA гэрчилгээтэй); hash нь хүссэнтэй ЯГ таарна (downgrade
      хаалт). ECDSA нь зөвхөн `ecdsa-with-SHA256` + EC P-256 + SHA-256 session (CA-ийн ECDSA credential SHA-256-аас
      өөрийг зурдаггүй; SHA-384/512 session-д ECDSA хариу ирвэл `ValidationError`).
