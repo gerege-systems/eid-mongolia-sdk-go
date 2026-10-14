@@ -19,10 +19,13 @@ const DefaultBaseURL = "https://rp.eidmongolia.mn"
 
 const (
 	defaultTimeout = 15 * time.Second
-	pdfTimeout     = 60 * time.Second
-	maxErrorBody   = 64 << 10
-	maxJSONBody    = 4 << 20
-	maxPDFBody     = 64 << 20
+	// DefaultPDFTimeout — PAdES prepare / баримт татах нэг дуудлагын анхдагч хугацаа. CA prepare нь ≤ 10 MiB уншиж,
+	// өмнөх гарын үсэг + LTV өгөгдөл шалгаад push эхлүүлдэг; баримт татахад угсралтыг ≤ 30с хүлээдэг
+	// (PADES_SIGNING §3.4). 80с нь хоёуланд хүрэлцэнэ, CA-ийн nginx proxy_read_timeout-оос бага.
+	DefaultPDFTimeout = 80 * time.Second
+	maxErrorBody      = 64 << 10
+	maxJSONBody       = 4 << 20
+	maxPDFBody        = 64 << 20
 )
 
 // Хуучин (0.2.x TS) хэлбэр: ca. хост руу /v3 залгадаг байсан — чимээгүй 404-ийн оронд тодорхой алдаа.
@@ -38,6 +41,8 @@ type Config struct {
 	DefaultCertificateLevel CertificateLevel
 	// Timeout — нэг HTTP дуудлагын анхдагч хугацаа. 0 = 15s. Long-poll ба PDF өөрийн уртыг хэрэглэнэ.
 	Timeout time.Duration
+	// PDFTimeout — PAdES prepare / баримт татах дуудлагын хугацаа. 0 = DefaultPDFTimeout (80s).
+	PDFTimeout time.Duration
 	// HTTPClient — mTLS client cert (tls.Config.Certificates) эсвэл proxy тохируулахад. nil = шинэ http.Client.
 	HTTPClient *http.Client
 	// Trust — validator-ийн итгэлийн тохиргоо. Production-д TrustAnchorsPEM ЗААВАЛ.
@@ -50,6 +55,8 @@ type Config struct {
 //	Sign         — гарын үсэг эхлүүлэх (digest)
 //	PDF          — PAdES гарын үсэг (CA угсарна; OnBehalfOf)
 //	Organization — иргэний төлөөлөх байгууллагууд
+//	Person       — иргэний PKI самбар (PKI_READ эрх): гэрчилгээ, төхөөрөмж, үйл ажиллагаа, тоо, хүүхдүүд
+//	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
 //	Session      — үр дүн long-poll
 //	Validator    — хариуг крипто-баталгаажуулах (гинж + гарын үсэг)
 //
@@ -59,6 +66,8 @@ type Client struct {
 	Sign         *SignService
 	PDF          *PDFService
 	Organization *OrganizationService
+	Person       *PersonService
+	Token        *TokenService
 	Session      *SessionService
 	Validator    *Validator
 }
@@ -88,12 +97,18 @@ func NewClient(cfg Config) (*Client, error) {
 	if level == "" {
 		level = LevelQualified
 	}
+	pt := cfg.PDFTimeout
+	if pt <= 0 {
+		pt = DefaultPDFTimeout
+	}
 	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc}
 	return &Client{
 		Auth:         &AuthService{h: h, creds: cfg.Credentials, level: level},
 		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level},
-		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level},
+		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level, timeout: pt},
 		Organization: &OrganizationService{h: h},
+		Person:       &PersonService{h: h},
+		Token:        &TokenService{h: h, creds: cfg.Credentials},
 		Session:      &SessionService{h: h},
 		Validator:    v,
 	}, nil
@@ -148,13 +163,21 @@ func (h *httpDoer) doJSON(ctx context.Context, method, path string, body io.Read
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, maxJSONBody))
 	if err != nil {
-		return netErr(method+" "+path, err)
+		return netErr(method, path, err)
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("eid: %s %s: хариу задарсангүй: %w", method, path, err)
+		return fmt.Errorf("eid: %s %s: хариу задарсангүй: %w", method, maskPath(path), err)
+	}
+	return nil
+}
+
+// decodeJSON — getJSON-оор авсан түүхий хариуг задлах (алдааны текстэд таних тэмдэггүй зам).
+func decodeJSON(raw []byte, path string, out any) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("eid: %s: хариу задарсангүй: %w", maskPath(path), err)
 	}
 	return nil
 }
@@ -169,7 +192,7 @@ func (h *httpDoer) getBytes(ctx context.Context, path string, timeout time.Durat
 	defer res.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(res.Body, maxPDFBody))
 	if err != nil {
-		return nil, netErr("GET "+path, err)
+		return nil, netErr(http.MethodGet, path, err)
 	}
 	return b, nil
 }
@@ -185,7 +208,7 @@ func (h *httpDoer) withTimeout(ctx context.Context, t time.Duration) (context.Co
 func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader, ctype string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, h.base+path, body)
 	if err != nil {
-		return nil, fmt.Errorf("eid: request %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("eid: request %s %s: %w", method, maskPath(path), unwrapURL(err))
 	}
 	req.Header.Set("Authorization", "Bearer "+h.secret)
 	if ctype != "" {
@@ -193,7 +216,7 @@ func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader
 	}
 	res, err := h.hc.Do(req)
 	if err != nil {
-		return nil, netErr(method+" "+path, err)
+		return nil, netErr(method, path, err)
 	}
 	if res.StatusCode < 300 {
 		return res, nil
@@ -201,13 +224,14 @@ func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
 	msg, code := errorBody(raw)
+	retry := parseRetryAfter(res.Header.Get("Retry-After"), time.Now())
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return nil, &AuthenticationError{}
+		return nil, &AuthenticationError{Code: code, Message: msg, Body: string(raw), Header: res.Header}
 	case http.StatusForbidden:
-		return nil, &ForbiddenError{Code: code, Message: msg}
+		return nil, &ForbiddenError{Code: code, Message: msg, RetryAfter: retry, Header: res.Header}
 	}
-	return nil, &APIError{Status: res.StatusCode, Body: string(raw), Code: code}
+	return nil, &APIError{Status: res.StatusCode, Body: string(raw), Code: code, RetryAfter: retry, Header: res.Header}
 }
 
 // errorBody — серверийн алдааны JSON {"error","code"}; JSON биш (proxy) бол хоосон.
@@ -224,10 +248,21 @@ func errorBody(raw []byte) (msg, code string) {
 	return msg, code
 }
 
-func netErr(op string, err error) error {
+// netErr — Op-д таних тэмдэггүй зам (maskPath), Err-д *url.Error-ийн оронд доторх шалтгаан (бүтэн URL-д PNOMN
+// байдаг) — алдааны текстэд иргэний дугаар орохгүй.
+func netErr(method, path string, err error) error {
 	var ne net.Error
 	timeout := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout())
-	return &NetworkError{Op: op, Timeout: timeout, Err: err}
+	return &NetworkError{Op: method + " " + maskPath(path), Timeout: timeout, Err: unwrapURL(err)}
+}
+
+// unwrapURL — *url.Error (Op + бүтэн URL + шалтгаан) → шалтгаан.
+func unwrapURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil {
+		return ue.Err
+	}
+	return err
 }
 
 // vcValue — vc нь мөр эсвэл {"type","value"} объект байж болно.

@@ -42,9 +42,11 @@ type rawSession struct {
 		Value            string `json:"value"`
 		CertificateLevel string `json:"certificateLevel"`
 	} `json:"cert"`
-	InteractionTypeUsed string           `json:"interactionTypeUsed"`
-	OnBehalfOf          *OrgResult       `json:"onBehalfOf"`
-	PDF                 *PDFSessionBlock `json:"pdf"`
+	InteractionTypeUsed string                 `json:"interactionTypeUsed"`
+	OnBehalfOf          *OrgResult             `json:"onBehalfOf"`
+	PDF                 *PDFSessionBlock       `json:"pdf"`
+	Person              *Person                `json:"person"`
+	TokenCertificate    *TokenCertSessionBlock `json:"tokenCertificate"`
 }
 
 // ParseSessionResult — RP-API-ийн session JSON-ийг SessionResult болгон задална (хадгалсан хариуг дахин
@@ -54,7 +56,9 @@ func ParseSessionResult(raw []byte) (*SessionResult, error) {
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return nil, fmt.Errorf("eid: session JSON: %w", err)
 	}
-	return r.result(), nil
+	out := r.result()
+	out.Raw = append(json.RawMessage(nil), raw...)
+	return out, nil
 }
 
 func (r *rawSession) result() *SessionResult {
@@ -80,6 +84,14 @@ func (r *rawSession) result() *SessionResult {
 	if pdf != nil && pdf.Validation != nil && pdf.Validation.Indication == "" {
 		pdf.Validation = nil
 	}
+	person := r.Person
+	if person != nil && *person == (Person{}) {
+		person = nil
+	}
+	tok := r.TokenCertificate
+	if tok != nil && tok.Status == "" {
+		tok = nil
+	}
 	return &SessionResult{
 		State:                        r.State,
 		EndResult:                    r.Result.EndResult,
@@ -97,6 +109,8 @@ func (r *rawSession) result() *SessionResult {
 		InteractionTypeUsed:          r.InteractionTypeUsed,
 		OnBehalfOf:                   org,
 		PDF:                          pdf,
+		Person:                       person,
+		TokenCertificate:             tok,
 	}
 }
 
@@ -106,11 +120,14 @@ func (s *SessionService) Poll(ctx context.Context, sessionID string, serverPoll 
 		serverPoll = DefaultServerPoll
 	}
 	path := fmt.Sprintf("%s?timeoutMs=%d", routeSession.expand(sessionID), serverPoll.Milliseconds())
-	var r rawSession
-	if err := s.h.getJSON(ctx, path, serverPoll+10*time.Second, &r); err != nil {
+	var raw json.RawMessage
+	if err := s.h.getJSON(ctx, path, serverPoll+10*time.Second, &raw); err != nil {
 		return nil, err
 	}
-	return r.result(), nil
+	if len(raw) == 0 {
+		return &SessionResult{}, nil
+	}
+	return ParseSessionResult(raw)
 }
 
 // WaitOptions — WaitForResult-ийн тохиргоо. Тэг утга = анхдагч.

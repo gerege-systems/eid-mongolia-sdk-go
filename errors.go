@@ -1,15 +1,37 @@
 package eid
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // SDK-ийн төрөлжсөн алдаанууд. RP backend эдгээрийг errors.As-аар ялган барьж хэрэглэгчид зөв мессеж/үйлдэл
 // сонгоно (ж: *AuthenticationError → тохиргооны алдаа, *SessionFailedError{USER_REFUSED} → дахин оролд,
 // *ValidationError → хариунд ИТГЭХГҮЙ).
 
 // AuthenticationError — HTTP 401: API secret буруу эсвэл байхгүй. Тохиргооны (RP secret) алдаа.
-type AuthenticationError struct{}
+//
+// CA-ийн өөрийн 401 нь JSON {"error"[,"code"]} — Message (ба байвал Code) бөглөгдөнө; JSON биш (proxy / nginx) бол
+// хоёул "" — үүгээр CA-ийн 401-ийг урд талын proxy-ийнхоос ялгана.
+type AuthenticationError struct {
+	// Code — серверийн {"code"}; JSON биш (proxy) бол "".
+	Code string
+	// Message — серверийн {"error"} текст (логт).
+	Message string
+	// Body — хариуны бие (64 KiB хүртэл таслагдсан).
+	Body string
+	// Header — хариуны header-ууд.
+	Header http.Header
+}
 
-func (*AuthenticationError) Error() string {
+func (e *AuthenticationError) Error() string {
+	if e.Code != "" {
+		return "eid: API secret буруу эсвэл байхгүй (401 " + e.Code + ")"
+	}
 	return "eid: API secret буруу эсвэл байхгүй (401)"
 }
 
@@ -20,6 +42,10 @@ type ForbiddenError struct {
 	Code string
 	// Message — серверийн "error" текст (логт; хэрэглэгчид шууд харуулахгүй).
 	Message string
+	// RetryAfter — хариуны Retry-After (секунд эсвэл HTTP-огноо задалсан); байхгүй/буруу бол 0.
+	RetryAfter time.Duration
+	// Header — хариуны header-ууд.
+	Header http.Header
 }
 
 func (e *ForbiddenError) Error() string {
@@ -39,13 +65,74 @@ type APIError struct {
 	Body string
 	// Code — серверийн {"error","code"}-ийн code (ж: CodeOrgNotFound); байхгүй бол "".
 	Code string
+	// RetryAfter — хариуны Retry-After (секунд эсвэл HTTP-огноо задалсан); байхгүй/буруу бол 0. CA түр алдаанд
+	// (429 PDF_PREPARE_BUSY / RATE_LIMITED, 503 DOCUMENT_PENDING / TSA_UNAVAILABLE / LTV_UNAVAILABLE г.м.) тавина.
+	RetryAfter time.Duration
+	// Header — хариуны header-ууд.
+	Header http.Header
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.Status, e.Body) }
 
+// Retryable — CA-ийн түр алдаа (RetryableCodes-ийн нэг, эсвэл 429/503 + Retry-After): RetryAfter-ийн дараа ижил
+// хүсэлтийг давтаж болно (prepared state хэвээр).
+func (e *APIError) Retryable() bool {
+	for _, c := range RetryableCodes {
+		if e.Code == c {
+			return true
+		}
+	}
+	return (e.Status == http.StatusTooManyRequests || e.Status == http.StatusServiceUnavailable) && e.RetryAfter > 0
+}
+
+// CA-ийн түр (давтаж болох) алдааны кодууд — APIError.Code. docs: PADES_SIGNING §3.1/§3.4, TOKEN_CERT, TOKEN_AUTH.
+const (
+	// CodePDFPrepareBusy — 429: зэрэг prepare-ийн хязгаар (RP 10, нийт 50); Retry-After: 5.
+	CodePDFPrepareBusy = "PDF_PREPARE_BUSY"
+	// CodeDocumentPending — 503 (PDF баримт татахад): угсралт 30с-д дуусаагүй; Retry-After: 5.
+	CodeDocumentPending = "DOCUMENT_PENDING"
+	// CodeTSAUnavailable — 503: TSA хүрэхгүй/тохируулаагүй; Retry-After: 30 (document).
+	CodeTSAUnavailable = "TSA_UNAVAILABLE"
+	// CodeLTVUnavailable — 503: CRL/OCSP (LTV) өгөгдөл хүчингүй/шалгагдахгүй; Retry-After: 60.
+	CodeLTVUnavailable = "LTV_UNAVAILABLE"
+	// CodeRateLimited — 429 (токен, токеноор нэвтрэлт): хүсэлтийн хязгаар; Retry-After.
+	CodeRateLimited = "RATE_LIMITED"
+	// CodeStateUnavailable — 503 (токен): state store түр хүрэхгүй; Retry-After.
+	CodeStateUnavailable = "STATE_UNAVAILABLE"
+	// CodeIssuancePending — 503 (токены гэрчилгээний үр дүн): олгогдож байна; Retry-After: 5.
+	CodeIssuancePending = "ISSUANCE_PENDING"
+)
+
+// RetryableCodes — APIError.Retryable-ийн танидаг түр алдааны кодууд.
+var RetryableCodes = []string{
+	CodePDFPrepareBusy, CodeDocumentPending, CodeTSAUnavailable, CodeLTVUnavailable,
+	CodeRateLimited, CodeStateUnavailable, CodeIssuancePending,
+}
+
+// parseRetryAfter — RFC 9110 §10.2.3: delay-seconds эсвэл HTTP-date (now-оос хойшхи хугацаа). Буруу/өнгөрсөн → 0.
+func parseRetryAfter(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if n <= 0 || n > int64(24*time.Hour/time.Second) {
+			return 0
+		}
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil && t.After(now) {
+		return t.Sub(now)
+	}
+	return 0
+}
+
 // NetworkError — сүлжээ/timeout: upstream хариу өгсөнгүй. Unwrap нь эх алдааг (context.DeadlineExceeded г.м.) буцаана.
+//
+// Op ба Err-д хувь хүний таних тэмдэг ОРОХГҮЙ: замын /etsi/{…} ба /document/{…} хэсэг "…" болно, *url.Error (бүтэн
+// URL-тай) нь доторх шалтгаанаараа солигдоно — алдааг шууд лог руу бичиж болно.
 type NetworkError struct {
-	// Op — "GET /session/…" эсвэл URL.
+	// Op — "GET /session/…" (таних тэмдэг хасагдсан зам).
 	Op string
 	// Timeout — хүсэлт хугацаа хэтэрсэн (context deadline / client timeout).
 	Timeout bool
@@ -113,6 +200,17 @@ var OnBehalfErrorCodes = []string{
 	CodeSignerUnidentified,
 	CodeOrgNotFound,
 	CodeRepresentationRevoked,
+}
+
+// identifierInPath — замын хувь хүн/төхөөрөмжийн таних тэмдэг (PNOMN-…, РД, documentNumber).
+var identifierInPath = regexp.MustCompile(`/(etsi|document)/[^/?#\s]+`)
+
+// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…} → "…", query хасагдана.
+func maskPath(p string) string {
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i]
+	}
+	return identifierInPath.ReplaceAllString(p, "/$1/…")
 }
 
 func invalid(format string, a ...any) error {

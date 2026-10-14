@@ -6,7 +6,7 @@ func TestRouteExpand(t *testing.T) {
 	if got := routePDFDocument.expand("a/b c"); got != "/pdf/sign/a%2Fb%20c/document" {
 		t.Fatalf("expand = %q", got)
 	}
-	for _, r := range rpRoutes {
+	for _, r := range append(append([]rpRoute(nil), rpRoutes...), rpRoutesUndiscovered...) {
 		n := 0
 		for _, c := range r.path {
 			if c == '{' {
