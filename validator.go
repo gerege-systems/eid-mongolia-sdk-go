@@ -24,7 +24,8 @@ import (
 // endResult == OK гэдэгт ДАНГААР нь итгэхгүй (RP-API эвдэрсэн/proxy хийгдсэн бол хуурамч OK ирж болзошгүй):
 //
 //  1. state == COMPLETE && endResult == OK
-//  2. иргэний гэрчилгээг trust anchor (Mongolian National Root CA) хүртэл гинжээр баталгаажуулна
+//  2. иргэний гэрчилгээг trust anchor (Mongolian National Root CA) хүртэл гинжээр баталгаажуулна — crypto/x509
+//     Verify (RFC 5280: basicConstraints/pathLen, keyCertSign, name constraints, EKU давхарга, critical extension)
 //  3. гэрчилгээ (ба гинжийн CA-ууд) хүчинтэй хугацаанд, шаардсан certLevel хангана
 //  4. гарын үсгийг иргэний public key-ээр шалгана: auth → ACSP_V2 payload, sign → RP-ийн digest
 //
@@ -474,7 +475,11 @@ func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certifica
 		}
 		return leaf, nil
 	}
-	if err := v.verifyChain(leaf, now); err != nil {
+	usage := x509.ExtKeyUsageClientAuth
+	if protocol != "ACSP_V2" {
+		usage = x509.ExtKeyUsageEmailProtection
+	}
+	if err := v.verifyChain(leaf, now, usage); err != nil {
 		return nil, err
 	}
 	if err := v.checkIssuer(leaf); err != nil {
@@ -551,29 +556,70 @@ func (v *Validator) checkLevel(level string) error {
 	return nil
 }
 
-// verifyChain — leaf-ээс эхлэн issuer-ийг intermediates/anchors дотроос олж, anchor хүртэл гинж зангидна
-// (гүн ≤ 8). Issuer бүр: subject = child.issuer, AKI/SKI таарах, CA (basicConstraints), keyCertSign, гарын үсэг,
-// хүчинтэй хугацаа.
-func (v *Validator) verifyChain(leaf *x509.Certificate, now time.Time) error {
-	cur := leaf
-	pool := append(slices.Clone(v.intermediates), v.anchors...)
-	for depth := 0; depth < 8; depth++ {
-		for _, a := range v.anchors {
-			if issuedBy(cur, a) && v.checkValidity(a, now) == nil {
-				return nil
-			}
+// verifyChain — crypto/x509-ийн RFC 5280 замын шалгалт (x509.Certificate.Verify): гинжийг trust anchor хүртэл
+// угсарч, CA бүрийн basicConstraints (CA:TRUE, pathLenConstraint), keyUsage keyCertSign, name constraints, EKU-ийн
+// давхарга (завсрын CA-д EKU байвал leaf-ийн зориулалтыг агуулах), хүчинтэй хугацаа, гарын үсэг, үл таних critical
+// extension-ийг шалгана. usage — auth → clientAuth, sign → emailProtection (CA ca_profile.go: P-CITIZEN-AUTH =
+// clientAuth+emailProtection, P-CITIZEN-SIGN = emailProtection; EKU-гүй leaf-ийг Go "any" гэж үзнэ).
+// certificatePolicies-ийг шалгахгүй (Go 1.22-д VerifyOptions.CertificatePolicies байхгүй) — CA-ийн гинжинд
+// policyConstraints / inhibitAnyPolicy алга.
+func (v *Validator) verifyChain(leaf *x509.Certificate, now time.Time, usage x509.ExtKeyUsage) error {
+	roots := x509.NewCertPool()
+	for _, a := range v.anchors {
+		roots.AddCert(a)
+	}
+	inter := x509.NewCertPool()
+	for _, c := range v.intermediates {
+		inter.AddCert(c)
+	}
+	_, err := leaf.Verify(x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: inter,
+		CurrentTime:   chainTime(leaf, now),
+		KeyUsages:     []x509.ExtKeyUsage{usage},
+	})
+	if err != nil {
+		return chainError(err)
+	}
+	return nil
+}
+
+// chainTime — гинжийг шалгах мөч: now, ГЭХДЭЭ leaf-ийн хүчинтэй хугацаанд хавчина. leaf-ийн хугацааг checkValidity
+// ClockSkew-тэй аль хэдийн шалгасан тул энэ нь зөвхөн skew-ийн хүрээнд (≤ ClockSkew) шилжинэ.
+func chainTime(leaf *x509.Certificate, now time.Time) time.Time {
+	if now.Before(leaf.NotBefore) {
+		return leaf.NotBefore
+	}
+	if now.After(leaf.NotAfter) {
+		return leaf.NotAfter
+	}
+	return now
+}
+
+// chainError — x509.Verify-ийн алдааг ValidationError болгоно. Алдааны текстэд гэрчилгээний subject (иргэний
+// нэр/PNOMN) орохгүй — зөвхөн шалтгааны ангилал.
+func chainError(err error) error {
+	var ci x509.CertificateInvalidError
+	if errors.As(err, &ci) {
+		reason := map[x509.InvalidReason]string{
+			x509.NotAuthorizedToSign:           "завсрын гэрчилгээ CA биш эсвэл keyCertSign эрхгүй",
+			x509.Expired:                       "гинжийн гэрчилгээний хугацаа дууссан эсвэл хүчинтэй болоогүй",
+			x509.CANotAuthorizedForThisName:    "CA-ийн name constraints зөрчсөн",
+			x509.TooManyIntermediates:          "pathLenConstraint зөрчсөн (завсрын CA хэт олон)",
+			x509.IncompatibleUsage:             "гэрчилгээний ExtKeyUsage энэ үйлдэлд тохирохгүй (гинжийн EKU)",
+			x509.NameMismatch:                  "issuer/subject нэр таарахгүй",
+			x509.UnconstrainedName:             "name constraints-ийн шалгаж чадахгүй нэр",
+			x509.TooManyConstraints:            "name constraints хэт олон",
+			x509.CANotAuthorizedForExtKeyUsage: "CA-ийн ExtKeyUsage энэ зориулалтыг зөвшөөрөхгүй",
+		}[ci.Reason]
+		if reason == "" {
+			reason = "гинжийн гэрчилгээ хүчингүй"
 		}
-		var next *x509.Certificate
-		for _, c := range pool {
-			if c != cur && issuedBy(cur, c) && v.checkValidity(c, now) == nil {
-				next = c
-				break
-			}
-		}
-		if next == nil {
-			break
-		}
-		cur = next
+		return invalid("гэрчилгээний гинж хүчингүй: %s", reason)
+	}
+	var uce x509.UnhandledCriticalExtension
+	if errors.As(err, &uce) {
+		return invalid("гэрчилгээний гинж хүчингүй: үл таних critical extension")
 	}
 	return invalid("гэрчилгээний итгэлцлийн гинж trust anchor (Root CA) хүрсэнгүй")
 }
