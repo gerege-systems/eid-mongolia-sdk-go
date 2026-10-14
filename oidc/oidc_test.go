@@ -245,6 +245,8 @@ func TestHandleCallback_Errors(t *testing.T) {
 	wantCode(t, cb("state=s-1", checks), ErrInvalidCallback)
 	wantCode(t, cb("code="+strings.Repeat("a", 513)+"&state=s-1", checks), ErrInvalidCallback)
 	wantCode(t, cb("code=a&state=s-1&iss="+url.QueryEscape("https://evil.example"), checks), ErrInvalidCallback)
+	wantCode(t, cb("code=a&state=s-1", CallbackChecks{State: "s-1", Nonce: "n"}), ErrInvalidCallback)
+	wantCode(t, cb("code=a&state=s-1", CallbackChecks{State: "s-1", CodeVerifier: "v"}), ErrInvalidCallback)
 	if len(m.tokenReqs) != 0 {
 		t.Fatal("token дуудагдсан")
 	}
@@ -304,6 +306,8 @@ func TestVerifyIDToken_KeyRotation(t *testing.T) {
 	k1, k2 := newKey("k1"), newKey("k2")
 	m.keys = []map[string]string{k1.jwk()}
 	c := m.client(t)
+	now := time.Now()
+	c.now = func() time.Time { return now }
 	ctx := context.Background()
 	if _, err := c.VerifyIDToken(ctx, jwt(k1, m.claims(nil), ""), "n-123"); err != nil || m.jwksN != 1 {
 		t.Fatal(err, m.jwksN)
@@ -311,16 +315,28 @@ func TestVerifyIDToken_KeyRotation(t *testing.T) {
 	m.mu.Lock()
 	m.keys = []map[string]string{k1.jwk(), k2.jwk()} // түлхүүр солигдов
 	m.mu.Unlock()
+	if _, err := c.VerifyIDToken(ctx, jwt(k2, m.claims(nil), ""), "n-123"); err == nil || m.jwksN != 1 {
+		t.Fatal(err, m.jwksN) // minRefetch дотор хүчээр татахгүй
+	}
+	now = now.Add(minRefetch)
 	if _, err := c.VerifyIDToken(ctx, jwt(k2, m.claims(nil), ""), "n-123"); err != nil || m.jwksN != 2 {
 		t.Fatal(err, m.jwksN)
 	}
 	if _, err := c.VerifyIDToken(ctx, jwt(k2, m.claims(nil), ""), "n-123"); err != nil || m.jwksN != 2 {
 		t.Fatal(err, m.jwksN) // cache
 	}
+	now = now.Add(minRefetch)
 	_, err := c.VerifyIDToken(ctx, jwt(k1, m.claims(nil), "k-none"), "n-123")
 	wantCode(t, err, ErrInvalidIDToken)
 	if m.jwksN != 3 {
 		t.Fatal(m.jwksN) // огт байхгүй kid → нэг refetch
+	}
+	for i := 0; i < 5; i++ { // хуурамч kid давтвал login. руу явахгүй
+		_, err = c.VerifyIDToken(ctx, jwt(k1, m.claims(nil), "k-none"), "n-123")
+		wantCode(t, err, ErrInvalidIDToken)
+	}
+	if m.jwksN != 3 {
+		t.Fatal(m.jwksN)
 	}
 }
 
@@ -361,6 +377,9 @@ func TestNewClient_Config(t *testing.T) {
 	}
 	if _, err := NewClient(Config{ClientID: "c", ClientSecret: "s", RedirectURI: "http://x/cb"}); err == nil {
 		t.Fatal("http redirect")
+	}
+	if _, err := NewClient(Config{ClientID: "c", ClientSecret: "s", RedirectURI: redirect, UseMTLSEndpointAliases: true}); err == nil {
+		t.Fatal("mTLS HTTPClient-гүй")
 	}
 	c, _ := NewClient(Config{ClientID: "c", ClientSecret: "s", RedirectURI: redirect})
 	if c.Issuer() != Issuer {
