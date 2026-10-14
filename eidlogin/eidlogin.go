@@ -36,6 +36,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -167,6 +168,22 @@ type Success struct {
 	Data any
 }
 
+// RateRule — нэг төрлийн хязгаар. Func өгвөл түүгээр (Redis г.м.); үгүй бол Max > 0 үед санах ойн гулсах цонх
+// (түлхүүр тус бүрд Window-д Max); Max <= 0 ба Func nil бол хязгааргүй.
+type RateRule struct {
+	Max    int
+	Window time.Duration
+	Func   func(ctx context.Context, key string) bool
+}
+
+// DefaultRateLimit — анхдагч хязгаар (шинэ map): push — нэг дугаарт 60 секундэд 3. Config.RateLimits-д өгөөгүй төрөл
+// энүүгээр үлдэнэ; илэрхий бичих бол үүнийг аваад өөрчилж өг.
+func DefaultRateLimit() map[string]RateRule {
+	return map[string]RateRule{"push": {Max: 3, Window: time.Minute}}
+}
+
+var rateKinds = []string{"start", "push"}
+
 // Config — Handler-ийн тохиргоо.
 type Config struct {
 	Client *eid.Client
@@ -189,8 +206,12 @@ type Config struct {
 	// CookieName (анхдагч eid_login), CookiePath (анхдагч /), CookieDomain. InsecureCookie — зөвхөн http dev-д.
 	CookieName, CookiePath, CookieDomain string
 	InsecureCookie                       bool
-	// RateLimit — "start:<ip>" (ClientIP өгсөн бол) ба "push:<idCode>" түлхүүрээр; false → 429. Анхдагч: push-д нэг
-	// дугаарт 60 секундэд 3 (санах ойд) — хохирогчийн утсыг мэдэгдлээр дарахаас (MFA fatigue).
+	// RateLimits — төрөл тус бүрийн хязгаар ("start" — "start:<ip>", "push" — "push:<idCode>"); DefaultRateLimit()-тэй
+	// НЭГТГЭГДЭНЭ: өгсөн төрөл анхдагчийг дарна, өгөөгүй нь анхдагчаараа (push: нэг дугаарт 60 секундэд 3, MFA
+	// fatigue). Тухайн төрлийг хязгааргүй болгох бол хоосон RateRule{}. Өөр түлхүүр → New алдаа.
+	RateLimits map[string]RateRule
+	// RateLimit — бүх түлхүүрт ("start:<ip>", "push:<idCode>") дуудагдах нэмэлт шалгалт; false → 429. Анхдагч
+	// хязгаар ДЭЭР нэмэгдэнэ (хоёулаа зөвшөөрөх ёстой) — анхдагчийг солих бол RateLimits-ээр тухайн төрлийг өг.
 	RateLimit func(ctx context.Context, key string) bool
 	// ClientIP — "start:<ip>" хязгаарын клиент IP. Итгэмжит reverse proxy-ийн ард ForwardedClientIP(n), шууд
 	// холбогддог бол RemoteAddrIP, эсвэл өөрийн функц. nil бол IP-ээр хязгаарлахгүй (New нэг удаа Warn бичнэ) — TS-ийн
@@ -207,8 +228,7 @@ type Handler struct {
 	log          *slog.Logger
 	failURL      url.URL
 
-	mu       sync.Mutex
-	pushHits map[string][]time.Time
+	limits map[string]func(ctx context.Context, key string) bool
 }
 
 var (
@@ -297,7 +317,11 @@ func New(cfg Config) (*Handler, error) {
 		text = cfg.Client.RPName() + "-д нэвтрэх"
 	}
 	text = truncateRunes(text, 60)
-	h := &Handler{cfg: cfg, log: cfg.Logger, failURL: *failURL, pushHits: map[string][]time.Time{}}
+	limits, err := buildLimits(cfg.RateLimits)
+	if err != nil {
+		return nil, err
+	}
+	h := &Handler{cfg: cfg, log: cfg.Logger, failURL: *failURL, limits: limits}
 	if h.log == nil {
 		h.log = slog.Default()
 	}
@@ -305,9 +329,6 @@ func New(cfg Config) (*Handler, error) {
 		h.log.Warn("eidlogin: Config.ClientIP алга — start:<ip> хязгаар ажиллахгүй; ForwardedClientIP(n) эсвэл RemoteAddrIP өг")
 	}
 	h.interactions = []eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: text}}
-	if h.cfg.RateLimit == nil {
-		h.cfg.RateLimit = h.defaultLimit
-	}
 	return h, nil
 }
 
@@ -318,28 +339,63 @@ func truncateRunes(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-func (h *Handler) defaultLimit(_ context.Context, key string) bool {
-	if !strings.HasPrefix(key, "push:") {
-		return true
+// buildLimits — DefaultRateLimit()-ийг user-ийн RateLimits-ээр (төрөл тус бүрд) дарж хязгаарлагч болгоно.
+func buildLimits(user map[string]RateRule) (map[string]func(context.Context, string) bool, error) {
+	merged := DefaultRateLimit()
+	for k, r := range user {
+		if !slices.Contains(rateKinds, k) {
+			return nil, fmt.Errorf("eidlogin: RateLimits[%q] — зөвхөн start | push", k)
+		}
+		merged[k] = r
 	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	now := time.Now()
-	if len(h.pushHits) > 10000 {
-		h.pushHits = map[string][]time.Time{}
-	}
-	var hits []time.Time
-	for _, t := range h.pushHits[key] {
-		if now.Sub(t) < time.Minute {
-			hits = append(hits, t)
+	out := map[string]func(context.Context, string) bool{}
+	for k, r := range merged {
+		switch {
+		case r.Func != nil:
+			out[k] = r.Func
+		case r.Max > 0:
+			if r.Window <= 0 {
+				return nil, fmt.Errorf("eidlogin: RateLimits[%q].Window > 0 байх ёстой", k)
+			}
+			out[k] = windowLimiter(r.Max, r.Window)
 		}
 	}
-	if len(hits) >= 3 {
-		h.pushHits[key] = hits
+	return out, nil
+}
+
+// windowLimiter — санах ойн гулсах цонх (түлхүүр тус бүрд), 10 000 түлхүүрээс хэтэрвэл цэвэрлэнэ.
+func windowLimiter(limit int, window time.Duration) func(context.Context, string) bool {
+	var mu sync.Mutex
+	hits := map[string][]time.Time{}
+	return func(_ context.Context, key string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		now := time.Now()
+		if len(hits) > 10000 {
+			hits = map[string][]time.Time{}
+		}
+		var h []time.Time
+		for _, t := range hits[key] {
+			if now.Sub(t) < window {
+				h = append(h, t)
+			}
+		}
+		if len(h) >= limit {
+			hits[key] = h
+			return false
+		}
+		hits[key] = append(h, now)
+		return true
+	}
+}
+
+// allow — тухайн төрлийн хязгаар, дараа нь Config.RateLimit (байвал).
+func (h *Handler) allow(ctx context.Context, kind, value string) bool {
+	key := kind + ":" + value
+	if f := h.limits[kind]; f != nil && !f(ctx, key) {
 		return false
 	}
-	h.pushHits[key] = append(hits, now)
-	return true
+	return h.cfg.RateLimit == nil || h.cfg.RateLimit(ctx, key)
 }
 
 // ServeHTTP — замын сүүлийн хэсгээр (start | status | callback) чиглүүлнэ.
@@ -477,12 +533,12 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusTooManyRequests, "rate_limited")
 	}
 	if h.cfg.ClientIP != nil {
-		if ip := h.cfg.ClientIP(r); ip != "" && !h.cfg.RateLimit(r.Context(), "start:"+ip) {
+		if ip := h.cfg.ClientIP(r); ip != "" && !h.allow(r.Context(), "start", ip) {
 			limited()
 			return
 		}
 	}
-	if b.Mode == ModePush && !h.cfg.RateLimit(r.Context(), "push:"+idCode) {
+	if b.Mode == ModePush && !h.allow(r.Context(), "push", idCode) {
 		limited()
 		return
 	}
