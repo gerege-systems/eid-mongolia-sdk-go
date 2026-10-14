@@ -1,29 +1,30 @@
 # eid-mongolia-sdk-go
 
 **eID Mongolia** relying-party SDK for Go — иргэнийг утсаар нь нэвтрүүлэх (authentication) ба хууль ёсны цахим гарын
-үсэг (qualified signature) зуруулах, «eID-ээр нэвтрэх» (OpenID Connect). RP-API v3, Smart-ID нийцтэй.
+үсэг (qualified signature) зуруулах, «eID-ээр нэвтрэх» товчны backend. RP-API v3, Smart-ID нийцтэй.
 TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://github.com/gerege-systems/eid-mongolia-sdk))
 функциональ ижил. Бүрэн баримт: <https://developer.eidmongolia.mn/#overview>.
 
 > SDK **backend**-д ажиллана: бүх дуудлага API secret (`rp_sk_…`)-ээр баталгаажна. Secret, `SessionSecret`-ийг
 > браузер/гар утсанд хэзээ ч бүү гарга — браузерт зөвхөн таны backend-ийн өгсөн холбоос / QR / товч харагдана.
 
-- Go ≥ 1.25. `eid` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь digitorus/pdf, pkcs7, timestamp, x/crypto.
-- Багц: `eid` (RP-API, device link, validator, PDF), `eid/oidc` («eID-ээр нэвтрэх»), `pades` (клиент талын PAdES —
-  PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
+- Go ≥ 1.25. `eid`, `eidlogin` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь digitorus/pdf, pkcs7, timestamp,
+  x/crypto.
+- Багц: `eid` (RP-API, device link, validator, PDF), `eid/eidlogin` («eID-ээр нэвтрэх» товчны net/http handler),
+  `pades` (клиент талын PAdES — PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
 
 [English summary](#english)
 
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.1.1
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.2.0
 ```
 
 ```go
 import (
 	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
-	"github.com/gerege-systems/eid-mongolia-sdk-go/oidc"
+	"github.com/gerege-systems/eid-mongolia-sdk-go/eidlogin"
 )
 ```
 
@@ -31,121 +32,75 @@ import (
 
 RP-г eID Mongolia-гийн оператор бүртгэнэ — хүсэлтээ <eIDsupport@gerege.com>-оор гаргана. Баталсны дараа
 **relyingPartyUUID** ба **API secret** (`rp_sk_…`) олгогдоно; secret **зөвхөн нэг удаа** харагдана. Шаардлагатай
-мэдээлэл (байгууллага, зорилго `AUTH`/`SIGN`, `callbackHosts`, OIDC redirect URI…):
+мэдээлэл (байгууллага, зорилго `AUTH`/`SIGN`, `callbackHosts`…):
 <https://developer.eidmongolia.mn/#registration>.
 
-## 2. «eID-ээр нэвтрэх» (OpenID Connect)
+## 2. «eID-ээр нэвтрэх» — нэг товч (`eidlogin`)
 
-Хамгийн хялбар нэвтрэлт: таны вэбэд нэг товч; нэвтрэх хуудсыг (QR · утсан дээрх аппаар нээх · регистрээр мэдэгдэл)
-eID сервер өөрөө харуулж, гарын үсэг ба гэрчилгээний гинжийг шалгаад стандарт OIDC (Authorization Code + PKCE `S256`)
-`id_token` өгнө. Утасны хөтчөөс дарахад хуудасгүйгээр шууд eID апп нээгдэнэ. Гэрээ:
-<https://developer.eidmongolia.mn/#oidc>.
+Smart-ID-тэй RP-үүдийн хэв маяг: хөтөчид **нэг товч**, бүх eID дуудлага таны backend-д (API secret-ээр).
+`eidlogin.Handler` (net/http) нь §3.1/§3.2-ийн RP-API (device link v3, push, `Validator`)-ийг л ашигладаг бэлэн урсгал;
+хөтчийн товч нь TS SDK-ийн Web Component `<eid-login-button>` (`@gerege-systems/eid-mongolia-sdk/button`) — хариуны
+хэлбэр TS-ийн `createEidLogin`-тэй ижил.
 
-`client_id` = RP UUID, `client_secret` = RP API secret; RP-д `AUTH` эрх, OIDC асаалттай, `redirect_uri` (https)
-бүртгэлтэй — **тэмдэгт бүрээрээ** таарна. Иргэний ETSI дугаар (`pnomn` claim) хэрэгтэй бол `PNOMN` эрх +
-`Scope: "openid pnomn"`. eID-ийн OIDC нь зөвхөн confidential client (`client_secret_basic`) — native апп ч `code`-ийг
-өөрийн backend-ээр солино.
+| | Хүсэлт | Хариу |
+|---|---|---|
+| `POST /auth/eid/start` | `{"mode":"qr"}` эсвэл `{"mode":"push","idCode":"УБ12345678"}` (JSON заавал) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: eid_login` |
+| `GET /auth/eid/start?mode=web2app` | утасны хөтөч (товчны навигаци) | `302` → eID апп (Web2App) |
+| `GET /auth/eid/status` | cookie | `PENDING` (+шинэ `qr`) · `WAIT_CALLBACK` · `OK` (`redirect`, `data`) · `FAILED` (`error`) · `EXPIRED` |
+| `GET /auth/eid/callback` | апп буцаана: `?sessionId&userChallengeVerifier` | `303` → `Success.Redirect` / `SuccessRedirect`, алдаа бол `FailureRedirect?eid_error=<код>` |
 
-**mTLS-тэй RP (`require_mtls`).** `login.` хост mTLS хийдэггүй тул ийм RP-ийн code солих хүсэлт
-`login.eidmongolia.mn/oauth2/token` дээр `401 invalid_client` авна. Discovery-ийн `mtls_endpoint_aliases["token_endpoint"]`
-(RFC 8705 §5, `https://rp.eidmongolia.mn/oauth2/token`) руу RP-API-д хэрэглэдэг **ижил client cert**-ээр явуулна:
-`UseMTLSEndpointAliases: true` + client cert-тэй `HTTPClient` (§6). Discovery-д alias байхгүй бол `TokenEndpoint` руу
-буцна; alias https биш бол `ErrDiscoveryFailed`. mTLS-гүй RP флаг тавихгүй.
+eID сервер Web2App буцах замыг үргэлж `/auth/eid/callback` болгож нормчилдог тул `/auth/eid/` дор mount хийнэ:
 
 ```go
-cert, err := tls.LoadX509KeyPair("rp.crt", "rp.key") // RP-API-ийн cert
-oc, err := oidc.NewClient(oidc.Config{
-	ClientID:     os.Getenv("EID_RP_UUID"),
-	ClientSecret: os.Getenv("EID_SECRET"),
-	RedirectURI:  "https://bank.example.mn/auth/eid/callback",
-	HTTPClient: &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
-	}},
-	UseMTLSEndpointAliases: true, // token → https://rp.eidmongolia.mn/oauth2/token
+c, _ := eid.NewClient(eid.Config{
+	Credentials: eid.Credentials{RPUUID: uuid, RPName: "Интернэт банк", APISecret: secret},
+	Trust:       eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, IntermediatesPEM: intermediates},
 })
-```
-
-```go
-oc, err := oidc.NewClient(oidc.Config{
-	ClientID:     os.Getenv("EID_RP_UUID"),
-	ClientSecret: os.Getenv("EID_SECRET"), // rp_sk_… — зөвхөн backend
-	RedirectURI:  "https://bank.example.mn/auth/eid/callback",
-	// Issuer анхдагч https://login.eidmongolia.mn, Scope анхдагч "openid"
+login, err := eidlogin.New(eidlogin.Config{
+	Client:      c,
+	CallbackURL: "https://bank.example.mn/auth/eid/callback", // host нь callbackHosts-д; утасны урсгалд заавал
+	OnSuccess: func(w http.ResponseWriter, r *http.Request, id *eidlogin.Identity) (*eidlogin.Success, error) {
+		// id.ETSI (PNOMN-…) — хэрэглэгчийг ҮҮГЭЭР таньна; id.GivenName/Surname (латин), id.Person (кирилл, байвал)
+		u, err := users.FindOrCreateByETSI(r.Context(), id.ETSI)
+		if err != nil {
+			return nil, err
+		}
+		sid, err := sessions.Create(r.Context(), u.ID) // ШИНЭ session (session fixation)
+		if err != nil {
+			return nil, err
+		}
+		http.SetCookie(w, &http.Cookie{Name: "app_session", Value: sid, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		return &eidlogin.Success{Redirect: "/dashboard"}, nil
+	},
+	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
+	// RateLimit, ClientIP: …    // "start:<ip>", "push:<idCode>"; анхдагч push 3/мин нэг дугаарт
 })
 if err != nil {
 	log.Fatal(err)
 }
-
-const txCookie = "eid_oidc_tx"
-
-// GET /auth/eid/login — товчны href
-http.HandleFunc("GET /auth/eid/login", func(w http.ResponseWriter, r *http.Request) {
-	a, err := oc.CreateAuthorization(r.Context(), nil) // {URL, State, Nonce, CodeVerifier}
-	if err != nil {
-		http.Error(w, "eID түр ажиллахгүй байна", http.StatusBadGateway)
-		return
-	}
-	tx, _ := json.Marshal(oidc.CallbackChecks{State: a.State, Nonce: a.Nonce, CodeVerifier: a.CodeVerifier})
-	http.SetCookie(w, &http.Cookie{Name: txCookie, Value: base64.RawURLEncoding.EncodeToString(tx), Path: "/auth/eid",
-		MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-	w.Header().Set("Cache-Control", "no-store")
-	http.Redirect(w, r, a.URL, http.StatusFound)
-})
-
-// GET /auth/eid/callback?code&state (эсвэл ?error) — бүртгэлтэй redirect_uri
-http.HandleFunc("GET /auth/eid/callback", func(w http.ResponseWriter, r *http.Request) {
-	var checks oidc.CallbackChecks
-	c, err := r.Cookie(txCookie)
-	http.SetCookie(w, &http.Cookie{Name: txCookie, Path: "/auth/eid", MaxAge: -1, HttpOnly: true, Secure: true})
-	if err == nil {
-		raw, _ := base64.RawURLEncoding.DecodeString(c.Value)
-		_ = json.Unmarshal(raw, &checks)
-	}
-	res, err := oc.HandleCallback(r.Context(), r.URL.Query(), checks) // state → token → id_token (ES256)
-	if err != nil {
-		code := oidc.ErrServerError
-		var oe *oidc.Error
-		if errors.As(err, &oe) {
-			code = oe.Code // access_denied → «дахин оролдоно уу»; oe.Description-ийг логт л
-		}
-		http.Redirect(w, r, "/login?error="+url.QueryEscape(string(code)), http.StatusSeeOther)
-		return
-	}
-	user := users.FindOrCreateBySub(res.Claims.Sub) // pairwise sub-аар таньна (нэрээр биш)
-	startSession(w, user)                           // таны session-ийг ШИНЭЭР үүсгэ (session fixation)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-})
+mux.Handle("/auth/eid/", login)
 ```
 
-**Товч** — энгийн холбоос (`<a href>` эсвэл form GET); `fetch`/XHR/JS redirect биш — iOS Universal Link зөвхөн
-хэрэглэгчийн tap-аас эхэлсэн redirect гинжид eID аппыг нээнэ.
+Хөтөчид:
 
 ```html
-<a class="eid-login" href="/auth/eid/login">
-  <img src="/img/eid-mongolia.png" alt="" width="20" height="20">
-  eID Mongolia-аар нэвтрэх
-</a>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.14.0/dist/button.js"></script>
+<eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
-Лого: <https://developer.eidmongolia.mn/logo-96.png>-ийг татаж өөрийн хостоос үйлчил. Саармаг (цагаан, хүрээтэй)
-товч — бусад нэвтрэх товчтой зэрэгцэж болно. `CreateAuthorization(ctx, &oidc.AuthorizationOptions{Display: "page"})` —
-утсан дээр ч нэвтрэх хуудас (QR / push), ж: таблет киоск.
+Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ + регистрээр push), утсан дээр eID апп шууд нээгдэнэ. Амжилттай бол
+`eid-login-success` үйл явдал ба `redirect` руу шилжилт.
 
-**Claims** (`oidc.Claims`): `Sub` (pairwise), `Acr` (`oidc.ACRQualified` | `oidc.ACRAdvanced`), `AuthTime`,
-`GivenName` / `FamilyName` (латин), `GivenNameMN` / `FamilyNameMN` (кирилл, байвал), `PNOMN` (`pnomn` scope + эрхтэй
-үед). `id_token` 5 минут; access_token / refresh_token / userinfo байхгүй — нэвтэрсний дараа өөрийн session.
+**Аюулгүй байдал.**
 
-**Аюулгүй байдал (OIDC).**
-
-- `State`, `Nonce`, `CodeVerifier`-ийг **хөтчийн session-тэй** (httpOnly, Secure, SameSite=Lax cookie эсвэл server
-  session) холбож хадгална; `HandleCallback` state-ийг constant-time тулгаж, таарахгүй бол code-ийг солихгүй
-  (`state_mismatch`). Үүнгүйгээр login CSRF (халдагчийн бүртгэлд хохирогчийн eID) нээлттэй.
-- `HandleCallback` / `VerifyIDToken` нь ES256 гарын үсэг (JWKS `kid`, 1 цаг cache, танихгүй `kid` → нэг удаа дахин
-  татна; `alg` нь зөвхөн `ES256`), `iss`, `aud` (= `ClientID`; олон aud бол `azp`), `exp` / `iat` (±60 сек), `nonce`-ийг
-  шалгана. `ErrInvalidIDToken` гарвал **итгэхгүй**.
-- Code нэг удаагийн, 60 секунд — callback-ийг дахин ачаалбал `invalid_grant` → дахин нэвтрүүлнэ.
-- **Native апп (RFC 8252):** authorize-ийг системийн хөтчөөр (iOS `ASWebAuthenticationSession`, Android Custom Tabs)
-  нээнэ, **WebView хориотой**; `redirect_uri` = https Universal Link / App Link.
+- `SessionToken`, `SessionSecret`, `rpChallenge` серверт (`Store`); хөтөчид зөвхөн HttpOnly, Secure, SameSite=Lax cookie
+  (`<sessionId>.<binding>`, store-д SHA-256). Status ба callback зөвхөн нэвтрэлтийг **эхлүүлсэн хөтөчид** — өөр хөтчид нээгдсэн
+  callback URL (verifier-тэй ч) хүлээн авагдахгүй (login CSRF).
+- `start` POST нь JSON заавал (cross-origin preflight), `Sec-Fetch-Site: cross-site` → 403.
+- `OK` нь зөвхөн `Validator.ValidateAuth` амжилттай үед: QR → `FlowQR`, push → `FlowNotification`, утас → `FlowWeb2App` +
+  `userChallengeVerifier`. Web2App session-ийг poll дуусгахгүй (`WAIT_CALLBACK`). `OnSuccess` нэг session-д нэг л удаа
+  (`Store.Delete` атомар — Redis `DEL`).
+- `Success.Data` хөтөчид очно — нууц бүү оруул. Push-ийн eID алдаа ерөнхий (`eid_unavailable`) — иргэн бүртгэлтэй эсэхийг задлахгүй.
 
 ## 3. RP-API client
 
@@ -392,7 +347,6 @@ if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
 | `*eid.SessionFailedError` | endResult ≠ OK (`TIMEOUT`, `USER_REFUSED…`) — `.EndResult` |
 | `*eid.ValidationError` | гинж / гарын үсэг / түвшин / урсгалын шалгалт унасан |
 | `*eid.DeviceLinkError` | device link угсрах боломжгүй (оролтын хэлбэр) |
-| `*oidc.Error` | OIDC — `.Code`: `access_denied`, `login_required`, `state_mismatch`, `invalid_grant`, `invalid_id_token`, `server_error` … |
 
 ## 6. mTLS
 
@@ -458,8 +412,7 @@ ACSP_V2 вектор, RFC 7636 PKCE вектор, бодит нийтийн CA �
 ### Гэрээний шалгалт
 
 SDK-ийн дууддаг RP-API зам бүр (`routes.go`) live [`/.well-known/eid`](https://rp.eidmongolia.mn/.well-known/eid)-ийн
-`endpoints`-д байх ёстой; OIDC-ийн хүлээдэг утгууд (issuer, `ES256`, PKCE `S256`, `client_secret_basic`, `Claims`-ийн
-талбарууд) [discovery](https://login.eidmongolia.mn/.well-known/openid-configuration)-тэй таарах ёстой. Discovery-д
+`endpoints`-д байх ёстой. Discovery-д
 байгаа ч SDK хамраагүй замууд WARN (fail биш). Сүлжээ шаарддаг тул энгийн `go test`-д ордоггүй:
 
 ```bash
@@ -472,7 +425,7 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 
 ## English
 
-Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`oidc` import the
+Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
 standard library only).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest), `PDF` (PAdES, CA-assembled,
@@ -492,10 +445,10 @@ standard library only).
 - `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
   certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
-- `oidc.NewClient` — "Sign in with eID" (OpenID Connect, code + PKCE S256, `client_secret_basic`), ES256 `id_token`
-  verification with JWKS caching (`iss`, `aud`/`azp`, `exp`/`iat` ±60 s, `nonce`).
-  mTLS RPs: `Config.UseMTLSEndpointAliases` + client-cert `HTTPClient` → token request to discovery's
-  `mtls_endpoint_aliases.token_endpoint` (RFC 8705 §5); falls back to `token_endpoint` when absent.
+- `eidlogin.New` — "Log in with eID" one-button backend (net/http, mount at `/auth/eid/`): `start` (QR / push by
+  registration number / Web2App 302), `status` (fresh QR every second), `callback` (Web2App + `userChallengeVerifier`).
+  State server-side (`Store`), browser bound by an HttpOnly cookie; identity only after `ValidateAuth`. Pairs with the
+  TS SDK's `<eid-login-button>` web component. The OIDC client (`oidc` package) was removed in v0.2.0.
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
   CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `Verify`. Derived from the CA writer
