@@ -53,9 +53,9 @@ type PDFPrepareSession struct {
 	DocID     string `json:"docId"`
 	// VC — иргэнд ХАРУУЛАХ баталгаажуулах код (ПИН биш).
 	VC string `json:"vc"`
-	// Digest — CA-ийн зуруулах digest (base64) ба Interactions (base64 мөр) — хоёр урсгалд (notification,
-	// device-link) хариунаас. Хариунд байхгүй бол "".
-	Digest       string `json:"digest"`
+	// Digest — гарын үсэг зурагдах DTBS (стандарт base64), хоёр урсгалд хариуны digest-ээс — ValidateSign-д.
+	Digest string `json:"digest"`
+	// Interactions — device-link урсгалд л (deviceLink.interactions); notification-д "".
 	Interactions string `json:"interactions"`
 	// DeviceLink — device-link урсгалд л (BuildDeviceLink-д Digest/Interactions-ийг ЯГ ХЭВЭЭР өгнө).
 	DeviceLink *PDFDeviceLink `json:"deviceLink,omitempty"`
@@ -130,32 +130,28 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 	}
 
 	var r struct {
-		SessionID    string         `json:"sessionID"`
-		DocID        string         `json:"docID"`
-		VC           vcValue        `json:"vc"`
-		Digest       string         `json:"digest"`
-		Interactions string         `json:"interactions"`
-		DeviceLink   *PDFDeviceLink `json:"deviceLink"`
+		SessionID  string         `json:"sessionID"`
+		DocID      string         `json:"docID"`
+		VC         vcValue        `json:"vc"`
+		Digest     string         `json:"digest"`
+		DeviceLink *PDFDeviceLink `json:"deviceLink"`
 	}
 	if err := p.h.doJSON(ctx, "POST", "/pdf/sign/prepare", &body, mw.FormDataContentType(), pdfTimeout, &r); err != nil {
 		return nil, err
 	}
 	s := &PDFPrepareSession{
-		SessionID:    r.SessionID,
-		DocID:        r.DocID,
-		VC:           string(r.VC),
-		Digest:       r.Digest,
-		Interactions: r.Interactions,
-		ReceivedAt:   time.Now(),
+		SessionID:  r.SessionID,
+		DocID:      r.DocID,
+		VC:         string(r.VC),
+		Digest:     r.Digest,
+		ReceivedAt: time.Now(),
 	}
 	if r.DeviceLink != nil && r.DeviceLink.SessionToken != "" {
 		s.DeviceLink = r.DeviceLink
 		if s.Digest == "" {
 			s.Digest = r.DeviceLink.Digest
 		}
-		if s.Interactions == "" {
-			s.Interactions = r.DeviceLink.Interactions
-		}
+		s.Interactions = r.DeviceLink.Interactions
 	}
 	return s, nil
 }

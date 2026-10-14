@@ -7,7 +7,7 @@
 
 - **RP-API client** (`eid.NewClient`): `Auth` (push `NotificationByEtsi/ByDocument`, device link
   `DeviceLinkAnonymous/ByEtsi`; `CallbackURL`, `OnBehalfOf`, алгоритм/hash сонголт), `Sign` (`DigestByEtsi/ByDocument`,
-  `TextByEtsi`), `PDF` (PAdES `Prepare` multipart — `Digest`/`Interactions` хоёр урсгалд, `Document`), `Organization`
+  `TextByEtsi`), `PDF` (PAdES `Prepare` multipart — `Digest` хоёр урсгалд (CA !332), `Interactions` device-link-д, `Document`), `Organization`
   (`GetRepresentations`), `Session` (`Poll`, `WaitForResult`), `ParseSessionResult`. Бүх дуудлага `context.Context`;
   Bearer secret, timeout, `HTTPClient` (mTLS). `ResolveBaseURL` — анхдагч `https://rp.eidmongolia.mn`, хуучин `ca.`
   хост тодорхой алдаа.
@@ -18,7 +18,7 @@
   golden вектортой байт-ижил. Legacy `/dl?sessionId&vc` оруулаагүй (сервер 2026-10-07-нд хассан).
 - **Validator** — гинж (trust anchor = `NationalRootCAPEM`, issuer нэр + AKI/SKI + CA + гарын үсэг + хугацаа),
   хугацаа/`ClockSkew`, `RequiredLevel`, ACSP_V2 / prehashed digest гарын үсэг (`rsassa-pss`, `shaNNNWithRSAEncryption`,
-  `ecdsa-with-SHA*`), алгоритм ↔ түлхүүрийн төрөл тулгалт, ECDSA-д session-ий hash, `ExpectedFlowType` /
+  `ecdsa-with-SHA256` — зөвхөн EC P-256 + SHA-256, TS 0.9.0-тэй ижил), алгоритм ↔ түлхүүрийн төрөл тулгалт, `ExpectedFlowType` /
   `UserChallengeVerifier` (relay хаалт), `SignedCallbackURL`, `CheckRevocation` (OCSP/CRL hook, hard/soft-fail).
   Хариунд `Subject` (`ParseSubject`: GivenName, Surname, CommonName, SerialNumber, Country).
 - `DocumentVerified` — татсан PDF-ийн SHA-256 = session-ий `pdf.outSha256` (READY).

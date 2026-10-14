@@ -266,10 +266,10 @@ func TestPDF_PrepareDocument(t *testing.T) {
 	for _, tc := range []struct {
 		flow, reply string
 	}{
-		// notification: digest/interactions дээд түвшинд (CA pades-signer-resolver)
-		{PDFFlowNotification, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},"digest":"ZA==","interactions":"W10="}`},
-		// device-link: deviceLink блок дотор
-		{PDFFlowDeviceLink, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},
+		// notification: дээд түвшний digest (CA !332 dto.PDFSignPrepareResponse.Digest); interactions алга
+		{PDFFlowNotification, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},"digest":"ZA=="}`},
+		// device-link: дээд түвшний digest + deviceLink блок
+		{PDFFlowDeviceLink, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},"digest":"ZA==",
 			"deviceLink":{"sessionToken":"t","sessionSecret":"sec","deviceLinkBase":"https://ca.eidmongolia.mn/dl","digest":"ZA==","interactions":"W10="}}`},
 	} {
 		c, rc := server(t, jsonReply(200, tc.reply))
@@ -278,11 +278,12 @@ func TestPDF_PrepareDocument(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if s.SessionID != "sess-1" || s.DocID != "doc-1" || s.VC != "48210" || s.Digest != "ZA==" || s.Interactions != "W10=" || s.ReceivedAt.IsZero() {
+		if s.SessionID != "sess-1" || s.DocID != "doc-1" || s.VC != "48210" || s.Digest != "ZA==" || s.ReceivedAt.IsZero() {
 			t.Fatalf("%s: %+v", tc.flow, s)
 		}
-		if (tc.flow == PDFFlowDeviceLink) != (s.DeviceLink != nil) {
-			t.Fatal("deviceLink")
+		dl := tc.flow == PDFFlowDeviceLink
+		if dl != (s.DeviceLink != nil) || dl != (s.Interactions == "W10=") || (!dl && s.Interactions != "") {
+			t.Fatalf("deviceLink/interactions %+v", s)
 		}
 		req, body := rc.last()
 		mt, params, _ := mime.ParseMediaType(req.Header.Get("Content-Type"))

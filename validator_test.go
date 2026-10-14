@@ -231,8 +231,8 @@ func TestVerifySignatures_AllAlgorithms(t *testing.T) {
 			VerifyPrehashedSignature(digest, pss, rsaPub, "rsassa-pss", string(h.name)),
 			VerifyPayloadSignature(payload, pkcs, rsaPub, pkcsAlg, string(h.name)),
 			VerifyPrehashedSignature(digest, pkcs, rsaPub, pkcsAlg, string(h.name)),
-			VerifyPayloadSignature(payload, ec, ecPub, "ecdsa-with-SHA256", string(h.name)),
-			VerifyPrehashedSignature(digest, ec, ecPub, "ecdsa-with-SHA256", string(h.name)),
+			VerifyPayloadSignature(payload, ec, ecPub, "ecdsa-with-SHA256", string(h.name)) == (h.name == SHA256),
+			VerifyPrehashedSignature(digest, ec, ecPub, "ecdsa-with-SHA256", string(h.name)) == (h.name == SHA256),
 		}
 		for i, v := range ok {
 			if !v {
@@ -392,29 +392,37 @@ func TestValidateAuth_InitialCallbackURL(t *testing.T) {
 func TestValidateAuth_ECDSA(t *testing.T) {
 	V := untrusted(t)
 	p := testPKI(t)
-	for _, h := range []HashAlgorithm{SHA256, SHA512} {
-		// Сервер нэрийг «ecdsa-with-SHA256» тогтмол гаргадаг ч digest = session-ий hash.
-		r, a := signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256", hash: h})
-		if _, err := V.ValidateAuth(r, a, ValidateAuthOptions{ExpectedFlowType: FlowQR}); err != nil {
-			t.Fatalf("%s: %v", h, err)
-		}
+	r, a := signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256", hash: SHA256})
+	if _, err := V.ValidateAuth(r, a, ValidateAuthOptions{ExpectedFlowType: FlowQR}); err != nil {
+		t.Fatal(err)
 	}
-	// EC гарын үсгийг RSA гэрчилгээтэй (alg confusion)
-	r, a := signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256"})
-	r.CertificateDERB64 = base64.StdEncoding.EncodeToString(p.rsaLeaf.cert.Raw)
+	// CA-ийн ECDSA credential зөвхөн SHA-256 — SHA-384/512 session-д ECDSA хариу боломжгүй → татгалзана.
+	for _, h := range []HashAlgorithm{SHA384, SHA512} {
+		r, a := signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256", hash: h})
+		_, err := V.ValidateAuth(r, a, ValidateAuthOptions{})
+		wantInvalid(t, err, "ECDSA credential зөвхөн SHA-256")
+	}
+	// бусад ECDSA нэр дэмжигдэхгүй
+	r, a = signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256"})
+	r.SignatureAlgorithm = "ecdsa-with-SHA512"
 	_, err := V.ValidateAuth(r, a, ValidateAuthOptions{})
-	wantInvalid(t, err, "EC бус")
+	wantInvalid(t, err, "дэмжигдээгүй")
+	// EC гарын үсгийг RSA гэрчилгээтэй (alg confusion)
+	r, a = signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256"})
+	r.CertificateDERB64 = base64.StdEncoding.EncodeToString(p.rsaLeaf.cert.Raw)
+	_, err = V.ValidateAuth(r, a, ValidateAuthOptions{})
+	wantInvalid(t, err, "EC P-256 бус")
+	// P-384 түлхүүр
+	k384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	leaf384 := mkCert(t, leafTmpl(), p.inter, &k384.PublicKey, k384)
+	r, a = signedAuth(t, "QR", authOpts{leaf: leaf384, alg: "ecdsa-with-SHA256"})
+	_, err = V.ValidateAuth(r, a, ValidateAuthOptions{})
+	wantInvalid(t, err, "EC P-256 бус")
 	// RSA нэр EC гэрчилгээтэй
 	r, a = signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256"})
 	r.SignatureAlgorithm = "rsassa-pss"
 	_, err = V.ValidateAuth(r, a, ValidateAuthOptions{})
 	wantInvalid(t, err, "RSA бус")
-	// ECDSA гарын үсэг өөр hash-аар зурагдсан (SHA-256) боловч RP SHA-512 хүссэн → таарахгүй
-	r, _ = signedAuth(t, "QR", authOpts{leaf: p.ecLeaf, alg: "ecdsa-with-SHA256", hash: SHA256})
-	_, a2 := signedAuth(t, "QR", authOpts{})
-	a2.HashAlgorithm = SHA512
-	_, err = V.ValidateAuth(r, a2, ValidateAuthOptions{})
-	wantInvalid(t, err, "")
 }
 
 // ── ValidateSign ──
@@ -443,7 +451,6 @@ func TestValidateSign(t *testing.T) {
 		{mk(p.rsaLeaf, "rsassa-pss", "rsassa-pss", crypto.SHA512, d512[:]), b(d512[:]), SHA512},
 		{mk(p.rsaLeaf, "sha256WithRSAEncryption", "pkcs1", crypto.SHA256, d256[:]), b(d256[:]), SHA256},
 		{mk(p.ecLeaf, "ecdsa-with-SHA256", "ecdsa", crypto.SHA256, d256[:]), b(d256[:]), SHA256},
-		{mk(p.ecLeaf, "ecdsa-with-SHA256", "ecdsa", crypto.SHA512, d512[:]), b(d512[:]), SHA512},
 	}
 	for i, c := range cases {
 		s, err := V.ValidateSign(c.r, c.digest, c.hash)
@@ -461,6 +468,9 @@ func TestValidateSign(t *testing.T) {
 	wantInvalid(t, err, "")
 	_, err = V.ValidateSign(cases[1].r, b(d512[:]), SHA256) // downgrade
 	wantInvalid(t, err, "hashAlgorithm")
+	ec512 := mk(p.ecLeaf, "ecdsa-with-SHA256", "ecdsa", crypto.SHA512, d512[:])
+	_, err = V.ValidateSign(ec512, b(d512[:]), SHA512)
+	wantInvalid(t, err, "ECDSA credential зөвхөн SHA-256")
 }
 
 // ── гэрчилгээний гинж ──

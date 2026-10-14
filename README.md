@@ -245,7 +245,7 @@ s, err := c.PDF.Prepare(ctx, eid.PDFPrepareInput{
 	Signer: eid.PDFSignerRef{Etsi: "PNOMN-12345678"}, Flow: eid.PDFFlowNotification,
 	OnBehalfOf: "NTRMN-6235972", // заавал биш
 })
-show(s.VC) // s.Digest / s.Interactions — хоёр урсгалд хариунаас; device-link-д s.DeviceLink (BuildDeviceLink, SessionSign)
+show(s.VC) // s.Digest — хоёр урсгалд (ValidateSign-д); device-link-д s.DeviceLink, s.Interactions (BuildDeviceLink, SessionSign)
 r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
 if r.EndResult != eid.EndResultOK || r.PDF == nil || r.PDF.DocumentStatus != eid.PDFReady ||
 	r.PDF.Signer == nil || r.PDF.Signer.OnBehalfOf != "NTRMN-6235972" {
@@ -272,14 +272,14 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
    AKI/SKI, CA basicConstraints, гарын үсэг, хугацаа. Trust anchor тохируулаагүй бол **fail-closed**
    (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй.
 3. Гэрчилгээ хүчинтэй хугацаанд (`ClockSkew`) + шаардсан түвшин (`RequiredLevel`, анхдагч `QUALIFIED`; `QSCD` хангана).
-4. Гарын үсэг (`rsassa-pss` / `shaNNNWithRSAEncryption` / `ecdsa-with-SHA*`):
+4. Гарын үсэг (`rsassa-pss` / `shaNNNWithRSAEncryption` / `ecdsa-with-SHA256`):
    - **auth** → ACSP_V2 payload (`smart-id|ACSP_V2|serverRandom|rpChallenge|userChallenge|B64(rpName)|B64(brokeredRpName)|B64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType`),
      hash = хүсэлтийн `HashAlgorithm`; `flowType` санал болгосон урсгалд, `ExpectedFlowType` өгвөл ЯГ таарах,
      Web2App/App2App-д `UserChallengeVerifier` заавал; `initialCallbackUrl` нь `""` эсвэл таны callback л.
    - **sign** → таны digest дээр (prehashed).
-   - Алгоритм ↔ түлхүүрийн төрөл тулгана (RSA нэр зөвхөн RSA гэрчилгээтэй, ECDSA зөвхөн EC-тэй); RSA-д hash нь
-     хүссэнтэй ЯГ таарна (downgrade хаалт). ECDSA (токен / HSM / хуучин threshold) — серверийн digest нь session-ий
-     hash тул нэрийн дагавраас үл хамааран хүссэн hash-аар шалгана.
+   - Алгоритм ↔ түлхүүрийн төрөл тулгана (RSA нэр зөвхөн RSA гэрчилгээтэй); hash нь хүссэнтэй ЯГ таарна (downgrade
+     хаалт). ECDSA нь зөвхөн `ecdsa-with-SHA256` + EC P-256 + SHA-256 session (CA-ийн ECDSA credential SHA-256-аас
+     өөрийг зурдаггүй; SHA-384/512 session-д ECDSA хариу ирвэл `ValidationError`).
 5. Цуцлалт — `TrustConfig.Revocation` (OCSP/CRL hook, `RevocationHardFail` анхдагч) → `CheckRevocation`.
    QUALIFIED non-repudiation-д RP тохируулна.
 
@@ -330,7 +330,7 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 - `eid.BuildDeviceLink` — device link v3 (QR / Web2App / App2App) with HMAC `authCode`, byte-identical to the server
   golden vectors. Prefer **Web2App** for same-device sign-in; the legacy `/dl?sessionId&vc` link is gone.
 - `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
-  (`eid.NationalRootCAPEM`), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA), flow-type relay
+  (`eid.NationalRootCAPEM`), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
   guard; `CheckRevocation` with your OCSP/CRL hook. Never trust `endResult == OK` alone.
 - `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`.
 - `oidc.NewClient` — "Sign in with eID" (OpenID Connect, code + PKCE S256, `client_secret_basic`), ES256 `id_token`

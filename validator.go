@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -297,9 +298,9 @@ func (v *Validator) CheckRevocation(ctx context.Context, cert *x509.Certificate)
 // algorithmOf — хариуны signatureAlgorithm + hash-ийг RP-ийн хүссэнтэй ба гэрчилгээний түлхүүрийн төрөлтэй
 // тулгана (downgrade / alg confusion хаалт).
 //
-// ECDSA (хуучин threshold-ECDSA, токен, HSM): сервер digest-ийг session-ий hashAlgorithm-аар тооцоод зурдаг
-// бөгөөд нэр нь түүхэндээ «ecdsa-with-SHA256» тогтмол — тиймээс hash = RP-ийн хүссэн hash (нэрийн дагавраар биш),
-// түлхүүр нь заавал EC. RSA нэрс нь заавал RSA түлхүүртэй, hash нь хүссэнтэй ЯГ таарна.
+// ECDSA: CA-ийн ECDSA credential зөвхөн SHA-256 digest зурна (SHA-384/512 session-д SplitKey RSA л) — тиймээс
+// зөвхөн «ecdsa-with-SHA256», EC P-256 түлхүүр, хүссэн hash SHA-256 (TS SDK 0.9.0-тэй ижил). RSA нэрс нь заавал RSA
+// түлхүүртэй, hash нь хүссэнтэй ЯГ таарна.
 func algorithmOf(r *SessionResult, pub crypto.PublicKey, wantAlg, wantHash string) (alg, hash string, err error) {
 	alg = r.SignatureAlgorithm
 	_, isRSA := pub.(*rsa.PublicKey)
@@ -329,15 +330,19 @@ func algorithmOf(r *SessionResult, pub crypto.PublicKey, wantAlg, wantHash strin
 			return "", "", invalid("%s нь RSA бус гэрчилгээтэй", alg)
 		}
 		hash = "SHA-" + alg[3:6]
-	case isECDSAAlg(alg):
-		if !isEC {
-			return "", "", invalid("%s нь EC бус гэрчилгээтэй", alg)
+	case alg == string(AlgECDSAWithSHA256):
+		if !isEC || !isP256(pub) {
+			return "", "", invalid("%s нь EC P-256 бус гэрчилгээтэй", alg)
 		}
-		hash = wantHash
+		hash = string(SHA256)
+		if wantHash != hash {
+			// CA ECDSA credential-аар SHA-256-аас өөр hash зурдаггүй — ийм хариу серверээс гарахгүй.
+			return "", "", invalid("ecdsa-with-SHA256 хариу %s хүссэн session-д боломжгүй (ECDSA credential зөвхөн SHA-256)", wantHash)
+		}
 	default:
 		return "", "", invalid("дэмжигдээгүй signatureAlgorithm: %s", alg)
 	}
-	if wantAlg != "" && alg != wantAlg && !isECDSAAlg(alg) {
+	if wantAlg != "" && alg != wantAlg && alg != string(AlgECDSAWithSHA256) {
 		return "", "", invalid("signatureAlgorithm %s ≠ хүссэн %s", alg, wantAlg)
 	}
 	if hash != wantHash {
@@ -346,8 +351,9 @@ func algorithmOf(r *SessionResult, pub crypto.PublicKey, wantAlg, wantHash strin
 	return alg, hash, nil
 }
 
-func isECDSAAlg(alg string) bool {
-	return alg == "ecdsa-with-SHA256" || alg == "ecdsa-with-SHA384" || alg == "ecdsa-with-SHA512"
+func isP256(pub crypto.PublicKey) bool {
+	k, ok := pub.(*ecdsa.PublicKey)
+	return ok && k.Curve == elliptic.P256()
 }
 
 // precheck — state/endResult, гэрчилгээ, гинж, хугацаа, certLevel — нийтлэг шалгалт.
@@ -511,7 +517,7 @@ func VerifyPayloadSignature(payload []byte, sigB64 string, pub crypto.PublicKey,
 }
 
 // VerifyPrehashedSignature — бэлэн digest дээрх гарын үсэг. rsassa-pss (salt = hLen), shaNNNWithRSAEncryption
-// (PKCS#1 v1.5), ecdsa-with-SHA* (ASN.1 DER). Алгоритм ба түлхүүрийн төрөл таарахгүй бол false.
+// (PKCS#1 v1.5), ecdsa-with-SHA256 (P-256, SHA-256, ASN.1 DER). Алгоритм ба түлхүүрийн төрөл таарахгүй бол false.
 func VerifyPrehashedSignature(digest []byte, sigB64 string, pub crypto.PublicKey, alg, hash string) bool {
 	sig, err := base64.StdEncoding.DecodeString(sigB64)
 	if err != nil || len(sig) == 0 {
@@ -530,7 +536,7 @@ func VerifyPrehashedSignature(digest []byte, sigB64 string, pub crypto.PublicKey
 			return rsa.VerifyPKCS1v15(k, ch, digest, sig) == nil
 		}
 	case *ecdsa.PublicKey:
-		if isECDSAAlg(alg) {
+		if alg == string(AlgECDSAWithSHA256) && ch == crypto.SHA256 && k.Curve == elliptic.P256() {
 			return ecdsa.VerifyASN1(k, digest, sig)
 		}
 	}
