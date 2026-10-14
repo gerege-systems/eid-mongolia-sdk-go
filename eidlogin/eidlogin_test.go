@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -294,6 +295,87 @@ func TestRateLimitHookIP(t *testing.T) {
 	}
 	if len(keys) != 1 || keys[0] != "start:203.0.113.5" {
 		t.Fatalf("keys %v", keys)
+	}
+}
+
+func pushCodes(t *testing.T, e *env, n int) []int {
+	t.Helper()
+	var out []int
+	for range n {
+		out = append(out, e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ12345678"}`, nil).code)
+	}
+	return out
+}
+
+func TestRateLimitsMergeKeepsDefaultPush(t *testing.T) {
+	var keys []string
+	e := setup(t, func(c *Config) {
+		c.RateLimits = map[string]RateRule{"start": {Func: func(_ context.Context, k string) bool { keys = append(keys, k); return true }}}
+		c.ClientIP = func(*http.Request) string { return "203.0.113.5" }
+	})
+	if got := pushCodes(t, e, 4); !slices.Equal(got, []int{200, 200, 200, 429}) {
+		t.Fatalf("push %v", got)
+	}
+	if len(keys) != 4 || keys[0] != "start:203.0.113.5" {
+		t.Fatalf("keys %v", keys)
+	}
+}
+
+func TestRateLimitFuncAddsToDefault(t *testing.T) {
+	var keys []string
+	e := setup(t, func(c *Config) {
+		c.RateLimit = func(_ context.Context, k string) bool { keys = append(keys, k); return true }
+	})
+	if got := pushCodes(t, e, 4); !slices.Equal(got, []int{200, 200, 200, 429}) {
+		t.Fatalf("push %v", got)
+	}
+	if len(keys) != 3 {
+		t.Fatalf("анхдагч татгалзсан үед RateLimit дуудагдахгүй: %v", keys)
+	}
+}
+
+func TestRateLimitsOverridePush(t *testing.T) {
+	for name, tc := range map[string]struct {
+		rule RateRule
+		want []int
+	}{
+		"window": {RateRule{Max: 1, Window: time.Minute}, []int{200, 429}},
+		"off":    {RateRule{}, []int{200, 200, 200, 200, 200}},
+		"func":   {RateRule{Func: func(context.Context, string) bool { return true }}, []int{200, 200, 200, 200, 200}},
+	} {
+		e := setup(t, func(c *Config) { c.RateLimits = map[string]RateRule{"push": tc.rule} })
+		if got := pushCodes(t, e, len(tc.want)); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: %v ≠ %v", name, got, tc.want)
+		}
+	}
+	lim := DefaultRateLimit()
+	lim["start"] = RateRule{Max: 2, Window: time.Minute}
+	e := setup(t, func(c *Config) {
+		c.RateLimits = lim
+		c.ClientIP = func(*http.Request) string { return "198.51.100.9" }
+	})
+	var got []int
+	for range 3 {
+		got = append(got, e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil).code)
+	}
+	if !slices.Equal(got, []int{200, 200, 429}) {
+		t.Fatalf("start %v", got)
+	}
+}
+
+func TestDefaultRateLimitAndValidation(t *testing.T) {
+	d := DefaultRateLimit()
+	if len(d) != 1 || d["push"].Max != 3 || d["push"].Window != time.Minute {
+		t.Fatalf("%+v", d)
+	}
+	d["push"] = RateRule{}
+	if DefaultRateLimit()["push"].Max != 3 {
+		t.Fatal("DefaultRateLimit шинэ map буцаах ёстой")
+	}
+	for _, rl := range []map[string]RateRule{{"pin": {}}, {"push": {Max: 1}}} {
+		if _, err := buildLimits(rl); err == nil {
+			t.Errorf("%v: алдаа хүлээсэн", rl)
+		}
 	}
 }
 

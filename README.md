@@ -18,7 +18,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.3.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.3.1
 ```
 
 ```go
@@ -75,7 +75,7 @@ login, err := eidlogin.New(eidlogin.Config{
 	},
 	ClientIP: eidlogin.ForwardedClientIP(1), // nginx/LB нэг hop-ийн ард; proxy-гүй бол eidlogin.RemoteAddrIP
 	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
-	// RateLimit: …              // "start:<ip>", "push:<idCode>"; анхдагч зөвхөн push 3/мин нэг дугаарт
+	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // анхдагчтай нэгтгэгдэнэ (push 3/мин хэвээр)
 })
 if err != nil {
 	log.Fatal(err)
@@ -86,12 +86,13 @@ mux.Handle("/auth/eid/", login)
 Хөтөчид:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.14.1/dist/button.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.1/dist/button.js"></script>
 <eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
 Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ + регистрээр push), утсан дээр eID апп шууд нээгдэнэ. Амжилттай бол
-`eid-login-success` үйл явдал ба `redirect` руу шилжилт.
+`eid-login-success` үйл явдал ба `redirect` руу шилжилт. Өнгө: `--eid-*` (хуудасны аль ч түвшинд, light ба dark хоёуланд),
+`--eid-<нэр>-dark` (зөвхөн dark-д давуу) — бүрэн жагсаалт TS SDK-ийн README §1a.
 
 **Аюулгүй байдал.**
 
@@ -108,8 +109,27 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
 
 **Клиент IP** (`start:<ip>` хязгаар) — `Config.ClientIP`. Итгэмжит reverse proxy-ийн ард `eidlogin.ForwardedClientIP(n)`:
 `X-Forwarded-For`-ийн **баруунаас n** дахь утга (n = таны proxy-ийн тоо), XFF байхгүй бол `X-Real-IP`, hop дутвал `""`.
-Proxy-гүй бол `eidlogin.RemoteAddrIP`. nil бол IP-ээр хязгаарлахгүй (`New` нэг удаа Warn бичнэ). Анхдагч `RateLimit` зөвхөн
-`push:`-ийг хязгаарладаг — `start:<ip>`-ийг өөрийн `RateLimit`-ээр. TS SDK-ийн `trustProxy` / `getClientIp`-тэй ижил дүрэм.
+Proxy-гүй бол `eidlogin.RemoteAddrIP`. nil бол IP-ээр хязгаарлахгүй (`New` нэг удаа Warn бичнэ). TS SDK-ийн
+`trustProxy` / `getClientIp`-тэй ижил дүрэм.
+
+**Хязгаарлалт.** Түлхүүр: `start:<ip>` (ClientIP өгсөн бол), `push:<idCode>`; татгалзвал 429 + `Retry-After: 60`.
+Анхдагч `eidlogin.DefaultRateLimit()` = `{"push": {Max: 3, Window: time.Minute}}` (нэг дугаарт минутад 3 мэдэгдэл, MFA
+fatigue); `start`-ийг анхдагчаар хязгаарладаггүй.
+
+- `Config.RateLimits map[string]RateRule` — анхдагчтай **нэгтгэгдэнэ**: өгсөн төрөл (`"start"` | `"push"`) анхдагчийг
+  дарна, өгөөгүй нь анхдагчаараа. `RateRule{Max, Window}` — процессын санах ойн гулсах цонх; `RateRule{Func: …}` — өөрийн
+  (Redis г.м.); `RateRule{}` — тухайн төрлийг хязгаарлахгүй. Өөр түлхүүр → `New` алдаа.
+- `Config.RateLimit func(ctx, key) bool` — бүх түлхүүрт, анхдагч хязгаар **дээр нэмэгдэнэ** (хоёулаа зөвшөөрөх ёстой).
+  Анхдагчийг сулруулах/солих бол `RateLimits`-ээр тухайн төрлийг өг.
+
+```go
+lim := eidlogin.DefaultRateLimit()                                  // илэрхий бичих бол
+lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push 3/мин хэвээр
+lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // олон instance: push-ийг Redis-ээр солино
+cfg.RateLimits = lim
+```
+
+TS SDK-ийн `rateLimit` (`{ start?, push? }` | функц, `defaultRateLimit`) — ижил утга.
 
 **Redis store** (SDK нэмэлт хамааралгүй — жишээ нь `github.com/redis/go-redis/v9`):
 
