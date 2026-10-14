@@ -271,6 +271,10 @@ if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
 давтана: prepare 429 `PDF_PREPARE_BUSY`, 503 `LTV_UNAVAILABLE` / `TSA_UNAVAILABLE`; document 503 `DOCUMENT_PENDING`,
 `TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`. `Header` — хариуны бүх header.
 
+`PDF.Document` санах ойд `Config.PDFMaxBytes` (анхдагч `eid.DefaultPDFMaxBytes` = 64 MiB) хүртэл уншина; хэтэрвэл
+`*eid.ResponseTooLargeError`. JSON хариу 4 MiB-ээс хэтэрвэл мөн `*eid.ResponseTooLargeError` (таслахгүй).
+`GetRepresentations`-ийн `Raw` — серверийн түүхий JSON.
+
 ### 3.5. Session-ий person блок
 
 ```go
@@ -304,7 +308,17 @@ if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Li
 ch, err := c.Token.AuthChallenge(ctx)
 digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
 who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
+
+// токеноор PDF (PAdES, SIGN эрх) — session/утасгүй; байгууллагын токенд OnBehalfOf = тухайн байгууллага
+p, err := c.PDF.TokenPrepare(ctx, eid.PDFTokenPrepareInput{PDF: pdfBytes, FileName: "Гэрээ.pdf",
+	SignerEtsi: etsi, Certificate: signCertDER})
+var rs []byte // токен (PKCS#11): CKM_ECDSA(p.HashToSign) → түүхий r||s, 64 байт — p.ExpiresAt хүртэл
+blk, err := c.PDF.TokenFinalize(ctx, p.SigningID, rs) // READY блок; 503 DOCUMENT_PENDING → ижил rs-ийг дахин
+signed, err := c.PDF.TokenDocument(ctx, p.SigningID)
+if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
 ```
+
+`/token/auth/*`, `/pdf/token/*` нь CA-д байгаа ч `/.well-known/eid`-д хараахан жагсаагдаагүй (гэрээний тест WARN).
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -313,9 +327,13 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 
 1. `State == COMPLETE && EndResult == OK` (эс бөгөөс `*SessionFailedError`).
 2. Иргэний гэрчилгээг **trust anchor (Mongolian National Root CA, `eid.NationalRootCAPEM`)** хүртэл гинжээр
-   (Root 01 → National Issuing CA 02 → Gerege Issuing CA 03 → eID Mongolia Issuing CA 04 → иргэн): issuer нэр,
-   AKI/SKI, CA basicConstraints, гарын үсэг, хугацаа. Trust anchor тохируулаагүй бол **fail-closed**
-   (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй.
+   (Root 01 → National Issuing CA 02 → Gerege Issuing CA 03 → eID Mongolia Issuing CA 04 → иргэн) — Go-ийн
+   `x509.Certificate.Verify` (RFC 5280): CA basicConstraints + **pathLenConstraint** (04 нь `pathlen:0`), CA-ийн
+   keyUsage keyCertSign, **name constraints**, **EKU** (auth → clientAuth, sign → emailProtection — CA-ийн профайл;
+   завсрын CA-д EKU байвал түүнд багтах), үл таних **critical extension** → татгалзана, гарын үсэг, хугацаа (гинжийг
+   leaf-ийн хүчинтэй хугацаанд, `ClockSkew`-ийн хүрээнд). Trust anchor тохируулаагүй бол **fail-closed**
+   (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй. `IntermediatesPEM`-д 02, 03, 04-ийг бүгдийг өгнө
+   (хариунд гинж ирдэггүй). certificatePolicies-ийг шалгахгүй (CA-ийн гинжинд policyConstraints алга).
 3. Гэрчилгээ хүчинтэй хугацаанд (`ClockSkew`) + шаардсан түвшин (`RequiredLevel`, анхдагч `QUALIFIED`; `QSCD` хангана).
 4. Гарын үсэг (`rsassa-pss` / `shaNNNWithRSAEncryption` / `ecdsa-with-SHA256`):
    - **auth** → ACSP_V2 payload (`smart-id|ACSP_V2|serverRandom|rpChallenge|userChallenge|B64(rpName)|B64(brokeredRpName)|B64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType`),
@@ -343,6 +361,7 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 | `*eid.AuthenticationError` | 401 — API secret буруу/байхгүй; CA-ийн JSON бол `.Code`/`.Message`, proxy-ийнх бол хоосон (`.Body`, `.Header`) |
 | `*eid.ForbiddenError` | 403 — IP allowlist / mTLS / RP-ийн эрх; `OnBehalfOf` татгалзвал `.Code` |
 | `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code`, `.RetryAfter`, `.Header`, `.Retryable()` — ж: 404 `ORG_NOT_FOUND`) |
+| `*eid.ResponseTooLargeError` | хариу SDK-ийн хязгаараас их (JSON 4 MiB, PDF `Config.PDFMaxBytes`) — `.Op`, `.Limit` |
 | `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.); `.Op`-д иргэний дугаар `…` болно |
 | `*eid.SessionFailedError` | endResult ≠ OK (`TIMEOUT`, `USER_REFUSED…`) — `.EndResult` |
 | `*eid.ValidationError` | гинж / гарын үсэг / түвшин / урсгалын шалгалт унасан |
@@ -394,9 +413,12 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 - `eid.BuildDeviceLink` — device link v3 (QR / Web2App / App2App) with HMAC `authCode`, byte-identical to the server
   golden vectors. Prefer **Web2App** for same-device sign-in; the legacy `/dl?sessionId&vc` link is gone.
 - `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
-  (`eid.NationalRootCAPEM`), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
+  (`eid.NationalRootCAPEM`) via `x509.Certificate.Verify` (pathLen, keyCertSign, name constraints, EKU nesting —
+  auth → clientAuth, sign → emailProtection — unknown critical extensions rejected), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
   guard; `CheckRevocation` with your OCSP/CRL hook. Never trust `endResult == OK` alone.
-- `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`. Transient CA errors
+- `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`. `Config.PDFMaxBytes` caps the
+  in-memory PDF (default 64 MiB), JSON responses over 4 MiB fail with `*eid.ResponseTooLargeError` (never truncated).
+  USB-token PAdES: `PDF.TokenPrepare` → token signs `HashToSign` (raw r||s) → `PDF.TokenFinalize` → `PDF.TokenDocument`. Transient CA errors
   (`PDF_PREPARE_BUSY`, `DOCUMENT_PENDING`, `TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`) → `APIError.Retryable()` + `RetryAfter`.
 - `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
   certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).

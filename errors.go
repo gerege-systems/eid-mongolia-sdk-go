@@ -148,6 +148,17 @@ func (e *NetworkError) Error() string {
 
 func (e *NetworkError) Unwrap() error { return e.Err }
 
+// ResponseTooLargeError — хариуны бие SDK-ийн хязгаараас (JSON 4 MiB, PDF Config.PDFMaxBytes) хэтэрсэн; бие
+// таслагдаж задлагдахгүй. Op — method + таних тэмдэггүй зам.
+type ResponseTooLargeError struct {
+	Op    string
+	Limit int64
+}
+
+func (e *ResponseTooLargeError) Error() string {
+	return fmt.Sprintf("eid: %s: хариу %d байтаас их", e.Op, e.Limit)
+}
+
 // SessionFailedError — session амжилтгүй дууссан (endResult ≠ OK): TIMEOUT, USER_REFUSED*, DOCUMENT_UNUSABLE г.м.
 // EndResult-оор салгаж RP UI-д тохирох мессеж харуулна.
 type SessionFailedError struct {

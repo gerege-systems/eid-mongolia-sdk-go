@@ -75,10 +75,11 @@ type PDFDeviceLink struct {
 // PAdES-BASELINE-LT гарын үсэгтэй PDF буцаана. Урсгал: Prepare → Session.WaitForResult (pdf.DocumentStatus=READY)
 // → Document → DocumentVerified.
 type PDFService struct {
-	h       *httpDoer
-	creds   Credentials
-	level   CertificateLevel
-	timeout time.Duration
+	h        *httpDoer
+	creds    Credentials
+	level    CertificateLevel
+	timeout  time.Duration
+	maxBytes int64
 }
 
 type pdfPrepareRequest struct {
@@ -117,17 +118,9 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 	if err != nil {
 		return nil, fmt.Errorf("eid: pdf request encode: %w", err)
 	}
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	if err := writePart(mw, `form-data; name="request"`, "application/json", reqJSON); err != nil {
+	body, ctype, err := pdfMultipart(reqJSON, in.FileName, in.PDF)
+	if err != nil {
 		return nil, err
-	}
-	disp := fmt.Sprintf(`form-data; name="pdf"; filename="%s"`, quoteEscaper.Replace(in.FileName))
-	if err := writePart(mw, disp, "application/pdf", in.PDF); err != nil {
-		return nil, err
-	}
-	if err := mw.Close(); err != nil {
-		return nil, fmt.Errorf("eid: multipart: %w", err)
 	}
 
 	var r struct {
@@ -137,7 +130,7 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 		Digest     string         `json:"digest"`
 		DeviceLink *PDFDeviceLink `json:"deviceLink"`
 	}
-	if err := p.h.doJSON(ctx, routePDFPrepare.method, routePDFPrepare.expand(), &body, mw.FormDataContentType(), p.timeout, &r); err != nil {
+	if err := p.h.doJSON(ctx, routePDFPrepare.method, routePDFPrepare.expand(), body, ctype, p.timeout, &r); err != nil {
 		return nil, err
 	}
 	s := &PDFPrepareSession{
@@ -161,8 +154,9 @@ func (p *PDFService) Prepare(ctx context.Context, in PDFPrepareInput) (*PDFPrepa
 // DocumentVerified-аар session-ий pdf.OutSHA256-тай заавал тулга. Эрх хасагдсан бол
 // ForbiddenError.Code = CodeRepresentationRevoked. Баримт бэлэн болоогүй бол *APIError (503) Code =
 // CodeDocumentPending / CodeTSAUnavailable / CodeLTVUnavailable, RetryAfter-ийн дараа дахин татна (Retryable).
+// Санах ойд Config.PDFMaxBytes (анхдагч 64 MiB) хүртэл уншина — хэтэрвэл *ResponseTooLargeError.
 func (p *PDFService) Document(ctx context.Context, sessionID string) ([]byte, error) {
-	return p.h.getBytes(ctx, routePDFDocument.expand(sessionID), p.timeout)
+	return p.h.getBytes(ctx, routePDFDocument.expand(sessionID), p.timeout, p.maxBytes)
 }
 
 // DocumentVerified — татсан PDF-ийн SHA-256 нь session-ий pdf.OutSHA256-тай таарч, баримт READY бол true.
@@ -177,6 +171,23 @@ func DocumentVerified(signedPDF []byte, pdf *PDFSessionBlock) bool {
 	}
 	got := sha256.Sum256(signedPDF)
 	return subtle.ConstantTimeCompare(got[:], want) == 1
+}
+
+// pdfMultipart — /pdf/sign/prepare ба /pdf/token/prepare-ийн multipart бие: `request` (JSON) + `pdf`.
+func pdfMultipart(reqJSON []byte, fileName string, pdf []byte) (*bytes.Buffer, string, error) {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	if err := writePart(mw, `form-data; name="request"`, "application/json", reqJSON); err != nil {
+		return nil, "", err
+	}
+	disp := fmt.Sprintf(`form-data; name="pdf"; filename="%s"`, quoteEscaper.Replace(fileName))
+	if err := writePart(mw, disp, "application/pdf", pdf); err != nil {
+		return nil, "", err
+	}
+	if err := mw.Close(); err != nil {
+		return nil, "", fmt.Errorf("eid: multipart: %w", err)
+	}
+	return &body, mw.FormDataContentType(), nil
 }
 
 var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"", "\r", "", "\n", "")

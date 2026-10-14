@@ -284,6 +284,8 @@ type Representation struct {
 type RepresentationsResponse struct {
 	PersonEtsi      string           `json:"personEtsi"`
 	Representations []Representation `json:"representations"`
+	// Raw — серверийн түүхий JSON (SDK задлаагүй шинэ талбарт).
+	Raw json.RawMessage `json:"-"`
 }
 
 // Credentials — RP-ийн таних тэмдэг + API secret.

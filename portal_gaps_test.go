@@ -454,9 +454,9 @@ func TestValidatorKeyUsage(t *testing.T) {
 	r, acsp = signedAuth(t, "QR", authOpts{leaf: sign})
 	_, err := strict.ValidateAuth(r, acsp, ValidateAuthOptions{})
 	wantInvalid(t, err, "clientAuth")
-	if _, err := trusted(t).ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil { // анхдагч — шалгахгүй
-		t.Fatal(err)
-	}
+	// CheckKeyUsage=false ч EKU-г гинжийн шалгалт (x509.Verify, auth → clientAuth) үргэлж шалгана (0.1.3-аас).
+	_, err = trusted(t).ValidateAuth(r, acsp, ValidateAuthOptions{})
+	wantInvalid(t, err, "ExtKeyUsage")
 
 	digest := sha256.Sum256([]byte("doc"))
 	mkSign := func(leaf *testCA) *SessionResult {

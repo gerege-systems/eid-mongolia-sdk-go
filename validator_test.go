@@ -546,9 +546,17 @@ func TestChain(t *testing.T) {
 	r3.CertificateDERB64 = base64.StdEncoding.EncodeToString(expired.cert.Raw)
 	_, err = trusted(t).ValidateAuth(&r3, a, ValidateAuthOptions{})
 	wantInvalid(t, err, "хугацаа дууссан")
-	// clock skew дотор зөвшөөрнө (гарын үсэг таарахгүй ч хугацааны шалгалтыг давна)
-	vs, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, ClockSkew: 25 * time.Hour})
-	_, err = vs.ValidateAuth(&r3, a, ValidateAuthOptions{})
+	// clock skew дотор зөвшөөрнө (гарын үсэг таарахгүй ч хугацаа ба гинжийн шалгалтыг давна): гинжийг leaf-ийн
+	// хүчинтэй хугацаанд хавчсан мөчөөр шалгана.
+	jT := leafTmpl()
+	jT.NotBefore, jT.NotAfter = time.Now().Add(-50*time.Minute), time.Now().Add(-30*time.Minute)
+	justExpired := mkCert(t, jT, p.inter, &xk.PublicKey, xk)
+	r4 := *r
+	r4.CertificateDERB64 = base64.StdEncoding.EncodeToString(justExpired.cert.Raw)
+	_, err = trusted(t).ValidateAuth(&r4, a, ValidateAuthOptions{})
+	wantInvalid(t, err, "хугацаа дууссан")
+	vs, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, ClockSkew: time.Hour})
+	_, err = vs.ValidateAuth(&r4, a, ValidateAuthOptions{})
 	wantInvalid(t, err, "ACSP_V2 payload")
 	if _, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{"not pem"}}); err == nil {
 		t.Fatal("буруу PEM зөвшөөрөгдөв")

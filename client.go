@@ -23,9 +23,11 @@ const (
 	// өмнөх гарын үсэг + LTV өгөгдөл шалгаад push эхлүүлдэг; баримт татахад угсралтыг ≤ 30с хүлээдэг
 	// (PADES_SIGNING §3.4). 80с нь хоёуланд хүрэлцэнэ, CA-ийн nginx proxy_read_timeout-оос бага.
 	DefaultPDFTimeout = 80 * time.Second
-	maxErrorBody      = 64 << 10
-	maxJSONBody       = 4 << 20
-	maxPDFBody        = 64 << 20
+	// DefaultPDFMaxBytes — гарын үсэгтэй PDF татахад санах ойд уншиж болох дээд хэмжээ (Config.PDFMaxBytes).
+	DefaultPDFMaxBytes = 64 << 20
+	maxErrorBody       = 64 << 10
+	// maxJSONBody — JSON хариуны дээд хэмжээ; хэтэрвэл *ResponseTooLargeError (таслахгүй).
+	maxJSONBody = 4 << 20
 )
 
 // Хуучин (0.2.x TS) хэлбэр: ca. хост руу /v3 залгадаг байсан — чимээгүй 404-ийн оронд тодорхой алдаа.
@@ -43,6 +45,9 @@ type Config struct {
 	Timeout time.Duration
 	// PDFTimeout — PAdES prepare / баримт татах дуудлагын хугацаа. 0 = DefaultPDFTimeout (80s).
 	PDFTimeout time.Duration
+	// PDFMaxBytes — PDF.Document / PDF.TokenDocument-ийн санах ойд унших дээд хэмжээ. 0 = DefaultPDFMaxBytes (64 MiB).
+	// Хэтэрвэл *ResponseTooLargeError.
+	PDFMaxBytes int64
 	// HTTPClient — mTLS client cert (tls.Config.Certificates) эсвэл proxy тохируулахад. nil = шинэ http.Client.
 	HTTPClient *http.Client
 	// Trust — validator-ийн итгэлийн тохиргоо. Production-д TrustAnchorsPEM ЗААВАЛ.
@@ -101,11 +106,15 @@ func NewClient(cfg Config) (*Client, error) {
 	if pt <= 0 {
 		pt = DefaultPDFTimeout
 	}
+	pmax := cfg.PDFMaxBytes
+	if pmax <= 0 {
+		pmax = DefaultPDFMaxBytes
+	}
 	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc}
 	return &Client{
 		Auth:         &AuthService{h: h, creds: cfg.Credentials, level: level},
 		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level},
-		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level, timeout: pt},
+		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level, timeout: pt, maxBytes: pmax},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
 		Token:        &TokenService{h: h, creds: cfg.Credentials},
@@ -142,11 +151,15 @@ type httpDoer struct {
 }
 
 func (h *httpDoer) postJSON(ctx context.Context, path string, body, out any) error {
+	return h.postJSONTimeout(ctx, path, body, 0, out)
+}
+
+func (h *httpDoer) postJSONTimeout(ctx context.Context, path string, body any, timeout time.Duration, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("eid: request encode: %w", err)
 	}
-	return h.doJSON(ctx, http.MethodPost, path, bytes.NewReader(b), "application/json", 0, out)
+	return h.doJSON(ctx, http.MethodPost, path, bytes.NewReader(b), "application/json", timeout, out)
 }
 
 func (h *httpDoer) getJSON(ctx context.Context, path string, timeout time.Duration, out any) error {
@@ -161,9 +174,9 @@ func (h *httpDoer) doJSON(ctx context.Context, method, path string, body io.Read
 		return err
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(res.Body, maxJSONBody))
+	raw, err := readLimited(res, maxJSONBody, method, path)
 	if err != nil {
-		return netErr(method, path, err)
+		return err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
@@ -182,7 +195,7 @@ func decodeJSON(raw []byte, path string, out any) error {
 	return nil
 }
 
-func (h *httpDoer) getBytes(ctx context.Context, path string, timeout time.Duration) ([]byte, error) {
+func (h *httpDoer) getBytes(ctx context.Context, path string, timeout time.Duration, maxBytes int64) ([]byte, error) {
 	ctx, cancel := h.withTimeout(ctx, timeout)
 	defer cancel()
 	res, err := h.send(ctx, http.MethodGet, path, nil, "")
@@ -190,9 +203,21 @@ func (h *httpDoer) getBytes(ctx context.Context, path string, timeout time.Durat
 		return nil, err
 	}
 	defer res.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(res.Body, maxPDFBody))
+	return readLimited(res, maxBytes, http.MethodGet, path)
+}
+
+// readLimited — хариуны биеийг limit хүртэл уншина; Content-Length эсвэл бодит урт limit-ээс хэтэрвэл
+// *ResponseTooLargeError (таслагдсан биеийг буцаахгүй).
+func readLimited(res *http.Response, limit int64, method, path string) ([]byte, error) {
+	if res.ContentLength > limit {
+		return nil, &ResponseTooLargeError{Op: method + " " + maskPath(path), Limit: limit}
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil {
-		return nil, netErr(http.MethodGet, path, err)
+		return nil, netErr(method, path, err)
+	}
+	if int64(len(b)) > limit {
+		return nil, &ResponseTooLargeError{Op: method + " " + maskPath(path), Limit: limit}
 	}
 	return b, nil
 }

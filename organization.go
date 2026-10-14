@@ -14,8 +14,14 @@ type OrganizationService struct {
 // session эхлэхэд дахин шалгана.
 func (o *OrganizationService) GetRepresentations(ctx context.Context, personEtsi string) (*RepresentationsResponse, error) {
 	var r RepresentationsResponse
-	if err := o.h.getJSON(ctx, routeOrgRepresentations.expand(personEtsi), 0, &r); err != nil {
+	path := routeOrgRepresentations.expand(personEtsi)
+	if err := o.h.getJSON(ctx, path, 0, &r.Raw); err != nil {
 		return nil, err
+	}
+	if len(r.Raw) > 0 {
+		if err := decodeJSON(r.Raw, path, &r); err != nil {
+			return nil, err
+		}
 	}
 	if r.PersonEtsi == "" {
 		r.PersonEtsi = personEtsi
