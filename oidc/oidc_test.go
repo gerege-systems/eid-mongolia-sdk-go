@@ -70,6 +70,7 @@ type mock struct {
 	tokenReqs []*http.Request
 	tokenBody []string
 	token     func() (int, string)
+	aliases   map[string]string // mtls_endpoint_aliases (nil = discovery-д алга)
 }
 
 func newMock(t *testing.T) *mock {
@@ -85,12 +86,20 @@ func newMock(t *testing.T) *mock {
 			if iss == "" {
 				iss = base
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": iss, "authorization_endpoint": base + "/oauth2/authorize",
-				"token_endpoint": base + "/oauth2/token", "jwks_uri": base + "/oauth2/jwks"})
+			doc := map[string]any{"issuer": iss, "authorization_endpoint": base + "/oauth2/authorize",
+				"token_endpoint": base + "/oauth2/token", "jwks_uri": base + "/oauth2/jwks"}
+			if m.aliases != nil {
+				al := map[string]string{}
+				for k, v := range m.aliases {
+					al[k] = strings.ReplaceAll(v, "{base}", base)
+				}
+				doc["mtls_endpoint_aliases"] = al
+			}
+			_ = json.NewEncoder(w).Encode(doc)
 		case "/oauth2/jwks":
 			m.jwksN++
 			_ = json.NewEncoder(w).Encode(map[string]any{"keys": m.keys})
-		case "/oauth2/token":
+		case "/oauth2/token", "/mtls/oauth2/token":
 			b, _ := io.ReadAll(r.Body)
 			m.tokenReqs = append(m.tokenReqs, r)
 			m.tokenBody = append(m.tokenBody, string(b))
@@ -357,4 +366,59 @@ func TestNewClient_Config(t *testing.T) {
 	if c.Issuer() != Issuer {
 		t.Fatal(c.Issuer())
 	}
+}
+
+func TestMTLSEndpointAliases(t *testing.T) {
+	k := newKey("k1")
+	run := func(t *testing.T, flag bool, aliases map[string]string) (*mock, error) {
+		m := newMock(t)
+		m.keys = []map[string]string{k.jwk()}
+		m.aliases = aliases
+		m.token = func() (int, string) {
+			b, _ := json.Marshal(map[string]any{"id_token": jwt(k, m.claims(nil), ""), "token_type": "Bearer", "expires_in": 300})
+			return 200, string(b)
+		}
+		c, err := NewClient(Config{ClientID: clientID, ClientSecret: secret, RedirectURI: redirect, Issuer: m.srv.URL,
+			HTTPClient: m.srv.Client(), UseMTLSEndpointAliases: flag})
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, _ := url.ParseQuery("code=abc&state=s-1")
+		_, err = c.HandleCallback(context.Background(), q, CallbackChecks{State: "s-1", Nonce: "n-123", CodeVerifier: strings.Repeat("v", 43)})
+		return m, err
+	}
+	paths := func(m *mock) []string {
+		var p []string
+		for _, r := range m.tokenReqs {
+			p = append(p, r.URL.Path)
+		}
+		return p
+	}
+	alias := map[string]string{"token_endpoint": "{base}/mtls/oauth2/token"}
+
+	t.Run("flag on → alias", func(t *testing.T) {
+		m, err := run(t, true, alias)
+		if err != nil || strings.Join(paths(m), ",") != "/mtls/oauth2/token" {
+			t.Fatal(err, paths(m))
+		}
+	})
+	t.Run("flag off → token_endpoint", func(t *testing.T) {
+		m, err := run(t, false, alias)
+		if err != nil || strings.Join(paths(m), ",") != "/oauth2/token" {
+			t.Fatal(err, paths(m))
+		}
+	})
+	t.Run("alias алга → token_endpoint", func(t *testing.T) {
+		m, err := run(t, true, nil)
+		if err != nil || strings.Join(paths(m), ",") != "/oauth2/token" {
+			t.Fatal(err, paths(m))
+		}
+	})
+	t.Run("http alias → discovery_failed", func(t *testing.T) {
+		m, err := run(t, true, map[string]string{"token_endpoint": "http://rp.example/oauth2/token"})
+		wantCode(t, err, ErrDiscoveryFailed)
+		if len(m.tokenReqs) != 0 {
+			t.Fatal("token хүсэлт явсан")
+		}
+	})
 }
