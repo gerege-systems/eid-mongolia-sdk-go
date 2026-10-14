@@ -348,6 +348,12 @@ func TestRegistrationAndPSS(t *testing.T) {
 		len(reg2.PriorCMSSHA256) != 1 || reg2.PriorCMSSHA256[0] != sha256Hex(done.CMS) || len(done2.PriorRevisionSHA256) != 1 {
 		t.Fatalf("%v %+v", err, reg2)
 	}
+	// Өмнөх гарын үсгийн revision = тэр гарын үсгийн SigRevSHA256 (CA горим A-ийн sig_rev_sha256-тай ижил тодорхойлолт:
+	// doc[0 : ByteRange[2]+ByteRange[3]]); Registration хосыг PriorSignatures-д бөглөнө (CA руу илгээхгүй).
+	if done2.PriorRevisionSHA256[0] != done.SigRevSHA256 || len(reg2.PriorSignatures) != 1 ||
+		reg2.PriorSignatures[0] != (eid.PDFPriorSignature{CMSSHA256: sha256Hex(done.CMS), RevisionSHA256: done.SigRevSHA256}) {
+		t.Fatalf("%+v %+v", done2.PriorRevisionSHA256, reg2.PriorSignatures)
+	}
 	// Хуудасгүй эхний гарын үсэг CA-д бүртгэгдэхгүй.
 	if _, err := Registration(&Completed{RevIndex: 1, FileName: "a.pdf"}, RegistrationOptions{}); ErrorCode(err) != CodeRequestInvalid {
 		t.Fatal(err)
