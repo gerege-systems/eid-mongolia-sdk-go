@@ -2,27 +2,22 @@ package core
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/digitorus/pdf"
-	"github.com/go-pdf/fpdf"
+
 	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
-// linkPage — fpdf-ийн нэг хуудас (UTF-8 бус font, link annotation-тэй — fpdf /Annots-д шууд толь бичдэг).
-func linkPage(t *testing.T) []byte {
-	t.Helper()
-	d := fpdf.New("P", "mm", "A4", "")
-	d.AddPage()
-	d.SetFont("Helvetica", "", 12)
-	d.CellFormat(80, 10, "verify", "", 1, "L", false, 0, "https://ca.eidmongolia.mn/verify/x")
-	var b bytes.Buffer
-	if err := d.Output(&b); err != nil {
-		t.Fatal(err)
-	}
-	return b.Bytes()
+// testPageData — PAGE_SPEC-ийн жишээ өгөгдөл.
+func testPageData() PageData {
+	return PageData{Brand: "eID Mongolia", FileName: "Гэрээ Өө Үү.pdf", DocumentHash: strings.Repeat("ab", 32), FileSize: 12345,
+		DocID: "6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f", VerifyURL: "https://ca.eidmongolia.mn/verify/6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f",
+		TrustURL: "https://eidmongolia.mn/trust", CAName: "eID Mongolia Issuing CA", TSAName: "eID Mongolia TSA (tsa.timeserver.mn)",
+		Provider: "ca.eidmongolia.mn"}
 }
 
 // xrefStreamPDF — base-ийг pdfcpu-ээр xref stream + ObjStm хэлбэрт хувиргана.
@@ -42,7 +37,7 @@ func xrefStreamPDF(t *testing.T, in []byte) []byte {
 func TestAppendPageIncremental(t *testing.T) {
 	for name, base := range map[string][]byte{"classic": basePDF(t, true), "xref stream": xrefStreamPDF(t, basePDF(t, true))} {
 		t.Run(name, func(t *testing.T) {
-			out, err := AppendPage(base, linkPage(t))
+			out, err := AppendVerifyPage(base, testPageData())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +60,7 @@ func TestAppendPageIncremental(t *testing.T) {
 				t.Fatal("шинэ хуудасны /Parent /MediaBox /Resources")
 			}
 			annots := p2.Key("Annots")
-			if annots.Len() != 1 || annots.Index(0).GetPtr() == p2.GetPtr() || annots.Index(0).Key("Subtype").Name() != "Link" {
+			if annots.Len() != 2 || annots.Index(0).GetPtr() == p2.GetPtr() || annots.Index(0).Key("Subtype").Name() != "Link" {
 				t.Fatal("link annotation шууд бус объект биш")
 			}
 

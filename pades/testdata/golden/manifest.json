@@ -12,11 +12,11 @@
     "POST http://ocsp.pki.test/03 368c2ac3ced09cd6": "http/04-b1017f0fc873.der",
     "POST http://ocsp.pki.test/04 3d432940c5514c0a": "http/05-f4fae8087a68.der",
     "POST http://ocsp.pki.test/04 5167f83c7d8126d9": "http/06-b4ccb5877c32.der",
-    "POST http://tsa.pki.test/ 0d8e7fec0c140a4f": "http/07-ff978f6fd3df.der",
+    "POST http://tsa.pki.test/ 0c318ab80fe4cd70": "http/07-1835a7c85fca.der",
     "POST http://tsa.pki.test/ 466c567599f24e6e": "http/08-1369ee615430.der",
-    "POST http://tsa.pki.test/ acece705e5e495cf": "http/09-02607395da85.der",
-    "POST http://tsa.pki.test/ c97804530ed2169a": "http/10-9530370b925b.der",
-    "POST http://tsa.pki.test/ f8f4a6fc00e36cf9": "http/11-a37cd73a7c96.der"
+    "POST http://tsa.pki.test/ 8d8ae08320232b54": "http/09-dc2283426b81.der",
+    "POST http://tsa.pki.test/ a3d6ee222f0a0665": "http/10-cf48225317fc.der",
+    "POST http://tsa.pki.test/ cba6c7c8d5648922": "http/11-1305c0604348.der"
   },
   "cases": [
     {
@@ -33,21 +33,21 @@
       "expect": {
         "inputSha256": "5f8afb701651cddfdf1bb0dceb9fa242eec3fc795f576baa6612fe181cbdd563",
         "docId": "6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f",
-        "digest": "f80f99827db0ecfd9374a56aa5bd1ffc3f54f829314e79239780526a5d2370d9",
-        "dtbs": "ede79a120baa6be60619d4d448acf54aeecdf2280c6ecc2c075109241beb4f32",
-        "preparedSha256": "e62acc95ba2eb1c812dca593b0c8b488657834311d9af5f6e37e1113c5cb1c79",
+        "digest": "47b4f254b9d7f9ac9cf3738cf7714c3c1ae4132bba544cd4233e1116a54b438e",
+        "dtbs": "2ee21e8694552637666c7db63db958bc255dec3788a74a6432c34d81e211895a",
+        "preparedSha256": "cab61b154a04f34ce1ff2acf2f02a49d4626f9709b4f065db1a3620e494e178b",
         "byteRange": [
           0,
-          40473,
-          97819,
-          708
+          126528,
+          183874,
+          710
         ],
-        "outSha256": "1a061762857f2fb7177c20e3c826069ba42dfdc909e0ac9ee79d336d8db5ffd6",
+        "outSha256": "889c3293b233e81562201932c15246f83703f4f32f0116fe7e8af1079be4b496",
         "revIndex": 1,
         "hasPage": true,
-        "pageSha256": "9f8d12393019bf7a7fac5789f6efa54a4a43cdccf3a6587e0c1aec37fdbdc69d",
-        "sigRevSha256": "a4f9c89e59b1927f52d72028f8dd1da1d04881fb4a9a98d6c59b09b95d658627",
-        "cmsSha256": "549b84d0392066a9fc89ed5838ac3572fe89e2535ccb34777b55aedb0bfc8476"
+        "pageSha256": "646b183d4375107f3c00781f0af38e95d9d6f8859e7e7088d26c4f0486fb4f20",
+        "sigRevSha256": "47c1cc7e191cd95eafbed726bd17cf740cf27cf5032a6ddc9c2ff620b9c841cd",
+        "cmsSha256": "791898964ffc6d02de284ee8a6167c48171261cc1a2217347d7d5f4b26d864e3"
       }
     },
     {
@@ -64,21 +64,21 @@
       "expect": {
         "inputSha256": "03f7730295cb41d0df549209b2da246f4190b3a776efba0f48817023dae4a789",
         "docId": "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b",
-        "digest": "75f3ba43c21fcc31c0025ec5fe8540e9474df49ab4d0984ef8c23110ccbc27f0",
-        "dtbs": "2fd67cb6b60bcd73f94194c1011161b1356e5175f0001e9f15eb5625490d3398",
-        "preparedSha256": "7d79336f9f94a49c45b5302cce36d6266b54ab62e13c9bb70e49a78b6fe0224f",
+        "digest": "cb325849480698716a5ff6564da55673cb426bc3245893c3ed7feeb16325a52a",
+        "dtbs": "a2fb6eb9ccb3d7f5dbc338db9dcab39295da82386425226fb1094e00428032db",
+        "preparedSha256": "9b8b153bd0a098c4acf97bb78ad40d7c669b847f52aa66fc80098aa6a5a47fce",
         "byteRange": [
           0,
-          38821,
-          96167,
-          706
+          125381,
+          182727,
+          708
         ],
-        "outSha256": "b18618b78567385b9cd2caf4261a8c5143c9ea491a74e690b52574505d6165d5",
+        "outSha256": "5704243d7c7c54559bd0cc081f534fb632f872893258bbc258cf3d8eb05c836e",
         "revIndex": 1,
         "hasPage": true,
-        "pageSha256": "5da42387d563fd23f39fc036090b7e456c79c09d008eb7bba94e90ef127b0d93",
-        "sigRevSha256": "5da8176ce0e476a4346a3bc51a07679152b6c8b55e789805f900a51389306016",
-        "cmsSha256": "a483070e0ba4e1bb47147767b3ba2227838640c9fe664dc8cffe98035344eb47"
+        "pageSha256": "26fdf9cc4fd40ba4589340e5d0d65a6d201b450d34f268b4b8a94b3df46bf85b",
+        "sigRevSha256": "e8576ff31ec26015365b07f5d3c2ac5cd608e59874e254b5df879703feec377d",
+        "cmsSha256": "e2f73d9afdaa081e0faef47c5cf7f82a4b2a91b72c2270e21e39a87f369bcf4c"
       }
     },
     {
@@ -95,21 +95,21 @@
       "expect": {
         "inputSha256": "edb92d4021517a242025dddab44092059ee1c469762e94dde2b5afbb2098f2f2",
         "docId": "2c3d4e5f-6071-4829-9bac-1d2e3f4a5b6c",
-        "digest": "51ce79c15b1bc771f437965d5685ab155b54299b2cd67b67b5674b14a659d74e",
-        "dtbs": "6e2b71878c55597274af6c67e0a85a3763e281ac55c8226f2c9631ab9cf95241",
-        "preparedSha256": "62cf48e7a3b4d53516f64b4c9796aed866d79a14a079ba985a9c63102cf555ce",
+        "digest": "a97e079e2ff919dc1e4e5e4ad48c71d5a3d09a3f5175b80c9cf5d4530e64e72f",
+        "dtbs": "1a5e26c82b7fa92599d461cb6d1390352fd4ab61615e5bff66475a1e03980b6c",
+        "preparedSha256": "b1fd70d699a674ce1f798ccc12ada2b489cc8847c5346136277739ca17652850",
         "byteRange": [
           0,
-          40220,
-          97566,
-          707
+          126968,
+          184314,
+          709
         ],
-        "outSha256": "4f9374cecd613017901e39c8ea195d2b88984cf2c7d1a9f8fb6b34fe322a10b2",
+        "outSha256": "ef2b1706c5b14e1508c8d281abb7a00bc3375a7e163ab9634a88c77b8cab39f7",
         "revIndex": 1,
         "hasPage": true,
-        "pageSha256": "478ee77595a3ad99b7181c8b405a3564907e6d2aa0f6cad84071f08b0da703c1",
-        "sigRevSha256": "4af048633e796a5da7b2b0ca8d07aee03a51ee37bc5ab0876418cee18cca5d38",
-        "cmsSha256": "4bd9f8254db84123fc77037eec119c8242b06b64807e089acb8625c0245ffa11"
+        "pageSha256": "93f7d2b01ad2f3336286b6fc7679196aee02087f414127ddc85a4ce52a5390ab",
+        "sigRevSha256": "b053f773e2283391adfcff98350a635c0e4ec8f9a7baf4d1e29632fc37d85d55",
+        "cmsSha256": "7c0d059232fb12d7a77cb29bee9766044445cdfa06f060c94fba620563542e08"
       }
     },
     {
@@ -132,10 +132,10 @@
           65388,
           682
         ],
-        "outSha256": "50c48dfda4c22caeb86857cadbe7babfc8def68a6e66e95047fccfd9dda16c0b",
+        "outSha256": "58b7834562c61ff01e98585b8984d547991a6672b5a2a86a5f3472885354c2e3",
         "revIndex": 1,
-        "sigRevSha256": "1b1937d7d3ce1d5900ac19c52826edac15d1465ac2bc3d7c5e4cf3a0fc0be183",
-        "cmsSha256": "2d58c6e99b06cb00b54bb6926b1817c7d1bb6a461349a553d86560684ec7acb6"
+        "sigRevSha256": "31fa64c9702c35806643782f1df71506aa8ba5b412a79099c6d18bcefaab171a",
+        "cmsSha256": "3b5e7389236d57ca5895babdf26255cec4c6f9eb31d5ea0947b9ced8b2ac420a"
       }
     },
     {
@@ -150,23 +150,23 @@
         "fileName": "ignored.pdf"
       },
       "expect": {
-        "inputSha256": "1a061762857f2fb7177c20e3c826069ba42dfdc909e0ac9ee79d336d8db5ffd6",
+        "inputSha256": "889c3293b233e81562201932c15246f83703f4f32f0116fe7e8af1079be4b496",
         "docId": "6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f",
-        "digest": "3fbc2f2d761295b7f3d5107604f8a904390bfeda6c4c60c3dd3f3dd0c34d9657",
-        "dtbs": "1a3c8fd3681833a300de60071918e90a8bbe9d87c33bd6cf560f7ac63504b95a",
-        "preparedSha256": "3188154ba413e5af968510cd6f2d37c3c7c97450e33c57f9ac8cae48d6ffd458",
+        "digest": "6660e67c5a7468e5722b238021d4170cdb07ed0b564d5f82dbb74ac0b675e17c",
+        "dtbs": "03c3d6e4c63b5a83d577c8fb8536b328d9925f6fdade999809378e810fef4d4f",
+        "preparedSha256": "c8dac7fd51e1ac7089b6ce04cfb7ff86c083e6f7c27269eebcf2a5170f0addb2",
         "byteRange": [
           0,
-          108092,
-          165438,
+          194150,
+          251496,
           834
         ],
-        "outSha256": "f6653c439a2dab0458d3d6365bf5730c9f949026b55bf6fc43cdd0be673dc569",
+        "outSha256": "0292f5800fb778d52cb59d733e2e78b2e9e8c272c71a2b2282b93016502b41e6",
         "revIndex": 2,
-        "sigRevSha256": "ee2ce96392bc470e20ce9f8d296c1bbe71b57fc968c231d1a12aedf7af9b033a",
-        "cmsSha256": "6be631570a4ba96c9a84ddcf2d8b98bdf4364d8d489fb3cc8b4a5567feb80cba",
+        "sigRevSha256": "7f19e4071907cb688dc1cbcff4212a8ed7d6a97fd9444244edd90913080e555b",
+        "cmsSha256": "652ce62a3444269c4909906c20c030ed8ff5b6e78140517ca583dec137c22148",
         "priorCmsSha256": [
-          "549b84d0392066a9fc89ed5838ac3572fe89e2535ccb34777b55aedb0bfc8476"
+          "791898964ffc6d02de284ee8a6167c48171261cc1a2217347d7d5f4b26d864e3"
         ]
       }
     },

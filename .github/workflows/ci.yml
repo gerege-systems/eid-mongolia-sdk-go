@@ -11,8 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Go 1.27-ийн compress/flate өөр байт өгдөг — golden (CA-тай байт-ижил) Go 1.25/1.26-аар.
-        go: ["1.25", "1.26"]
+        go: ["1.25", "stable"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

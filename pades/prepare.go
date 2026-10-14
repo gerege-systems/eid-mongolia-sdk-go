@@ -19,7 +19,6 @@ import (
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
-	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/vpage"
 )
 
 // Хэмжээний хязгаар — CA-тай ижил (validate.MaxPAdESInputBytes / MaxPDFBytes).
@@ -146,10 +145,10 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		if !ok {
 			return nil, newErr(CodeRequestInvalid, "fileName заавал, ≤ 120 тэмдэгт", nil)
 		}
-		base, err = vpage.AppendDocumentPage(doc, vpage.DocumentPage{
+		base, err = core.AppendVerifyPage(doc, core.PageData{
 			Brand: pageBrand, FileName: fileName, DocumentHash: inHex, FileSize: int64(len(doc)), DocID: docID,
 			VerifyURL: pageVerifyURL + docID, TrustURL: pageTrustURL, CAName: cert.Issuer.CommonName, TSAName: pageTSAName,
-			Provider: pageProvider, CreatedAt: now,
+			Provider: pageProvider,
 		})
 		if err != nil {
 			return nil, newErr(CodePDFInvalid, "PDF задарсангүй (хуудас нэмж чадсангүй)", err)

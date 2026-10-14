@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
-
-	pdfsign "github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/vpage"
 )
 
 // legacyWithPage — устсан stamp-ийн суурийн хэлбэр (pdfsign.BuildVerifiedPDF, 2026-10-13 хүртэл): гарын үсэг мэт
@@ -19,11 +17,7 @@ import (
 // гарын үсэгтэй баримтыг хөндөхгүй. Хуучин файлын «legacy own» хэлбэрийг шалгагч таньсаар байгааг батлахад.
 func legacyWithPage(t *testing.T, doc []byte) []byte {
 	t.Helper()
-	signed, err := pdfsign.HasSignatureObjects(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if signed {
+	if raws, err := Extract(doc); err == nil && len(raws) > 0 {
 		return bytes.Clone(doc)
 	}
 	var out bytes.Buffer
