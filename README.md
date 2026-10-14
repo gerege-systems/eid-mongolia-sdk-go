@@ -16,7 +16,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.1.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.1.1
 ```
 
 ```go
