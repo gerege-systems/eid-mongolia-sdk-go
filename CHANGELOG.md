@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.0 (BREAKING) — Unreleased
+## v0.4.0 (BREAKING) — 2026-10-15
 
 - **v0.4.0 (BREAKING): PDF upload клиент устсан.** CA upload-д суурилсан PDF endpoint-уудыг устгасан (`POST
   /pdf/sign/prepare`, `GET /pdf/sign/{id}/document`, `/pdf/token/prepare|{id}/finalize|{id}/document` → 404;
