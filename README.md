@@ -519,6 +519,9 @@ rep, err := pades.Verify(done.PDF, pades.VerifyOptions{}) // CA-ийн /v3/valid
   RSASSA-PSS → `REQUEST_INVALID` («PKCS#1 v1.5 шаардлагатай»).
 - `RegisterSignature` — `POST /pdf/signatures`, бие нь CA-ийн `PDFSignatureRegisterRequest`-тэй яг ижил (`hasPage`
   илгээхгүй; `signerEtsi` = гэрчилгээний SERIALNUMBER). Эхний гарын үсэг бүртгэгдэхийн тулд verify хуудастай байна.
+  `Created` — `true` 201 (шинэ), `false` 200 (ижил биеийн давталт). Өмнөх гарын үсэг CA-ийн угсарсан (горим A) бол
+  `Registration`-ийн `PriorSignatures` (CMS + `sha256(doc[0 : ByteRange[2]+ByteRange[3]])` хос) -оор 409
+  `PRIOR_MISMATCH`-ийн дараа SDK өөрөө revision-оор тааруулна (`PriorRevisionSHA256`-г гараар тавибал оролдохгүй).
 - Итгэлийн тулгуур нь шигтгэсэн Mongolian National Root CA (01); 02–05 шигтгэсэн завсрын гинж (`Chain` өгөөгүй бол
   signer-ийн олгогчоор бүтээнэ). Тестийн PKI-д `CompleteOptions.Roots` / `VerifyOptions.Roots` (DER).
 - Алдаа `*pades.Error` (`Code`): `PDF_INVALID`, `PDF_ENCRYPTED`, `PDF_LOCKED` (DocMDP P=1), `PDF_TOO_LARGE`

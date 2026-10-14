@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +52,9 @@ func TestRegisterSignature(t *testing.T) {
 	if req.Method != http.MethodPost || req.URL.Path != "/pdf/signatures" || out.VerifyURL == "" || got.CMS != "MAE=" || got.SignerEtsi != "PNOMN-1" {
 		t.Fatalf("%s %s %+v %+v", req.Method, req.URL.Path, out, got)
 	}
+	if !out.Created {
+		t.Fatal("201 → Created")
+	}
 	if bytes.Contains(body, []byte("hasPage")) {
 		t.Fatal("hasPage илгээх ёсгүй (CA DisallowUnknownFields)")
 	}
@@ -72,5 +76,81 @@ func TestRegisterSignature(t *testing.T) {
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.Code != "SIGNER_MISMATCH" {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestRegisterSignatureReplayAndPriorMismatch(t *testing.T) {
+	ctx := context.Background()
+	c, _ := server(t, jsonReply(http.StatusOK, `{"docID":"d","revIndex":1,"registeredAt":"x","verifyUrl":"v"}`))
+	reg := PDFSignatureRegistration{DocID: "d", RevIndex: 1, Medium: PDFMediumToken, CMS: []byte{0x30, 1}, FileName: "a.pdf",
+		InSHA256: "in", PageSHA256: "pg", SigRevSHA256: "sr", OutSHA256: "out"}
+	out, err := c.PDF.RegisterSignature(ctx, reg)
+	if err != nil || out.Created {
+		t.Fatalf("200 давталт → Created false: %v %+v", err, out)
+	}
+
+	// Горим A-ийн өмнөх мөр: CA зөвхөн want хослолыг хүлээн авна.
+	reg3 := reg
+	reg3.RevIndex, reg3.PageSHA256 = 3, ""
+	reg3.PriorCMSSHA256 = []string{"c1", "c2"}
+	reg3.PriorSignatures = []PDFPriorSignature{{CMSSHA256: "c1", RevisionSHA256: "v1"}, {CMSSHA256: "c2", RevisionSHA256: "v2"}}
+	try := func(wantCMS, wantRev string, code string) (*PDFSignatureRegistered, int, error) {
+		calls := 0
+		c, _ := server(t, func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			var got caRegisterRequest
+			dec := json.NewDecoder(r.Body)
+			dec.DisallowUnknownFields() // PriorSignatures CA руу очихгүй
+			if err := dec.Decode(&got); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"bad","code":"REQUEST_INVALID"}`))
+				return
+			}
+			if strings.Join(got.PriorCMSSHA256, ",") == wantCMS && strings.Join(got.PriorRevisionSHA256, ",") == wantRev {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"docID":"d","revIndex":3,"registeredAt":"x","verifyUrl":"v"}`))
+				return
+			}
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":"x","code":"` + code + `"}`))
+		})
+		out, err := c.PDF.RegisterSignature(ctx, reg3)
+		return out, calls, err
+	}
+	if out, n, err := try("c2", "v1", "PRIOR_MISMATCH"); err != nil || !out.Created || n != 2 {
+		t.Fatalf("эхний мөр горим A: %v %+v %d", err, out, n)
+	}
+	if out, n, err := try("c1", "v2", "PRIOR_MISMATCH"); err != nil || n != 4 {
+		t.Fatalf("хоёр дахь мөр горим A (бүх хослол): %v %+v %d", err, out, n)
+	}
+	var ae *APIError
+	if _, n, err := try("-", "-", "PRIOR_MISMATCH"); !errors.As(err, &ae) || ae.Code != "PRIOR_MISMATCH" || n != 4 {
+		t.Fatalf("таарахгүй: %v %d", err, n)
+	}
+	if _, n, err := try("-", "-", "REGISTRY_CONFLICT"); !errors.As(err, &ae) || ae.Code != "REGISTRY_CONFLICT" || n != 1 {
+		t.Fatalf("өөр алдаа шууд: %v %d", err, n)
+	}
+	// Гараар ангилсан → оролдохгүй.
+	reg3.PriorCMSSHA256, reg3.PriorRevisionSHA256 = []string{"c2"}, []string{"v2"}
+	if _, n, err := try("-", "-", "PRIOR_MISMATCH"); err == nil || n != 1 {
+		t.Fatalf("гараар: %v %d", err, n)
+	}
+}
+
+func TestPriorSplits(t *testing.T) {
+	got := priorSplits(2)
+	want := [][]bool{{true, false}, {true, true}, {false, true}}
+	if len(got) != len(want) {
+		t.Fatalf("%v", got)
+	}
+	for i := range want {
+		for j := range want[i] {
+			if got[i][j] != want[i][j] {
+				t.Fatalf("%v", got)
+			}
+		}
+	}
+	if n := len(priorSplits(6)); n != 6 {
+		t.Fatalf("n > 4: зөвхөн эхний k (%d)", n)
 	}
 }

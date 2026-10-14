@@ -16,8 +16,9 @@ type RegistrationOptions struct {
 
 // Registration — Completed-ээс eid.PDFSignatureRegistration (CA dto-тэй ижил бие) бөглөнө; дараа нь
 // eid.Client.PDF.RegisterSignature. SignerEtsi = гэрчилгээний SERIALNUMBER (CA CMS-тэй тулгана). Өмнөх гарын үсэг бүрийг
-// PriorCMSSHA256-аар заана; өмнөх гарын үсэг нь CA-ийн угсарсан (горим A, /pdf/sign/prepare) бол дуудагч түүнийг
-// PriorCMSSHA256-аас хасаж Completed.PriorRevisionSHA256-ийн харгалзах утгыг PriorRevisionSHA256-д тавина.
+// PriorCMSSHA256-аар заагаад PriorSignatures-ийг (CMS + revision хос) бөглөнө: өмнөх мөр нь CA-ийн угсарсан (горим A,
+// /pdf/sign/prepare) бол RegisterSignature 409 PRIOR_MISMATCH-ийн дараа revision-оор өөрөө тааруулна — дуудагч ангилах
+// шаардлагагүй. Гараар ангилах бол PriorRevisionSHA256-г тавь (тэгвэл SDK оролдохгүй).
 func Registration(c *Completed, o RegistrationOptions) (eid.PDFSignatureRegistration, error) {
 	if c == nil {
 		return eid.PDFSignatureRegistration{}, errors.New("pades: Completed nil")
@@ -38,6 +39,11 @@ func Registration(c *Completed, o RegistrationOptions) (eid.PDFSignatureRegistra
 	}
 	if len(c.PriorCMSSHA256) > 0 {
 		r.PriorCMSSHA256 = append([]string(nil), c.PriorCMSSHA256...)
+		if len(c.PriorRevisionSHA256) == len(c.PriorCMSSHA256) {
+			for i, h := range c.PriorCMSSHA256 {
+				r.PriorSignatures = append(r.PriorSignatures, eid.PDFPriorSignature{CMSSHA256: h, RevisionSHA256: c.PriorRevisionSHA256[i]})
+			}
+		}
 	}
 	if cert, err := x509.ParseCertificate(c.SignerCert); err == nil {
 		r.SignerEtsi = cert.Subject.SerialNumber

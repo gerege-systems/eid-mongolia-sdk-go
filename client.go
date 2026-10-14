@@ -180,24 +180,38 @@ func (h *httpDoer) getJSON(ctx context.Context, path string, timeout time.Durati
 }
 
 func (h *httpDoer) doJSON(ctx context.Context, method, path string, body io.Reader, ctype string, timeout time.Duration, out any) error {
+	_, err := h.doJSONStatus(ctx, method, path, body, ctype, timeout, out)
+	return err
+}
+
+// postJSONStatus — postJSONTimeout + амжилттай хариуны HTTP статус (201 / 200-г ялгах: POST /pdf/signatures).
+func (h *httpDoer) postJSONStatus(ctx context.Context, path string, body any, timeout time.Duration, out any) (int, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return 0, fmt.Errorf("eid: request encode: %w", err)
+	}
+	return h.doJSONStatus(ctx, http.MethodPost, path, bytes.NewReader(b), "application/json", timeout, out)
+}
+
+func (h *httpDoer) doJSONStatus(ctx context.Context, method, path string, body io.Reader, ctype string, timeout time.Duration, out any) (int, error) {
 	ctx, cancel := h.withTimeout(ctx, timeout)
 	defer cancel()
 	res, err := h.send(ctx, method, path, body, ctype)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer res.Body.Close()
 	raw, err := readLimited(res, maxJSONBody, method, path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil
+		return res.StatusCode, nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("eid: %s %s: хариу задарсангүй: %w", method, maskPath(path), err)
+		return 0, fmt.Errorf("eid: %s %s: хариу задарсангүй: %w", method, maskPath(path), err)
 	}
-	return nil
+	return res.StatusCode, nil
 }
 
 // decodeJSON — getJSON-оор авсан түүхий хариуг задлах (алдааны текстэд таних тэмдэггүй зам).
