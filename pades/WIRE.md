@@ -23,7 +23,7 @@ TimeStampReq ::= SEQUENCE {
 
 - `signature` = CMS SignerInfo-д бичигдэх байт (RSA хэвээр; ECDSA — DER).
 - nonce = эх үүсвэрээс 8 байт уншаад big-endian эерэг бүхэл: DER INTEGER — эхний тэг байтуудыг хасна, дээд бит 1 бол
-  `00` угтвар (`02 09 00 …`), 0 бол `02 01 00`. Production-д криптограф санамсаргүй; golden-д §3.
+  `00` угтвар (`02 09 00 …`), 0 бол `02 01 00`. Production-д криптограф санамсаргүй; golden-д §4.
 - Хариу `application/timestamp-reply`, ≤ 4 MiB, HTTP 200. Шалгах: status granted, token-ийн nonce = хүсэлтийнх,
   imprint SHA-256 таарна, TSA signer cert: EKU extension яг `{timeStamping}` ба critical, гинж roots-д (token-ийн бусад
   cert = intermediate) genTime-д хүчинтэй; `|now − genTime| ≤ 10 мин`; token-д гэрчилгээ байх. Унавал `TSA_UNAVAILABLE`.

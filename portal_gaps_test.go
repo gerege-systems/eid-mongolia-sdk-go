@@ -96,8 +96,7 @@ func TestRetryAfterAndHeaders(t *testing.T) {
 		code   string
 	}{
 		{429, "5", CodeRateLimited},
-		{503, "30", CodeTSAUnavailable},
-		{503, "60", CodeLTVUnavailable},
+		{503, "5", CodeIssuancePending},
 		{503, "5", CodeStateUnavailable},
 	} {
 		c, _ := server(t, reply(tc.status, tc.retry, `{"error":"түр","code":"`+tc.code+`"}`))

@@ -75,7 +75,8 @@ type Identity struct {
 	// GivenName, Surname — гэрчилгээний нэр (латин).
 	GivenName, Surname string
 	Country            string
-	// DocumentNumber — иргэний баримтын дугаар; Client.Sign-ийн *ByDocument-аар ижил төхөөрөмж рүү гарын үсэг.
+	// DocumentNumber — нэвтэрсэн төхөөрөмжийн UUID (RP-API documentNumber; иргэний бичиг баримтын дугаар биш);
+	// Client.Sign-ийн *ByDocument-аар ижил төхөөрөмж рүү гарын үсэг.
 	DocumentNumber   string
 	CertificateLevel string
 	// Certificate — нэвтрэлтийн гэрчилгээ (ValidateAuth-аар гинж шалгагдсан).

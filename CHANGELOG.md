@@ -1,5 +1,234 @@
 # Changelog
 
+## v0.4.0 (BREAKING) — Unreleased
+
+- **v0.4.0 (BREAKING): PDF upload клиент устсан.** CA upload-д суурилсан PDF endpoint-уудыг устгасан (`POST
+  /pdf/sign/prepare`, `GET /pdf/sign/{id}/document`, `/pdf/token/prepare|{id}/finalize|{id}/document` → 404;
+  discovery `endpoints.pdf`-д зөвхөн `signatures`), session-ий `pdf` блок, `PDF_PREPARE_BUSY` / `DOCUMENT_PENDING`
+  кодууд ч CA-д алга. SDK тэдгээрийг дуудсаар байсан тул `contract` CI улаан байв. TS SDK 0.15.0-тэй нийцүүлэв.
+  Tag энэ PR-д үгүй — PR #18 (visible signature)-тэй хамт v0.4.0.
+  - Устсан exported: `PDFService.Prepare`, `.Document`, `.TokenPrepare`, `.TokenFinalize`, `.TokenDocument`;
+    `DocumentVerified`; `PDFPrepareInput`, `PDFPrepareSession`, `PDFDeviceLink`, `PDFSignerRef`, `PDFFlowNotification`,
+    `PDFFlowDeviceLink`, `PDFTokenPrepareInput`, `PDFTokenPrepareSession`; `SessionResult.PDF`, `PDFSessionBlock`,
+    `PDFSigner`, `PDFValidation`, `PDFPending` / `PDFReady` / `PDFFailed` / `PDFExpired`; `Config.PDFMaxBytes`,
+    `DefaultPDFMaxBytes`; `CodePDFPrepareBusy`, `CodeDocumentPending` (`RetryableCodes`-оос ч).
+  - Үлдсэн (клиент талын PAdES): `pades/`, `PDFService.RegisterSignature` (`POST /pdf/signatures`),
+    `PDFSignatureRegistration`, `PDFMedium*`, `Sign.DigestForSigner` / `DeviceLinkForSigner`, certificate-choice.
+    `Config.PDFTimeout` / `DefaultPDFTimeout` одоо зөвхөн `RegisterSignature`-д.
+  - Шилжилт: `PDF.Prepare` → `Document` → `DocumentVerified`-ийн оронд `pades.Prepare` → `Sign.DigestForSigner` →
+    `pades.Complete` → `PDF.RegisterSignature` (README §7). Токен: токен DTBS-ийг зурж `Medium: PDFMediumToken`.
+  - Хаана: `pdf.go`, `pdftoken.go` (устсан), `routes.go`, `client.go`, `types.go`, `session.go`, `errors.go`,
+    тестүүд (`client_test.go`, `portal_gaps_test.go` — түр алдааны тест `RegisterSignature` руу шилжсэн,
+    `x509_gaps_test.go`, `routes_test.go`), README §3.4/§3.7/§5/English.
+  - Шалгасан: `gofmt`, `go vet`, `go test -race ./...`, `GOOS=linux GOARCH=amd64 go build ./...`,
+    `go test -tags contract -run Contract` live discovery-тэй PASS (21 зам; `/token/auth/*` discovery-д орсон WARN —
+    тусдаа).
+- **PAdES: харагдах гарын үсэг (сонголттой) + golden v3 + гадны шалгалт (qpdf, pyHanko).**
+  - Юу: `PrepareOptions.Appearance` (`page`, `x`, `y`, `width`, `height`, `lang`) — nil бол үл харагдах, v2 golden байт-ижил.
+    Харагдах widget `/Rect` (CropBox-ийн харагдах эх, `/Rotate` 0/90/180/270), `/F 4`, `/P`, хуудасны `/Annots`-д
+    (incremental), `/AP /N` form XObject (шахалтгүй, verify хуудасны фонт, өөрийн QR): нэр, үүрэг, «eID Mongolia-аар
+    зурсан» / «Signed with eID Mongolia», огноо (+08), QR `https://ca.eidmongolia.mn/verify/<docID>/<revIndex>`.
+    Дүрэм: `pades/APPEARANCE_SPEC.md` (хэмжээ/тойруулга/wrap/жижгэрэх, багтахгүй → `REQUEST_INVALID`, §5 validator).
+  - Validator (own-signer): зөвхөн яг энэ widget + 11 /AP объектыг дахин үүсгэж байт-түвшинд тулгаж хүлээн авна; ObjStm
+    доторх хуудсыг шууд объектоор дахин бичихийг (own, page/annots) зөвшөөрнө. Тайланд `visible` талбар.
+  - DSS: давхардалгүй байдлыг (ижил DER → нэг stream, массивт нэг удаа; өмнөх DSS-ийн объектыг дахин ашиглах) PROFILE.md §7-д
+    тодорхой бичиж, golden бүрд тест (`dssUnique`) — бичигч аль хэдийн ингэж ажилладаг тул гаралт өөрчлөгдөөгүй.
+  - CI: `golden-external` job — golden гаралт бүрд `qpdf --check` ба pyHanko (INTACT/VALID/TRUSTED, DSS-ээс LT, timestamp,
+    өөрчлөлтийн түвшин, харагдах).
+- Хаана: `pades/prepare.go`, `pades/internal/core/{appearance,signature,vpage}.go`, `pades/internal/validate/{appearance,
+  revisions,extract,validate}.go`, `pades/internal/padestest`, `pades/{APPEARANCE_SPEC,PROFILE}.md`, `pades/testdata/golden`
+  (manifest + 5 тохиолдол, `input/quartz-rotated90.pdf`, `ci/pyhanko_check.py`), `.github/workflows/ci.yml`, README.
+- Шалгасан: `TestGolden` (v2 тохиолдлын гаралт өөрчлөгдөөгүй — git diff), `TestOwnVisibleSignature` (хүлээн авах + 17
+  халдлага), `TestAppearanceRejects`, `TestVisibleRect`, `TestNum100`; pdfsig (Signature is Valid), qpdf --check,
+  pyHanko 0.37 (19 гарын үсэг OK), pdftoppm/PDFKit render, QR-ийг CIDetector-оор уншсан; gofmt, vet, `go test -race ./...`,
+  linux build.
+- Үлдсэн: CA `server/internal/validate`-д §5-ийг порт (тусдаа агент); native SDK-ууд (TS/Swift/Kotlin/.NET) v3 golden;
+  PDFKit (macOS) `/Rotate`-тэй хуудсан дээрх widget-ийг зурдаггүй (poppler зурна) — шалгах.
+- **Баримт/тайлбарын зөрүү (аудит 2026-10-15) + CHANGELOG нэгтгэл, guard.**
+  - README: install `@v0.4.0`; хамаарал — `eid`/`eidlogin` стандарт сан + `golang.org/x/crypto/ocsp`, `pades` мөн
+    `golang.org/x/text`; багцын зам `…/eid-mongolia-sdk-go/eidlogin`; RP бүртгэл — өргөдлийн API
+    (`POST /v3/rp-applications`) засвартай (503 `rp_applications_maintenance`), имэйлээр; товчны CDN `@0.15.4`;
+    `/token/auth/*` live discovery-д (`endpoints.token.auth_challenge` / `auth_verify`); `REPRESENTATION_REVOKED` =
+    `RegisterSignature` ба токены гэрчилгээ олголт. `routeTokenAuth*` → `rpRoutes` (гэрээний тест fail-аар шалгана).
+  - **BREAKING (v0.4.0-д):** `eid.CodeTSAUnavailable`, `eid.CodeLTVUnavailable` хасагдсан, `RetryableCodes`-оос ч — CA
+    тэдгээрийг буцаадаггүй (CA main `af939ab0`-д шалгасан); клиент талын `pades.CodeTSAUnavailable` /
+    `pades.CodeLTVUnavailable` хэвээр. Кодгүй 429/503 + `Retry-After` `Retryable()` хэвээр.
+  - Тайлбар: `errors.go` (устсан `PDF_PREPARE_BUSY` / `DOCUMENT_PENDING` / document route-ийн дурдлага), `doc.go` /
+    `client.go` (`eid` PDF угсрахгүй — зөвхөн `RegisterSignature`; угсралт = `pades`), `eidlogin.Identity.DocumentNumber`
+    = төхөөрөмжийн UUID, `pades/doc.go` (байхгүй mobile/capi/wasm binding), `pades/WIRE.md` (golden nonce = §4).
+  - `CHANGELOG.md`: v0.1.6 … v0.3.2 фрагментуудыг tag-аар тулгаж нэгтгэв (sign-session-gaps → v0.2.1; «CA хугацаа
+    буцаадаггүй» нь v0.2.2-оос хуучирсныг тэмдэглэв); v0.4.0 (BREAKING) — Unreleased.
+  - Guard: `scripts/changelog.sh` (`assemble` / `check-release` / `check-pr`); CI `changelog` job PR-д фрагмент шаардана;
+    `.github/workflows/release.yml` — `v*` tag-д фрагмент үлдсэн, гарчиг алга эсвэл «Unreleased» бол улаан.
+  - Шалгасан: live `/.well-known/eid`, `/mobile/app-config`, `/v3/rp-applications` (2026-10-15); `gofmt`, `go vet`,
+    `go test ./...`, `GOOS=linux GOARCH=amd64 go build ./...`.
+
+## 0.3.2 — 2026-10-14
+
+- **v0.3.2 — `eidlogin`: регистрийн oracle хаалт (decoy + PushFloor), OCSP цуцлалт, аудитын hook (TS 0.15.2-тэй ижил).**
+  - **G1 (Critical) — бүртгэлийн oracle.** Push start eID-ийн татгалзалд (танихгүй дугаар) 502, бүртгэлтэйд 200 өгдөг,
+    хугацааны доод хязгааргүй байсан — нэвтрээгүй хэн ч регистр eID-д бүртгэлтэй эсэхийг шалгаж болох байв. Одоо eID-ийн
+    өөрийн JSON 4xx (401/403/429-ээс бусад) → decoy session: бодит хариутай ижил `{mode, vc (5 оронтой), expiresIn}`,
+    ижил cookie, `status` нь eID-ээс асуулгүй `Poll`-ын хугацаанд барьж PENDING → TTL-ийн дараа EXPIRED. Push start-ийн
+    хариу бүр (бодит, decoy, 502) ≥ `PushFloor` (анхдагч 1 с, ctx тасарвал зогсоно). 5xx / холболт / JSON бус 4xx (proxy)
+    / 401 / 403 → 502, 429 → 429 (eID порталын `HandleEIDStartByNationalID`-тэй ижил: тасалдлыг нуухгүй, дугаараас
+    хамааралгүй). Хязгаар decoy-д ч үйлчилнэ. Push-ийн CA `TIMEOUT` → `EXPIRED` (decoy-той ижил төгсгөл). Унтраах: `DisableDecoy`, `DisablePushFloor` (анхааруулгатай).
+  - **G2 (High) — цуцлалт.** `finish` нь `ValidateAuth`-ийн дараа гэрчилгээг AIA OCSP-оор шалгана (`Config.Revocation`,
+    nil = шинэ `eid.NewOCSPChecker`). revoked / unknown → FAILED `VALIDATION` (500 биш); хариугүй → soft-fail
+    (порталын `EID_OCSP=soft`: зөвшөөрч Warn, `Identity.Revocation = unchecked`), `RevocationMode: eid.RevocationHardFail`
+    → FAILED. `DisableRevocation` — унтраана. Шинэ: `eid.NewOCSPChecker` (олгогч/OCSPSigning responder-ийн гарын үсэг,
+    serial, thisUpdate [−48ц, +5мин], nextUpdate, 2 с timeout, redirect-гүй, 16 KiB, good-ийг 5 мин кэш),
+    `Validator.CheckRevocationWith`, `Identity.Revocation`.
+  - **G3 (Medium) — аудит.** `Config.OnEvent(ctx, kind, sessionID, meta)`: `push_sent` (meta `decoy`), `push_limited`,
+    `refused`, `expired`, `unverified` (`reason`), `flow_refused`, `success` (`flow`, `revocation`), `failed`
+    (`endResult`). Регистрийн дугаар биш `pushKey` = HMAC-SHA256(`AuditKey`, дугаар); токен/нууц орохгүй.
+- Хаана: `ocsp.go`, `validator.go`, `eidlogin/eidlogin.go`, `eidlogin/security_test.go`, `ocsp_test.go`,
+  `eidlogin/eidlogin_test.go` (хуурмаг цаг, event бүртгэл), `README.md` §2, §4.
+- Шалгасан: `TestPushDecoyIndistinguishable` (талбар, vc хэлбэр, floor 1 с хуурмаг цагаар, decoy poll eID-ээс асуухгүй,
+  EXPIRED, event-д decoy, meta-д регистр алга), `TestPushOutageNotDecoy` (500/proxy400/401 → 502), `TestDecoyAndFloorOptOut`,
+  `TestDecoyRateLimited`, `TestRevocation` (revoked/checker алдаа/hard-fail → FAILED VALIDATION; анхдагч soft → unchecked;
+  good; disabled), `TestEvents`, `TestOCSPChecker` (good/revoked/unknown, delegated responder, хуучин thisUpdate, 5xx,
+  буруу issuer, кэш); `gofmt`, `go vet`, `go test -race ./...`, `GOOS=linux GOARCH=amd64 go build ./...`.
+- **PAdES бүртгэл: горим A-ийн өмнөх гарын үсэгтэй баримт + `Created`.**
+  - Юу: горим A-аар (CA угсарсан) эхэлж зурагдсан баримтад нэмж зурахад `RegisterSignature` 409 `PRIOR_MISMATCH` авдаг
+    байв — `pades.Registration` бүх өмнөх мөрийг CMS-ээр илгээж, `PriorRevisionSHA256`-г дуудагчид гараар ангилуулдаг. CA
+    өмнөх мөр бүрийг өөрийнх нь түлхүүрээр таньдаг (клиент — `cms_sha256`, горим A — `sig_rev_sha256` = `sha256(doc[0 :
+    ByteRange[2]+ByteRange[3]])`; CA `persistence/models.go` `PDFPrior.Covers`, `pades_finalize.go` `sha256(signed)`), файлаас
+    ялгах боломжгүй (профайл 1:1).
+  - Засвар: `pades.Registration` → `PriorSignatures []eid.PDFPriorSignature` (`json:"-"`, CA руу илгээхгүй);
+    `RegisterSignature` эхлээд CMS-ээр, `PRIOR_MISMATCH` бол эхний k-г revision-оор (k = 1…n), n ≤ 4 бол бүх хослол
+    (`priorSplits`, TS-тэй ижил дараалал). `PriorRevisionSHA256` гараар өгвөл хуучин зан.
+  - `PDFSignatureRegistered.Created` — 201 → true, 200 (давталт) → false (`httpDoer.postJSONStatus`).
+- Хаана: `pdfregister.go`, `client.go`, `pades/register.go`, README.
+- Шалгасан: `TestRegisterSignatureReplayAndPriorMismatch`, `TestPriorSplits`, `TestRegisterSignature` (Created),
+  `pades` 2 дахь гарын үсэг: `PriorRevisionSHA256[0] == эхнийх SigRevSHA256`, `PriorSignatures`; gofmt, vet,
+  `go test -race ./...`, `GOOS=linux GOARCH=amd64 go build ./...`.
+- Үлдсэн: native SDK (Swift/Kotlin/.NET)-д ижил засвар тусдаа.
+
+## 0.3.1 — 2026-10-14
+
+- **v0.3.1 — `eidlogin`: өөрийн хязгаар өгөхөд анхдагч push хязгаар алдагддаг байсан (TS 0.15.1-тэй зэрэгцүүлсэн).**
+  - `Config.RateLimit` өгөхөд анхдагч (push — нэг дугаарт 3/мин, MFA fatigue) чимээгүй унтардаг байв. Одоо
+    `Config.RateLimits map[string]RateRule` (`"start"` | `"push"`) `DefaultRateLimit()`-тэй төрөл тус бүрээр нэгтгэгдэнэ
+    (`RateRule{Max, Window}` санах ойн цонх | `{Func}` | `{}` хязгааргүй); `Config.RateLimit` функц анхдагч ДЭЭР
+    нэмэгдэнэ. `DefaultRateLimit()` export (шинэ map). Буруу түлхүүр / Window ≤ 0 → `New` алдаа.
+  - README: хязгаарлалтын хэсэг, товчны CDN 0.15.1, dark токен (`--eid-<нэр>-dark`) заалт, install v0.3.1.
+- Хаана: `eidlogin/eidlogin.go`, `eidlogin/eidlogin_test.go`, `README.md` §2.
+- Шалгасан: `TestRateLimitsMergeKeepsDefaultPush` (зөвхөн start өгөхөд push 3/мин идэвхтэй), `TestRateLimitFuncAddsToDefault`,
+  `TestRateLimitsOverridePush` (window/off/func, start window), `TestDefaultRateLimitAndValidation`; `gofmt`, `go vet`,
+  `go test ./...` (+ `-race` eidlogin), `GOOS=linux GOARCH=amd64 go build`.
+
+## 0.3.0 — 2026-10-14
+
+### Клиент талын PAdES — Go reference (`pades`)
+
+- **Юу:** CA-ийн PAdES бичигч (`server/internal/pdfsign/pades/*`) ба нийтийн шалгагч (`validate/*`)-ийг extract хийв:
+  `pades.Prepare` (хөнгөн precheck → verify хуудас → R_sig → DTBS), `pades.Complete` (гарын үсэг шалгах → RFC 3161 →
+  CMS → OCSP/CRL (AIA/CDP, genTime-ийн дараа) → DSS → self-validation) → `*Completed` (CA-ийн бүртгэлийн талбаруудтай),
+  `pades.Verify` (CA-ийн /v3/validate/pdf-тэй ижил тайлан). Verify хуудас — хоёр хэлтэй (mn анхдагч, en), минимал детерминист writer + өөрийн QR
+  (pdfcpu/fpdf/go-qrcode-гүй). Профайлын баримт: `pades/{PROFILE,PAGE_SPEC,PRECHECKS,WIRE}.md`.
+- **Яагаад:** PDF eID-ийн серверт очихгүй (CA docs/PADES_CLIENT_SIDE.md); Go нь TS/Swift/Kotlin/C# native SDK-уудын
+  reference, golden vector-оор байт-ижил байдлыг баталгаажуулна.
+- **Хаана:** `pades/`, `pades/assets` (Noto Sans OFL, zlib тогтмол asset + metrics.json), `pades/internal/{core,qr,
+  validate,eidcrypto,padestest}`, golden `pades/testdata/golden/`. `go.mod`: go 1.22 → 1.25 (тестийн хамаарал pdfcpu
+  v0.12.0), CI matrix 1.25/stable.
+- **CA-аас зөрөх:** xref stream шахалтгүй; шууд `/Info` trailer-т хуулна; `/M` үргэлж +08:00; verify хуудас шинэ writer;
+  үндэсний CRL-ийг `https://crl.eidmongolia.mn/` толиноос татна;
+  prepare-д validator биш хөнгөн precheck (бүртгэлийн оронд eID олгогч + SubFilter-ээр «гадны» гарын үсэг); цуцлалтын
+  төлөв DSS-ийн OCSP/CRL-ээс; задлагч процесс дотор.
+- **Шалгасан:** `go test -race ./...` (Go 1.25, 1.27), golden (prepare+complete байт-ижил), desktop Swift golden,
+  e2e (RSA/ECDSA r‖s, DER), QR-ийг CoreImage-ээр, хуудсыг PDFKit-ээр уншиж (текст ToUnicode, QR decode) шалгав,
+  `GOOS=linux GOARCH=amd64 go build ./...`.
+- **Бүртгэл (CA §4.3/§4.3.1):** `eid.PDFSignatureRegistration` + `PDFService.RegisterSignature` (`POST /pdf/signatures`,
+  CA dto-тэй ижил бие, `signerEtsi`), `pades.Registration(completed, opts)`; `Representation.ClaimedRole` (CA !352).
+  RSASSA-PSS гарын үсгийг `Complete` `REQUEST_INVALID`-аар татгалзана (DigestForSigner/DeviceLinkForSigner-ийн анхдагч
+  sha256WithRSAEncryption). README-ийн жишээ `pades/example_test.go`-оор compile хийгдэнэ; contract тест
+  `TestContractPDFSignaturesBody` (discovery-ийн биеийн талбар = SDK-ийн JSON түлхүүр).
+
+## 0.2.2 — 2026-10-14
+
+- **v0.2.2 — CA !357 (fd3acf14, прод 2026-10-14)-тэй нийцүүлэв.**
+  - `ExpiresAt`: session start хариуны CA-ийн `expiresAt` (RFC 3339) — sign / certificate-choice (push, device-link,
+    linked) ба auth (push, device-link). Талбаргүй / задрахгүй (хуучин CA) үед sign/cert-choice-д `SessionExpiry`
+    тооцоолол, auth-д тэг.
+  - `errors.Is` sentinel: `ErrNoSigningCertificate` (409 `NO_SIGNING_CERTIFICATE`), `ErrCertChoiceInvalid` (409
+    `CERT_CHOICE_INVALID`), `ErrRequestInvalid` (400 `REQUEST_INVALID`) — `*APIError.Is` нь `Code`-оор тулгана;
+    `Code*` тогтмолууд. `errors.As(&*APIError)` хэвээр.
+- Хаана: `auth.go`, `sign.go`, `certchoice.go`, `errors.go`, `types.go`, `README.md`.
+- Шалгасан: `session_start_test.go` (CA expiresAt / fallback / typed алдаа); `gofmt`, `go vet`, `go test ./...`,
+  `GOOS=linux go build`.
+
+## 0.2.1 — 2026-10-14
+
+- **v0.2.1 — `eidlogin` засвар (TS 0.14.1-тэй зэрэгцүүлсэн; demo интеграцаас ирсэн асуудлууд).**
+  - `Identity.SessionID` нэмэв (DocumentNumber, Certificate байсан) — RP дараагийн алхамд (гарын үсэг, гэрчилгээ холбох).
+    Tx нь OnSuccess-оос өмнө атомар устгагдах (нэг удаа) хэвээр — баримтжуулав.
+  - `ForwardedClientIP(hops)` (XFF баруунаас n, эсвэл X-Real-IP; hop дутвал "") ба `RemoteAddrIP` — `Config.ClientIP`-д
+    бэлэн; TS-ийн `trustProxy`/`getClientIp`-тэй ижил дүрэм. `ClientIP` nil бол `New` нэг удаа Warn.
+  - README: клиент IP, Redis store жишээ (go-redis, SDK хамааралгүй), eID аппын доод хувилбар (iOS 2.2.3 (59),
+    Android 2.2.3 (60); app-config min iOS 2.2.7 / Android 83 — 10-14 шалгасан), товчны CDN 0.14.1.
+- Хаана: `eidlogin/eidlogin.go`, `eidlogin/eidlogin_test.go`, `README.md` §2.
+- Шалгасан: `TestQRFlow` (SessionID/DocumentNumber/Certificate), `TestForwardedClientIP`, `TestForwardedClientIPRateLimit`;
+  `gofmt`, `go vet`, `go test ./...`, `GOOS=linux go build`.
+- **Sign session-ий дутуу хэсгүүд (client-side PAdES)** — v0.2.1-д гарсан (PR #11 tag-гүй; v0.2.1 release-д
+  орсон). Портал HASH sign (RAW_DIGEST_SIGNATURE, digest = 32 байт DTBS)-д олсон дутуу:
+  - **Device-link sign:** `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (`POST /signature/device-link/{etsi|document}/…`)
+    — `initialCallbackUrl`, `interactions`, `fileName`, `onBehalfOf`, RAW_DIGEST параметрүүд. `DeviceLinkSession.LinkInput`
+    — auth/sign/cert холбоосын `BuildDeviceLink` оролтыг session-оос угсарна. `SignContext` (`NotificationSession.Sign`,
+    `DeviceLinkSession.Sign`) — илгээсэн digest/hash/алгоритм/interactions/callback.
+  - **Certificate-choice:** `Sign.CertificateChoiceByEtsi`, `Sign.CertificateChoiceDeviceLink` (зөвхөн QR — CA-ийн хүсэлт
+    callback авдаггүй), `Validator.ValidateCertificateChoice` → `Signer{Certificate, DocumentNumber, CertChoiceSessionID}`.
+  - **Signer-ээр зурах:** `Sign.DigestForSigner` (`/signature/notification/linked/{documentNumber}` +
+    `linkedSessionID`, cert choice-гүй бол `/notification/document/…`), `Sign.DeviceLinkForSigner`
+    (`/signature/device-link/document/…`). Олон утастай иргэнд etsi-ээр эхлүүлбэл өөр утас зурж CMS эвдэрдэг тул
+    documentNumber-аар л. Анхдагч `sha256WithRSAEncryption` + SHA-256; digest-ийн уртыг хүсэлтээс өмнө шалгана.
+  - **`ValidateSignOptions.ExpectedAlgorithm`** — хүссэн RSA алгоритмаас өөр хариу (ж: PKCS#1 хүссэнд rsassa-pss) →
+    `*ValidationError`; CA-ийн хуучин threshold-ECDSA credential-ийн `ecdsa-with-SHA256`-ийг зөвхөн EC P-256 + SHA-256
+    үед. **`ExpectedCertificate`** — certificate-choice-ийн гэрчилгээнээс өөрөөр зурсан бол татгалзана.
+  - **`ExpiresAt`** — тухайн үед CA session start хариунд хугацаа буцаадаггүй байсан (`sessionID`/`vc`, device-link-д
+    token/secret) тул
+    sign / cert-choice session-д хүсэлтээс өмнөх цаг + `Config.SignSessionTTL` (анхдагч `DefaultSignSessionTTL` = 600с
+    = CA `EID_SIGN_SESSION_TTL_SECONDS`; CA админ 60–1800с болгож болно). `SessionExpiry` туслах. v0.2.2-оос CA (!357) `expiresAt` буцаадаг
+    болсон тул SDK түүнийг авна; энэ тооцоолол зөвхөн талбаргүй (хуучин) CA-д.
+  - 5 шинэ зам `rpRoutes`-д (live `/.well-known/eid`-д бүгд бий).
+  - Хаана: `sign.go`, `certchoice.go`, `validator.go` (precheck → `sessionDone` + `leafOf`), `devicelink.go`, `types.go`,
+    `routes.go`, `client.go`, README §3.3.
+- Шалгасан: `sign_gaps_test.go` (device-link body/зам/LinkInput байт-ижил, ExpiresAt, cert choice body түлхүүрүүд,
+  ValidateCertificateChoice, DigestForSigner linked/document/device-link + буруу оролтод хүсэлт явахгүй,
+  ExpectedAlgorithm/ExpectedCertificate). `gofmt`, `go vet ./...`, `go test -race ./...`, `go test -tags contract`
+  (live discovery), `GOOS=linux GOARCH=amd64 go build ./...`.
+
+## 0.2.0 — 2026-10-14
+
+- **BREAKING (v0.2.0): `oidc` багц хасагдсан; «eID-ээр нэвтрэх» = `eidlogin.Handler` (net/http) RP-API дээр.** eID-ийн
+  OIDC provider (`login.eidmongolia.mn`) хасагдсан (2026-10-14 шийдвэр) тул `oidc/` (client, contract тест) ба README
+  §2 OIDC устсан — openid-configuration прод дээр 404 болж `contract` job улаан байсан. Оронд нь Smart-ID RP-үүдийн
+  хэв маяг: `eidlogin.New(Config{Client, OnSuccess, CallbackURL, Store?, RateLimit?, ClientIP?, …})`, `/auth/eid/`
+  дор mount — `start` (POST qr | push; GET `?mode=web2app` → 302 eID апп, буцах хөтчийн `retScheme`/`retPkg` hint
+  UA-аас), `status` (PENDING + секунд тутмын QR / WAIT_CALLBACK / OK / FAILED / EXPIRED), `callback` (Web2App +
+  `userChallengeVerifier`). Төлөв серверт (`Store`, анхдагч `NewMemoryStore`), хөтчид HttpOnly cookie
+  (`<sessionId>.<binding>`); callback зөвхөн эхлүүлсэн хөтчид (login CSRF); JSON-only POST + `Sec-Fetch-Site`; push-д
+  анхдагч 3/мин нэг дугаарт; иргэн (`Identity`) зөвхөн `ValidateAuth`-ийн дараа `OnSuccess`-д. Хариуны хэлбэр TS SDK
+  0.14.0-ийн `createEidLogin`-тэй ижил (хөтчийн товч `<eid-login-button>`). `Client.RPName()` нэмэгдсэн.
+- Хаана: `eidlogin/eidlogin.go`, `eidlogin/eidlogin_test.go`, `client.go`, `doc.go`, `README.md` §2, `.github/workflows/contract.yml`.
+- Шалгасан: `eidlogin` тест — fake RP-API (httptest) БОДИТ ACSP_V2 RSA-PSS гарын үсэг буцааж, `Validator` жинхэнээр
+  шалгана: QR / push / Web2App, cookie binding, cookie-гүй callback татгалзах, буруу verifier, хуурамч гарын үсэг,
+  flowType зөрөх (relay), CSRF, rate limit, нэг удаагийн OnSuccess. `gofmt`, `go vet ./...`, `go test -race ./...`,
+  `GOOS=linux GOARCH=amd64 go build ./...`, `go test -tags contract -run Contract ./...` (live) ногоон.
+
+## 0.1.6 — 2026-10-14
+
+- **OIDC: `mtls_endpoint_aliases` (RFC 8705 §5)** — v0.1.6. `login.` хост mTLS хийдэггүй тул `require_mtls`-тэй RP
+  code солиход `login.eidmongolia.mn/oauth2/token` дээр `401 invalid_client` авдаг байв. CA !347 discovery-д
+  `mtls_endpoint_aliases.token_endpoint` (`https://rp.eidmongolia.mn/oauth2/token`, RP client cert шаардана) нэмсэн.
+  `oidc.Discovery.MTLSEndpointAliases map[string]string`; `oidc.Config.UseMTLSEndpointAliases` (анхдагч false) — true +
+  alias байвал token хүсэлт alias руу; alias алга бол `TokenEndpoint` руу буцна; alias https биш бол
+  `ErrDiscoveryFailed`. Client cert нь `Config.HTTPClient`-ийн Transport-оор (RP-API-тай ижил). README: «mTLS-тэй RP».
+  Хаана: `oidc/oidc.go`, `oidc/oidc_test.go`. TS SDK 0.13.0-тай ижил.
+- Шалгасан: `TestMTLSEndpointAliases` — флагтай → alias, флаггүй → `token_endpoint`, alias алга → fallback, `http://`
+  alias → `discovery_failed` (token хүсэлт явахгүй). `gofmt`, `go vet ./...`, `go test -race ./...`,
+  `GOOS=linux GOARCH=amd64 go build ./...`.
+
 ## 0.1.5 — 2026-10-14
 
 Эрхийн төрөл ба эх үүсвэрийн нэр (`rightTypeLabel`, `sourceLabel`, CA !344) — TS SDK 0.12.1-тэй ижил, additive:

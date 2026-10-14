@@ -8,9 +8,10 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 > SDK **backend**-д ажиллана: бүх дуудлага API secret (`rp_sk_…`)-ээр баталгаажна. Secret, `SessionSecret`-ийг
 > браузер/гар утсанд хэзээ ч бүү гарга — браузерт зөвхөн таны backend-ийн өгсөн холбоос / QR / товч харагдана.
 
-- Go ≥ 1.25. `eid`, `eidlogin` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь digitorus/pdf, pkcs7, timestamp,
-  x/crypto.
-- Багц: `eid` (RP-API, device link, validator, PDF), `eid/eidlogin` («eID-ээр нэвтрэх» товчны net/http handler),
+- Go ≥ 1.25. `eid`, `eidlogin` нь стандарт сан + `golang.org/x/crypto/ocsp` (OCSP цуцлалт) импортлодог; `pades` (PDF)
+  нь digitorus/pdf, pkcs7, timestamp, `golang.org/x/crypto`, `golang.org/x/text`.
+- Багц: `eid` (RP-API, device link, validator, PDF бүртгэл), `eidlogin` (`github.com/gerege-systems/eid-mongolia-sdk-go/eidlogin`
+  — «eID-ээр нэвтрэх» товчны net/http handler),
   `pades` (клиент талын PAdES — PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
 
 [English summary](#english)
@@ -18,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.3.2
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.4.0
 ```
 
 ```go
@@ -30,7 +31,9 @@ import (
 
 ## 1. RP бүртгүүлэх
 
-RP-г eID Mongolia-гийн оператор бүртгэнэ — хүсэлтээ <eIDsupport@gerege.com>-оор гаргана. Баталсны дараа
+RP-г eID Mongolia-гийн оператор бүртгэнэ — хүсэлтээ <eIDsupport@gerege.com>-оор гаргана. Өргөдлийн API
+(`POST https://ca.eidmongolia.mn/v3/rp-applications`, discovery-ийн `registration.apply`) одоогоор засвартай — 503
+`rp_applications_maintenance` буцаана (2026-10-15 шалгасан). Баталсны дараа
 **relyingPartyUUID** ба **API secret** (`rp_sk_…`) олгогдоно; secret **зөвхөн нэг удаа** харагдана. Шаардлагатай
 мэдээлэл (байгууллага, зорилго `AUTH`/`SIGN`, `callbackHosts`…):
 <https://developer.eidmongolia.mn/#registration>.
@@ -90,7 +93,7 @@ mux.Handle("/auth/eid/", login)
 Хөтөчид:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.2/dist/button.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.4/dist/button.js"></script>
 <eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
@@ -366,7 +369,7 @@ s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{OnBehal
 
 `OnBehalfOf` татгалзвал `*eid.ForbiddenError` / `*eid.APIError`-ийн `Code` (`eid.OnBehalfErrorCodes`):
 `REPRESENTATION_DENIED`, `REPRESENTATION_PENDING`, `REPRESENTATION_EXPIRED`, `ORG_NOT_ACTIVE`, `SIGNER_UNIDENTIFIED`
-(403) · `ORG_NOT_FOUND` (404) · `REPRESENTATION_REVOKED` (403, `RegisterSignature` үед).
+(403) · `ORG_NOT_FOUND` (404) · `REPRESENTATION_REVOKED` (403, `RegisterSignature` ба токены гэрчилгээ олголтод).
 
 Түр алдаа — `*eid.APIError.Retryable()` үнэн, `RetryAfter`-ийн (CA-ийн `Retry-After`, секунд эсвэл огноо) дараа
 давтана (`eid.RetryableCodes`; кодгүй 429/503 + `Retry-After` ч мөн). `Header` — хариуны бүх header.
@@ -417,7 +420,8 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 // токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
 ```
 
-`/token/auth/*` нь CA-д байгаа ч `/.well-known/eid`-д хараахан жагсаагдаагүй (гэрээний тест WARN).
+`/token/auth/*` нь `/.well-known/eid`-ийн `endpoints.token.auth_challenge` / `auth_verify`-д жагсаагдсан (AUTH эрх) —
+гэрээний тест бусад route-ийн адил шалгана.
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -592,7 +596,7 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 ## English
 
 Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
-standard library only).
+standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/text`).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
   (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.

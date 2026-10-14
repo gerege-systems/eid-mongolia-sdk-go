@@ -6,6 +6,15 @@ on:
 permissions:
   contents: read
 jobs:
+  changelog:
+    # PR бүр changelog.d/ фрагменттай (эсвэл release нэгтгэл) — changelog.d/README.md.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/changelog.sh check-pr "${{ github.event.pull_request.base.sha }}"
   test:
     runs-on: ubuntu-latest
     strategy:

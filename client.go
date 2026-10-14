@@ -58,7 +58,7 @@ type Config struct {
 //
 //	Auth         — нэвтрэлт эхлүүлэх (push / device link)
 //	Sign         — гарын үсэг эхлүүлэх (digest; push / device link) ба гэрчилгээ сонгуулах (certificate-choice)
-//	PDF          — PAdES гарын үсэг (CA угсарна; OnBehalfOf)
+//	PDF          — клиент талын PAdES-ийн CMS бүртгэл (RegisterSignature); угсралт = pades
 //	Organization — иргэний төлөөлөх байгууллагууд
 //	Person       — иргэний PKI самбар (PKI_READ эрх): гэрчилгээ, төхөөрөмж, үйл ажиллагаа, тоо, хүүхдүүд
 //	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
