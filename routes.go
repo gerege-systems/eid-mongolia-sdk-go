@@ -24,8 +24,6 @@ var (
 	routeSignDeviceLinkDocument   = rpRoute{"POST", "/signature/device-link/document/{documentNumber}"}
 	routeCertChoiceDeviceLink     = rpRoute{"POST", "/signature/certificate-choice/device-link/anonymous"}
 	routeCertChoiceEtsi           = rpRoute{"POST", "/signature/certificate-choice/notification/etsi/{semanticsIdentifier}"}
-	routePDFPrepare               = rpRoute{"POST", "/pdf/sign/prepare"}
-	routePDFDocument              = rpRoute{"GET", "/pdf/sign/{sessionID}/document"}
 	routePDFSignatures            = rpRoute{"POST", "/pdf/signatures"}
 	routeOrgRepresentations       = rpRoute{"GET", "/organization/representations/etsi/{personEtsi}"}
 	routeSession                  = rpRoute{"GET", "/session/{sessionId}"}
@@ -38,9 +36,6 @@ var (
 	routeTokenCertificateResult   = rpRoute{"GET", "/token/certificate/{sessionID}"}
 	routeTokenAuthChallenge       = rpRoute{"POST", "/token/auth/challenge"}
 	routeTokenAuthVerify          = rpRoute{"POST", "/token/auth/verify"}
-	routePDFTokenPrepare          = rpRoute{"POST", "/pdf/token/prepare"}
-	routePDFTokenFinalize         = rpRoute{"POST", "/pdf/token/{signingID}/finalize"}
-	routePDFTokenDocument         = rpRoute{"GET", "/pdf/token/{signingID}/document"}
 )
 
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
@@ -49,18 +44,17 @@ var rpRoutes = []rpRoute{
 	routeSignNotificationEtsi, routeSignNotificationDocument, routeSignNotificationLinked,
 	routeSignDeviceLinkEtsi, routeSignDeviceLinkDocument,
 	routeCertChoiceDeviceLink, routeCertChoiceEtsi,
-	routePDFPrepare, routePDFDocument, routePDFSignatures,
+	routePDFSignatures,
 	routeOrgRepresentations,
 	routeSession,
 	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,
 	routeTokenCertificate, routeTokenCertificateResult,
 }
 
-// rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs/TOKEN_AUTH.md, PADES_SIGNING.md §16.5) байгаа ч live /.well-known/eid-д хараахан
+// rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs/TOKEN_AUTH.md) байгаа ч live /.well-known/eid-д хараахан
 // жагсаагдаагүй замууд. Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ.
 var rpRoutesUndiscovered = []rpRoute{
 	routeTokenAuthChallenge, routeTokenAuthVerify,
-	routePDFTokenPrepare, routePDFTokenFinalize, routePDFTokenDocument,
 }
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.

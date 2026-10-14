@@ -3,7 +3,7 @@ package eid
 import "testing"
 
 func TestRouteExpand(t *testing.T) {
-	if got := routePDFDocument.expand("a/b c"); got != "/pdf/sign/a%2Fb%20c/document" {
+	if got := routeSession.expand("a/b c"); got != "/session/a%2Fb%20c" {
 		t.Fatalf("expand = %q", got)
 	}
 	for _, r := range append(append([]rpRoute(nil), rpRoutes...), rpRoutesUndiscovered...) {

@@ -91,7 +91,7 @@ func (e *APIError) Is(target error) bool {
 // Session эхлэх алдааны кодууд — APIError.Code (CA 2026-10-14, RP_INTEGRATION «Session эхлэх алдаа»).
 const (
 	// CodeNoSigningCertificate — 409: иргэнд (баримтад) идэвхтэй төхөөрөмж / SIGN credential / хүчинтэй гарын
-	// үсгийн гэрчилгээ алга — sign ба certificate-choice start, /pdf/sign/prepare. Session үүсээгүй. Танихгүй
+	// үсгийн гэрчилгээ алга — sign ба certificate-choice start. Session үүсээгүй. Танихгүй
 	// лавлагаанд ч ижил (бүртгэл задлахгүй).
 	CodeNoSigningCertificate = "NO_SIGNING_CERTIFICATE"
 	// CodeCertChoiceInvalid — 409: linked sign-ийн linkedSessionID (certificate-choice) хүчингүй / хуучирсан (>5 мин) /
@@ -121,10 +121,6 @@ func (e *APIError) Retryable() bool {
 
 // CA-ийн түр (давтаж болох) алдааны кодууд — APIError.Code. docs: PADES_SIGNING §3.1/§3.4, TOKEN_CERT, TOKEN_AUTH.
 const (
-	// CodePDFPrepareBusy — 429: зэрэг prepare-ийн хязгаар (RP 10, нийт 50); Retry-After: 5.
-	CodePDFPrepareBusy = "PDF_PREPARE_BUSY"
-	// CodeDocumentPending — 503 (PDF баримт татахад): угсралт 30с-д дуусаагүй; Retry-After: 5.
-	CodeDocumentPending = "DOCUMENT_PENDING"
 	// CodeTSAUnavailable — 503: TSA хүрэхгүй/тохируулаагүй; Retry-After: 30 (document).
 	CodeTSAUnavailable = "TSA_UNAVAILABLE"
 	// CodeLTVUnavailable — 503: CRL/OCSP (LTV) өгөгдөл хүчингүй/шалгагдахгүй; Retry-After: 60.
@@ -139,7 +135,7 @@ const (
 
 // RetryableCodes — APIError.Retryable-ийн танидаг түр алдааны кодууд.
 var RetryableCodes = []string{
-	CodePDFPrepareBusy, CodeDocumentPending, CodeTSAUnavailable, CodeLTVUnavailable,
+	CodeTSAUnavailable, CodeLTVUnavailable,
 	CodeRateLimited, CodeStateUnavailable, CodeIssuancePending,
 }
 
@@ -182,7 +178,7 @@ func (e *NetworkError) Error() string {
 
 func (e *NetworkError) Unwrap() error { return e.Err }
 
-// ResponseTooLargeError — хариуны бие SDK-ийн хязгаараас (JSON 4 MiB, PDF Config.PDFMaxBytes) хэтэрсэн; бие
+// ResponseTooLargeError — хариуны бие SDK-ийн хязгаараас (JSON 4 MiB) хэтэрсэн; бие
 // таслагдаж задлагдахгүй. Op — method + таних тэмдэггүй зам.
 type ResponseTooLargeError struct {
 	Op    string

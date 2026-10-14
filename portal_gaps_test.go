@@ -88,45 +88,39 @@ func TestRetryAfterAndHeaders(t *testing.T) {
 			_, _ = io.WriteString(w, body)
 		}
 	}
-	pdfIn := PDFPrepareInput{PDF: []byte("%PDF"), FileName: "a.pdf", Signer: PDFSignerRef{Etsi: "PNOMN-1"}}
+	reg := PDFSignatureRegistration{DocID: "d", RevIndex: 1, Medium: PDFMediumPhone, SessionID: "s1", CMS: []byte{0},
+		FileName: "a.pdf", InSHA256: "in", PageSHA256: "pg", SigRevSHA256: "sr", OutSHA256: "out"}
 	for _, tc := range []struct {
 		status int
 		retry  string
 		code   string
-		doc    bool
 	}{
-		{429, "5", CodePDFPrepareBusy, false},
-		{503, "60", CodeLTVUnavailable, false},
-		{503, "5", CodeDocumentPending, true},
-		{503, "30", CodeTSAUnavailable, true},
-		{503, "60", CodeLTVUnavailable, true},
+		{429, "5", CodeRateLimited},
+		{503, "30", CodeTSAUnavailable},
+		{503, "60", CodeLTVUnavailable},
+		{503, "5", CodeStateUnavailable},
 	} {
 		c, _ := server(t, reply(tc.status, tc.retry, `{"error":"түр","code":"`+tc.code+`"}`))
-		var err error
-		if tc.doc {
-			_, err = c.PDF.Document(ctx, "s1")
-		} else {
-			_, err = c.PDF.Prepare(ctx, pdfIn)
-		}
+		_, err := c.PDF.RegisterSignature(ctx, reg)
 		var api *APIError
 		if !errors.As(err, &api) || api.Status != tc.status || api.Code != tc.code || !api.Retryable() ||
 			api.RetryAfter != parseRetryAfter(tc.retry, time.Now()) || api.RetryAfter == 0 || api.Header.Get("X-Request-Id") != "req-1" {
 			t.Fatalf("%+v: %v", tc, err)
 		}
 	}
-	c, _ := server(t, reply(409, "", `{"error":"x","code":"DOC_ID_MISMATCH"}`))
+	c, _ := server(t, reply(409, "", `{"error":"x","code":"DOC_ID_CONFLICT"}`))
 	var api *APIError
-	if _, err := c.PDF.Prepare(ctx, pdfIn); !errors.As(err, &api) || api.Retryable() {
+	if _, err := c.PDF.RegisterSignature(ctx, reg); !errors.As(err, &api) || api.Retryable() {
 		t.Fatal(err)
 	}
 	// proxy-ийн 503 + Retry-After — кодгүй ч давтаж болно
 	c, _ = server(t, reply(503, "10", "<html>bad gateway</html>"))
-	if _, err := c.PDF.Prepare(ctx, pdfIn); !errors.As(err, &api) || !api.Retryable() || api.Code != "" {
+	if _, err := c.PDF.RegisterSignature(ctx, reg); !errors.As(err, &api) || !api.Retryable() || api.Code != "" {
 		t.Fatal(err)
 	}
-	c, _ = server(t, reply(403, "7", `{"error":"x","code":"REPRESENTATION_DENIED"}`))
+	c, _ = server(t, reply(403, "7", `{"error":"x","code":"REPRESENTATION_REVOKED"}`))
 	var fe *ForbiddenError
-	if _, err := c.PDF.Prepare(ctx, pdfIn); !errors.As(err, &fe) || fe.RetryAfter != 7*time.Second || fe.Header.Get("X-Request-Id") != "req-1" {
+	if _, err := c.PDF.RegisterSignature(ctx, reg); !errors.As(err, &fe) || fe.RetryAfter != 7*time.Second || fe.Header.Get("X-Request-Id") != "req-1" {
 		t.Fatal(err)
 	}
 }
@@ -143,7 +137,8 @@ func TestPDFTimeoutConfigurable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ne *NetworkError
-	if _, err := c.PDF.Document(context.Background(), "s1"); !errors.As(err, &ne) || !ne.Timeout {
+	reg := PDFSignatureRegistration{DocID: "d", RevIndex: 2, Medium: PDFMediumToken, CMS: []byte{0}}
+	if _, err := c.PDF.RegisterSignature(context.Background(), reg); !errors.As(err, &ne) || !ne.Timeout {
 		t.Fatal(err)
 	}
 }
