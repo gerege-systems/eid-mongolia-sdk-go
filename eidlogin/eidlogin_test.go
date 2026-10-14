@@ -38,6 +38,10 @@ type fakeEID struct {
 	flow     string // гарын үсэгт зурах flowType
 	verifier string
 	tamper   bool
+	// refuse — notification start-ын хариу: "" = бодит session; "json400" = eID-ийн татгалзал (JSON 4xx);
+	// "proxy400" = JSON бус 4xx (proxy); "500" — eID 5xx; "401" — RP-ийн нууц буруу.
+	refuse      string
+	polledOther bool
 }
 
 const sid = "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
@@ -74,6 +78,27 @@ func (f *fakeEID) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&f.req)
 		_ = json.NewEncoder(w).Encode(map[string]any{"sessionID": sid, "sessionToken": "tok_ABC-123",
 			"sessionSecret": base64.StdEncoding.EncodeToString(make([]byte, 32)), "deviceLinkBase": "https://ca.eidmongolia.mn/dl", "vc": "12345"})
+	case strings.HasPrefix(r.URL.Path, "/authentication/notification/etsi/") && f.refuse != "":
+		f.path = r.URL.EscapedPath()
+		switch f.refuse {
+		case "json400":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"хэрэглэгч олдсонгүй"}`)
+		case "proxy400":
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, "<html>400 The SSL certificate error</html>")
+		case "401":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"error":"unauthorized"}`)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":"дотоод алдаа"}`)
+		}
+	case r.URL.Path != "/session/"+sid && strings.HasPrefix(r.URL.Path, "/session/"):
+		f.polledOther = true
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":"session олдсонгүй"}`)
 	case strings.HasPrefix(r.URL.Path, "/authentication/notification/etsi/"):
 		f.path = r.URL.EscapedPath()
 		_ = json.NewDecoder(r.Body).Decode(&f.req)
@@ -134,12 +159,21 @@ func (f *fakeEID) set(end, flow, verifier string) {
 	f.end, f.flow, f.verifier = end, flow, verifier
 }
 
+type event struct {
+	kind EventKind
+	sid  string
+	meta map[string]any
+}
+
 type env struct {
 	h      *Handler
 	fake   *fakeEID
 	ids    []*Identity
 	keys   []string
 	server *httptest.Server
+	// sleeps — PushFloor / decoy poll-ын хүлээлт (хуурмаг цаг: бодитоор унтахгүй).
+	sleeps []time.Duration
+	events []event
 }
 
 func setup(t *testing.T, mod func(*Config)) *env {
@@ -164,10 +198,28 @@ func setup(t *testing.T, mod func(*Config)) *env {
 	if mod != nil {
 		mod(&cfg)
 	}
+	userEvent := cfg.OnEvent
+	cfg.OnEvent = func(ctx context.Context, k EventKind, s string, m map[string]any) {
+		e.events = append(e.events, event{k, s, m})
+		if userEvent != nil {
+			userEvent(ctx, k, s, m)
+		}
+	}
 	if e.h, err = New(cfg); err != nil {
 		t.Fatal(err)
 	}
+	t0 := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	e.h.now = func() time.Time { return t0 }
+	e.h.sleep = func(_ context.Context, d time.Duration) { e.sleeps = append(e.sleeps, d) }
 	return e
+}
+
+func (e *env) kinds() []EventKind {
+	var out []EventKind
+	for _, ev := range e.events {
+		out = append(out, ev.kind)
+	}
+	return out
 }
 
 type resp struct {

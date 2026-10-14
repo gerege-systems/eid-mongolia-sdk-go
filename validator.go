@@ -360,10 +360,16 @@ func (v *Validator) CheckRevocation(ctx context.Context, cert *x509.Certificate)
 //	RevocationUnknown, *ValidationError — "unknown", hard-fail
 //	"", error                — checker-ийн алдаа (итгэхгүй)
 func (v *Validator) CheckRevocationStatus(ctx context.Context, cert *x509.Certificate) (RevocationStatus, error) {
-	if v.revocation == nil {
+	return v.CheckRevocationWith(ctx, cert, v.revocation, v.revocationMode)
+}
+
+// CheckRevocationWith — CheckRevocationStatus-тэй ижил, гэхдээ Trust-ийн биш өгсөн checker ба горимоор (issuer-ийг
+// Validator-ийн trust pool-оос олно). checker nil бол RevocationSkipped; mode "" = RevocationHardFail.
+func (v *Validator) CheckRevocationWith(ctx context.Context, cert *x509.Certificate, checker RevocationChecker, mode RevocationMode) (RevocationStatus, error) {
+	if checker == nil {
 		return RevocationSkipped, nil
 	}
-	status, err := v.revocation(ctx, cert, v.findIssuer(cert))
+	status, err := checker(ctx, cert, v.findIssuer(cert))
 	if err != nil {
 		return "", fmt.Errorf("eid: revocation шалгалт: %w", err)
 	}
@@ -373,7 +379,7 @@ func (v *Validator) CheckRevocationStatus(ctx context.Context, cert *x509.Certif
 	case RevocationRevoked:
 		return RevocationRevoked, invalid("гэрчилгээ цуцлагдсан (revoked)")
 	}
-	if v.revocationMode == RevocationSoftFail {
+	if mode == RevocationSoftFail {
 		return RevocationUnchecked, nil
 	}
 	return RevocationUnknown, invalid("гэрчилгээний revocation төлөв тогтоогдсонгүй (hard-fail)")
