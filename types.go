@@ -102,7 +102,8 @@ type NotificationSession struct {
 	// Sign — sign session-ий хүсэлтэд илгээсэн утгууд (ValidateSign-д Digest, HashAlgorithm, SignatureAlgorithm);
 	// auth / certificate-choice session-д nil.
 	Sign *SignContext `json:"sign,omitempty"`
-	// ExpiresAt — sign / certificate-choice session-ий ТООЦООЛСОН дуусах мөч; auth session-д тэг. Үзнэ үү SessionExpiry.
+	// ExpiresAt — session дуусах мөч: CA-ийн start хариуны expiresAt; хуучин CA-д sign / certificate-choice-д
+	// тооцоолсон (SessionExpiry), auth-д тэг.
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
@@ -121,8 +122,9 @@ type SignContext struct {
 }
 
 // DefaultSignSessionTTL — CA-ийн SIGNATURE ба CERTIFICATE_CHOICE session-ий анхдагч хүчинтэй хугацаа
-// (EID_SIGN_SESSION_TTL_SECONDS = 600). CA-ийн админ «Системийн тохиргоо»-нд 60–1800 секундэд өөрчилж болно; session start
-// хариунд CA хугацааг буцаадаггүй (зөвхөн sessionID) тул SDK үүнийг Config.SignSessionTTL-ээр тооцоолно.
+// (EID_SIGN_SESSION_TTL_SECONDS = 600). CA-ийн админ «Системийн тохиргоо»-нд 60–1800 секундэд өөрчилж болно. CA
+// 2026-10-14-өөс session start хариунд expiresAt буцаадаг — SDK түүнийг ашиглана; хуучин CA (талбаргүй) үед л
+// Config.SignSessionTTL-ээр тооцоолно.
 const DefaultSignSessionTTL = 600 * time.Second
 
 // SessionExpiry — session start-ын хариунаас тооцоолох дуусах мөч: хүсэлт илгээхээс ӨМНӨХ цаг + ttl. CA session-ий
@@ -155,7 +157,8 @@ type DeviceLinkSession struct {
 	Sign *SignContext `json:"sign,omitempty"`
 	// RelyingPartyName — certificate-choice session-ий хүсэлтэд илгээсэн нэр (cert холбоосын authCode-д).
 	RelyingPartyName string `json:"relyingPartyName,omitempty"`
-	// ExpiresAt — sign / certificate-choice session-ий ТООЦООЛСОН дуусах мөч (SessionExpiry); auth-д тэг.
+	// ExpiresAt — session дуусах мөч: CA-ийн start хариуны expiresAt; хуучин CA-д sign / certificate-choice-д
+	// тооцоолсон (SessionExpiry), auth-д тэг.
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 

@@ -1,6 +1,7 @@
 package eid
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -73,6 +74,39 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.Status, e.Body) }
+
+// Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid): серверийн Code-оор.
+func (e *APIError) Is(target error) bool {
+	switch target {
+	case ErrNoSigningCertificate:
+		return e.Code == CodeNoSigningCertificate
+	case ErrCertChoiceInvalid:
+		return e.Code == CodeCertChoiceInvalid
+	case ErrRequestInvalid:
+		return e.Code == CodeRequestInvalid
+	}
+	return false
+}
+
+// Session эхлэх алдааны кодууд — APIError.Code (CA 2026-10-14, RP_INTEGRATION «Session эхлэх алдаа»).
+const (
+	// CodeNoSigningCertificate — 409: иргэнд (баримтад) идэвхтэй төхөөрөмж / SIGN credential / хүчинтэй гарын
+	// үсгийн гэрчилгээ алга — sign ба certificate-choice start, /pdf/sign/prepare. Session үүсээгүй. Танихгүй
+	// лавлагаанд ч ижил (бүртгэл задлахгүй).
+	CodeNoSigningCertificate = "NO_SIGNING_CERTIFICATE"
+	// CodeCertChoiceInvalid — 409: linked sign-ийн linkedSessionID (certificate-choice) хүчингүй / хуучирсан (>5 мин) /
+	// өөр documentNumber / гэрчилгээ солигдсон / ашиглагдсан → certificate-choice-ийг дахин эхлүүл.
+	CodeCertChoiceInvalid = "CERT_CHOICE_INVALID"
+	// CodeRequestInvalid — 400: хүсэлт буруу (ж: linked-д linkedSessionID дутуу). Програмын алдаа.
+	CodeRequestInvalid = "REQUEST_INVALID"
+)
+
+// errors.Is-ийн sentinel-ууд — *APIError.Is нь Code-оор тулгана (errors.As(&*APIError)-аар Status/Body ч авна).
+var (
+	ErrNoSigningCertificate = errors.New("eid: " + CodeNoSigningCertificate)
+	ErrCertChoiceInvalid    = errors.New("eid: " + CodeCertChoiceInvalid)
+	ErrRequestInvalid       = errors.New("eid: " + CodeRequestInvalid)
+)
 
 // Retryable — CA-ийн түр алдаа (RetryableCodes-ийн нэг, эсвэл 429/503 + Retry-After): RetryAfter-ийн дараа ижил
 // хүсэлтийг давтаж болно (prepared state хэвээр).

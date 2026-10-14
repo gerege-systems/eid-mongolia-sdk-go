@@ -51,7 +51,7 @@ func (s *SignService) CertificateChoiceByEtsi(ctx context.Context, id string, o 
 	if err := s.h.postJSON(ctx, routeCertChoiceEtsi.expand(id), s.certChoiceBody(o), &r); err != nil {
 		return nil, err
 	}
-	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), ExpiresAt: SessionExpiry(sent, s.ttl)}, nil
+	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), ExpiresAt: r.expiresAt(sent, s.ttl)}, nil
 }
 
 // CertificateChoiceDeviceLink — QR: иргэн хэн болохыг урьдчилж мэдэхгүй үед гэрчилгээ сонгуулах. CA-ийн
@@ -72,7 +72,7 @@ func (s *SignService) CertificateChoiceDeviceLink(ctx context.Context, o *CertCh
 		ReceivedAt:       time.Now(),
 		SessionType:      SessionCert,
 		RelyingPartyName: body.RelyingPartyName,
-		ExpiresAt:        SessionExpiry(sent, s.ttl),
+		ExpiresAt:        r.expiresAt(sent, s.ttl),
 	}, nil
 }
 
