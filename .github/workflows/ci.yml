@@ -26,3 +26,20 @@ jobs:
           GOOS=linux GOARCH=amd64 go build ./...
           GOOS=js GOARCH=wasm go build -o /tmp/eidpades.wasm ./wasm
           go build -buildmode=c-shared -o /tmp/libeidpades.so ./capi
+  wasm:
+    # pades core-ийг GOOS=js GOARCH=wasm-д Node + wasm_exec-ээр — golden (verifyPage орно) ба Node smoke.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: go test (js/wasm)
+        run: |
+          export PATH="$PATH:$(go env GOROOT)/lib/wasm"
+          GOOS=js GOARCH=wasm go test ./pades/...
+      - name: node smoke
+        run: go test -count=1 -run NodeSmoke ./wasm

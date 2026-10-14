@@ -45,7 +45,7 @@ func AppendPage(base, pagePDF []byte) (out []byte, err error) {
 		return nil, fmt.Errorf("%w: /Pages /Kids /Count буруу", ErrPDF)
 	}
 
-	ctx, err := pdfcpuapi.ReadContext(bytes.NewReader(pagePDF), model.NewDefaultConfiguration())
+	ctx, err := pdfcpuapi.ReadContext(bytes.NewReader(pagePDF), pageConfig())
 	if err != nil {
 		return nil, fmt.Errorf("хуудас задлах: %w", err)
 	}
@@ -283,4 +283,37 @@ func (c *pageCopier) write(w io.Writer, o types.Object, depth int) error {
 		return fmt.Errorf("pades: хуудасны объектын төрөл %T дэмжигдэхгүй", o)
 	}
 	return err
+}
+
+// pageConfig — pdfcpu-ийн анхдагч тохиргоо (model.newDefaultConfiguration, config.yml-тэй ижил утга) файлын системгүйгээр.
+// SDK: model.NewDefaultConfiguration() нь хэрэглэгчийн config хавтсанд config.yml үүсгэдэг (mkdir) — js/WASM ба
+// мобайл sandbox-д ажиллахгүй, мөн глобал model.ConfigPath-ийг өөрчлөхгүйн тулд энд шууд угсарна. Энэ кодод pdfcpu
+// зөвхөн манай fpdf хуудсыг уншина (relaxed validation).
+func pageConfig() *model.Configuration {
+	return &model.Configuration{
+		Version:                         model.VersionStr,
+		CheckFileNameExt:                true,
+		Reader15:                        true,
+		DecodeAllStreams:                false,
+		ValidationMode:                  model.ValidationRelaxed,
+		ValidateLinks:                   false,
+		Eol:                             types.EolLF,
+		WriteObjectStream:               true,
+		WriteXRefStream:                 true,
+		EncryptUsingAES:                 true,
+		EncryptKeyLength:                256,
+		Permissions:                     model.PermissionsPrint,
+		TimestampFormat:                 "2006-01-02 15:04",
+		DateFormat:                      "2006-01-02",
+		Optimize:                        true,
+		OptimizeBeforeWriting:           true,
+		OptimizeResourceDicts:           true,
+		OptimizeDuplicateContentStreams: false,
+		CreateBookmarks:                 true,
+		NeedAppearances:                 false,
+		Offline:                         true,
+		Timeout:                         5,
+		PreferredCertRevocationChecker:  model.CRL,
+		FormFieldListMaxColWidth:        0,
+	}
 }

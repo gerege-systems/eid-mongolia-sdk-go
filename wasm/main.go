@@ -8,13 +8,15 @@
 //	eidPades.verify(pdf, opts) → тайлан (object)
 //	eidPades.version → "pades-client/1"
 //
-// Алдаа: prepare/verify нь throw, complete нь reject — {code, message}. TSA/OCSP/CRL-ийг net/http-ийн js fetch-ээр;
+// Алдаа: prepare/verify нь {error: {code, message}} утга буцаана (throw хийхгүй), complete нь reject (Error.code).
+// Дотоод panic-ийг барина — runtime унахгүй. TSA/OCSP/CRL-ийг net/http-ийн js fetch-ээр;
 // AIA/CDP-ийн http:// нь зөвхөн eID-ийн allowlist host-д https болно (pades/fetch.go).
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"syscall/js"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades"
@@ -50,21 +52,38 @@ func jsErr(err error) js.Value {
 	return e
 }
 
-func throw(err error) any { panic(js.ValueOf(jsErr(err))) }
+// errObj — prepare/verify-ийн алдааны утга {error: {code, message}} (panic хийвэл Go runtime бүхэлдээ унана).
+func errObj(err error) any {
+	var o map[string]any
+	_ = json.Unmarshal([]byte(pades.ErrorJSON(err)), &o)
+	return js.ValueOf(map[string]any{"error": o})
+}
+
+// safe — FuncOf бүрийг дотоод panic-аас хамгаална (runtime унахгүй, дараагийн дуудлага ажиллана).
+func safe(f func(js.Value, []js.Value) any) js.Func {
+	return js.FuncOf(func(this js.Value, a []js.Value) (out any) {
+		defer func() {
+			if r := recover(); r != nil {
+				out = errObj(fmt.Errorf("дотоод алдаа: %v", r))
+			}
+		}()
+		return f(this, a)
+	})
+}
 
 func fromJSON(b []byte) js.Value { return js.Global().Get("JSON").Call("parse", string(b)) }
 
 func main() {
 	api := js.Global().Get("Object").New()
 	api.Set("version", pades.ProfileVersion)
-	api.Set("prepare", js.FuncOf(func(_ js.Value, a []js.Value) any {
+	api.Set("prepare", safe(func(_ js.Value, a []js.Value) any {
 		o, err := pades.ParsePrepareOptions(optsJSON(arg(a, 1)))
 		if err != nil {
-			return throw(err)
+			return errObj(err)
 		}
 		p, err := pades.Prepare(toBytes(arg(a, 0)), o)
 		if err != nil {
-			return throw(err)
+			return errObj(err)
 		}
 		r := js.Global().Get("Object").New()
 		r.Set("dtbs", toU8(p.DTBS))
@@ -73,11 +92,16 @@ func main() {
 		r.Set("docId", p.DocID)
 		return r
 	}))
-	api.Set("complete", js.FuncOf(func(_ js.Value, a []js.Value) any {
+	api.Set("complete", safe(func(_ js.Value, a []js.Value) any {
 		state, sig, opts := toBytes(arg(a, 0)), toBytes(arg(a, 1)), optsJSON(arg(a, 2))
 		return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, pr []js.Value) any {
 			resolve, reject := pr[0], pr[1]
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						reject.Invoke(jsErr(fmt.Errorf("дотоод алдаа: %v", r)))
+					}
+				}()
 				o, err := pades.ParseCompleteOptions(opts)
 				if err != nil {
 					reject.Invoke(jsErr(err))
@@ -98,14 +122,14 @@ func main() {
 			return nil
 		}))
 	}))
-	api.Set("verify", js.FuncOf(func(_ js.Value, a []js.Value) any {
+	api.Set("verify", safe(func(_ js.Value, a []js.Value) any {
 		o, err := pades.ParseVerifyOptions(optsJSON(arg(a, 1)))
 		if err != nil {
-			return throw(err)
+			return errObj(err)
 		}
 		r, err := pades.Verify(toBytes(arg(a, 0)), o)
 		if err != nil {
-			return throw(err)
+			return errObj(err)
 		}
 		b, _ := json.Marshal(r)
 		return fromJSON(b)

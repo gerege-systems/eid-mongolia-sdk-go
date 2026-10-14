@@ -81,6 +81,8 @@ type Prepared struct {
 	State  []byte // тунгалаг, хадгалж болно (Complete-д буцааж өгнө)
 }
 
+var encryptKey = regexp.MustCompile(`/Encrypt\s+\d+\s+\d+\s+R`)
+
 var uuidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // Prepare — PDF-д гарын үсгийн revision (placeholder) бичиж, иргэний зурах DTBS-ийг буцаана. PDF сүлжээ рүү гарахгүй.
@@ -119,7 +121,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 
 	inSum := sha256.Sum256(doc)
 	inHex := hex.EncodeToString(inSum[:])
-	newDoc, revIndex, err := inspect(doc, roots)
+	newDoc, revIndex, err := inspect(doc, roots, chain[:1])
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +188,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 // inspect — CA-ийн padesInspect-ийн клиент хувилбар: гарын үсэггүй → шинэ баримт (revIndex 1); гарын үсэгтэй бол
 // бүгд бүрэн бүтэн, зөвхөн гарын үсэг/LTV-ээр өргөтгөгдсөн, DocMDP P=1 биш, БҮГД eID-ийн хүчинтэй PAdES-BASELINE-LT
 // (CA бүртгэлээр шалгадаг «манай гарын үсэг»-ийн оронд — клиент бүртгэл уншихгүй).
-func inspect(doc []byte, roots []*x509.Certificate) (newDoc bool, revIndex int, err error) {
+func inspect(doc []byte, roots, issuers []*x509.Certificate) (newDoc bool, revIndex int, err error) {
 	hasSigs, herr := vpage.HasSignatureObjects(doc)
 	if encrypted(doc) {
 		return false, 0, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
@@ -217,7 +219,7 @@ func inspect(doc []byte, roots []*x509.Certificate) (newDoc bool, revIndex int, 
 	if docMDPLocked(doc) {
 		return false, 0, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
 	}
-	v := newValidator(roots, nil, nil, nil, sigs)
+	v := newValidator(roots, nil, issuers, nil, sigs)
 	rep, err := v.ValidatePDF(context.Background(), doc)
 	if err != nil {
 		return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсгийг шалгаж чадсангүй", err)
@@ -239,7 +241,8 @@ func encrypted(doc []byte) (enc bool) {
 	}()
 	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
-		return false
+		// digitorus нь зарим шифрлэлтийг (AES-256) нээж чадахгүй — trailer/xref stream-ийн /Encrypt түлхүүрээр.
+		return encryptKey.Match(doc)
 	}
 	return !r.Trailer().Key("Encrypt").IsNull()
 }

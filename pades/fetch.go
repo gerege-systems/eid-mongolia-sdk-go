@@ -24,6 +24,9 @@ const (
 // бусад http:// URL-ийг fetch хийхгүй (docs/PADES_CLIENT_SIDE.md §8.4).
 var browserHTTPS = map[string]bool{"ocsp.eidmongolia.mn": true, "crl.eidmongolia.mn": true, "tsa.timeserver.mn": true}
 
+// jsUpgrade — js/WASM орчин (тестийн сүлжээгүй fixture-д унтраана).
+var jsUpgrade = runtime.GOOS == "js"
+
 var errNotFetchable = errors.New("js/WASM: http URL нь https allowlist-д алга")
 
 // defaultHTTPClient — timeout 10 с, redirect дагахгүй.
@@ -41,7 +44,7 @@ func newFetcher(c *http.Client) *fetcher {
 	if c == nil {
 		c = defaultHTTPClient()
 	}
-	return &fetcher{client: c, js: runtime.GOOS == "js", cache: map[string][]byte{}}
+	return &fetcher{client: c, js: jsUpgrade, cache: map[string][]byte{}}
 }
 
 // target — зөвхөн http/https; js/WASM-д http-ийг allowlist host-д https болгоно, бусдыг татгалзана.
