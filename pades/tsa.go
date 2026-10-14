@@ -30,10 +30,12 @@ var nonceReader io.Reader = rand.Reader
 // БАТАЛГААЖУУЛНА (nonce, imprint, TSA гинж roots-д EKU timeStamping-тэй, genTime ±10 мин).
 func timestampToken(ctx context.Context, f *fetcher, tsaURL string, signature []byte, roots, inter []*x509.Certificate, now time.Time) ([]byte, *timestamp.Timestamp, error) {
 	sum := sha256.Sum256(signature)
-	nonce, err := rand.Int(nonceReader, new(big.Int).Lsh(big.NewInt(1), 64))
-	if err != nil {
+	// 64 бит nonce. rand.Int биш: Go 1.26+-д crypto/rand-ийн функцууд өгсөн reader-ийг үл тоодог (тестийн тодорхойлогдсон nonce).
+	var nb [8]byte
+	if _, err := io.ReadFull(nonceReader, nb[:]); err != nil {
 		return nil, nil, err
 	}
+	nonce := new(big.Int).SetBytes(nb[:])
 	reqDER, err := (&timestamp.Request{HashAlgorithm: crypto.SHA256, HashedMessage: sum[:], Certificates: true, Nonce: nonce}).Marshal()
 	if err != nil {
 		return nil, nil, err
