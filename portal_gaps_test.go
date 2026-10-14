@@ -16,6 +16,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -570,4 +571,53 @@ func TestErrorsWithoutPII(t *testing.T) {
 	_, err = trusted(t).ValidateAuth(r, acsp, ValidateAuthOptions{})
 	wantInvalid(t, err, "хүчинтэй болоогүй")
 	noPII(t, err)
+}
+
+// ── 0.1.4: roleLabel (CA !339) + Config.Language → Accept-Language ──
+
+func TestRoleLabel(t *testing.T) {
+	c, _ := server(t, jsonReply(200, `{"personEtsi":"PNOMN-1","representations":[
+		{"orgEtsi":"NTRMN-1","role":"ceo","roleLabel":"Гүйцэтгэх захирал","rightType":"ADMIN","source":"REGISTRY","validFrom":"2026-10-01T00:00:00Z"},
+		{"orgEtsi":"NTRMN-2","role":"Нягтлан","rightType":"MANAGER","source":"MANUAL","validFrom":"2026-10-01T00:00:00Z"}]}`))
+	r, err := c.Organization.GetRepresentations(context.Background(), "PNOMN-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Representations[0].RoleLabel != "Гүйцэтгэх захирал" || r.Representations[1].RoleLabel != "" {
+		t.Fatalf("representations roleLabel: %+v", r.Representations)
+	}
+
+	s, err := ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},
+		"onBehalfOf":{"orgEtsi":"NTRMN-1","orgName":"Х ХХК","role":"ceo","roleLabel":"Chief Executive Officer","rightType":"ADMIN"}}`))
+	if err != nil || s.OnBehalfOf == nil || s.OnBehalfOf.RoleLabel != "Chief Executive Officer" || s.OnBehalfOf.Role != "ceo" {
+		t.Fatalf("session onBehalfOf: %+v, %v", s.OnBehalfOf, err)
+	}
+	old, err := ParseSessionResult([]byte(`{"state":"COMPLETE","onBehalfOf":{"orgEtsi":"NTRMN-1","role":"ceo","rightType":"ADMIN"}}`))
+	if err != nil || old.OnBehalfOf == nil || old.OnBehalfOf.RoleLabel != "" {
+		t.Fatalf("хуучин CA: %+v, %v", old.OnBehalfOf, err)
+	}
+	if b, _ := json.Marshal(OrgResult{OrgEtsi: "NTRMN-1"}); strings.Contains(string(b), "roleLabel") {
+		t.Fatalf("хоосон roleLabel omitempty биш: %s", b)
+	}
+}
+
+func TestLanguageHeader(t *testing.T) {
+	for lang, want := range map[string]string{"": "", "en": "en", " mn ": "mn"} {
+		var got string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("Accept-Language")
+			_, _ = io.WriteString(w, `{"personEtsi":"PNOMN-1","representations":[]}`)
+		}))
+		c, err := NewClient(Config{BaseURL: srv.URL, Credentials: creds, Trust: TrustConfig{AllowUntrusted: true}, Language: lang})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Organization.GetRepresentations(context.Background(), "PNOMN-1"); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		if got != want {
+			t.Errorf("Language %q → Accept-Language %q, хүлээсэн %q", lang, got, want)
+		}
+	}
 }

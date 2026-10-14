@@ -217,9 +217,13 @@ type TokenCertSessionBlock struct {
 
 // OrgResult — session-ий байгууллагын блок (бүртгэлээс real-time). Эрх хураагдсан бол Role/RightType "".
 type OrgResult struct {
-	OrgEtsi   string `json:"orgEtsi"`
-	OrgName   string `json:"orgName"`
-	Role      string `json:"role"`
+	OrgEtsi string `json:"orgEtsi"`
+	OrgName string `json:"orgName"`
+	// Role — албан тушаалын машин утга (ceo, MANUAL текст); өөрөө орчуулахгүй, хүнд RoleLabel-ийг харуулна.
+	Role string `json:"role"`
+	// RoleLabel — албан тушаалын хүнд харуулах нэр (хэл: Config.Language → Accept-Language, анхдагч mn). Эрх
+	// хураагдсан эсвэл хуучин CA бол хоосон.
+	RoleLabel string `json:"roleLabel,omitempty"`
 	RightType string `json:"rightType"`
 }
 
@@ -270,7 +274,12 @@ type Representation struct {
 	OrgRegister string `json:"orgRegister"`
 	OrgName     string `json:"orgName"`
 	OrgNameEn   string `json:"orgNameEn,omitempty"`
-	Role        string `json:"role,omitempty"`
+	// Role — албан тушаалын машин утга (ХУР-аас холбогдсонд ceo / founder / stakeholder, MANAGER-т ADMIN-ий бичсэн
+	// текст); өөрөө орчуулахгүй, хүнд RoleLabel-ийг харуулна.
+	Role string `json:"role,omitempty"`
+	// RoleLabel — албан тушаалын хүнд харуулах нэр (CA нэг газраас; хэл: Config.Language → Accept-Language,
+	// анхдагч mn). Хуучин CA-д хоосон.
+	RoleLabel string `json:"roleLabel,omitempty"`
 	// RightType — ADMIN | MANAGER.
 	RightType string `json:"rightType"`
 	// Source — REGISTRY | MANUAL.
