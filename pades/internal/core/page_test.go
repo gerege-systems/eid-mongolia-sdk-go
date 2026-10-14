@@ -8,6 +8,8 @@ import (
 
 	"github.com/digitorus/pdf"
 
+	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/assets"
+
 	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
@@ -82,5 +84,28 @@ func TestAppendPageIncremental(t *testing.T) {
 				t.Fatalf("/Name %q", v)
 			}
 		})
+	}
+}
+
+// TestPageTextsFit — хоёр хэлний тогтмол бичвэр фонтод бүрэн (glyph) ба мөрөндөө багтана (PAGE_SPEC.md §3a).
+func TestPageTextsFit(t *testing.T) {
+	reg, _ := assets.Regular()
+	bld, _ := assets.Bold()
+	w := &pageWriter{reg: reg, bld: bld}
+	for lang, tx := range pageTexts {
+		for _, c := range []struct {
+			id, size, max int
+			s             string
+		}{{2, 13, 496, "eID Mongolia" + tx.title}, {1, 9, 496, tx.subtitle}, {2, 11, 416, tx.scan}, {1, 9, 416, tx.scanHint},
+			{1, 9, 416, tx.trust}, {2, 11, 510, tx.document}, {2, 11, 510, tx.verification}} {
+			if got := w.width1000(c.id, c.size, c.s); got > c.max*1000 {
+				t.Errorf("%s: %q өргөн %d > %d", lang, c.s, got/1000, c.max)
+			}
+			for _, r := range c.s {
+				if _, ok := w.font(c.id).GID[r]; !ok {
+					t.Errorf("%s: glyph алга %q", lang, r)
+				}
+			}
+		}
 	}
 }

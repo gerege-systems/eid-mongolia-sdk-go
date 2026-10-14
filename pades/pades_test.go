@@ -277,3 +277,21 @@ func TestSigningTimeZone(t *testing.T) {
 		}
 	}
 }
+
+// TestCRLMirror — үндэсний CRL нь eID-ийн https толин руу; бусад URL хэвээр.
+func TestCRLMirror(t *testing.T) {
+	f := newFetcher(nil)
+	for in, want := range map[string]string{
+		"http://esign.gov.mn/MNICA-2022.crl": "https://crl.eidmongolia.mn/MNICA-2022.crl",
+		"http://esign.gov.mn/MNRCA-2021.crl": "https://crl.eidmongolia.mn/MNRCA-2021.crl",
+		"http://crl.eidmongolia.mn/crl/ca":   "http://crl.eidmongolia.mn/crl/ca",
+		"http://esign.gov.mn/OTHER.crl":      "http://esign.gov.mn/OTHER.crl",
+	} {
+		if got, err := f.target(in); err != nil || got != want {
+			t.Fatalf("%s → %s %v", in, got, err)
+		}
+	}
+	if _, err := f.target("ldap://x"); err == nil {
+		t.Fatal("ldap")
+	}
+}

@@ -18,6 +18,13 @@ const (
 	maxHTTPResponse = 4 << 20
 )
 
+// crlMirror — үндэсний CRL-ийн (бидний бус, http-only, CORS-гүй) eID-ийн https толин хуулбар (CA !352). CRL-ийн
+// гарын үсгийг олгогчоор (02/01) өөрөө шалгадаг тул толинд итгэх шаардлагагүй. Тогтмол жагсаалт — өөр URL буулгахгүй.
+var crlMirror = map[string]string{
+	"http://esign.gov.mn/MNICA-2022.crl": "https://crl.eidmongolia.mn/MNICA-2022.crl",
+	"http://esign.gov.mn/MNRCA-2021.crl": "https://crl.eidmongolia.mn/MNRCA-2021.crl",
+}
+
 // defaultHTTPClient — timeout 10 с, redirect дагахгүй.
 func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -35,8 +42,11 @@ func newFetcher(c *http.Client) *fetcher {
 	return &fetcher{client: c, cache: map[string][]byte{}}
 }
 
-// target — зөвхөн http/https.
+// target — зөвхөн http/https; үндэсний CRL-ийг толин хуулбар руу (crlMirror).
 func (f *fetcher) target(raw string) (string, error) {
+	if m, ok := crlMirror[raw]; ok {
+		return m, nil
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err

@@ -65,6 +65,16 @@ OCSPRequest ::= SEQUENCE { tbsRequest SEQUENCE { requestList SEQUENCE OF { Reque
 `GET <CDP URL>` (гэрчилгээний CDP-д бичигдсэн дарааллаар; header нэмэхгүй; ижил URL-ийг нэг Complete дотор нэг удаа),
 хариу DER CRL, ≤ 4 MiB, HTTP 200.
 
+**Үндэсний CRL-ийн толин хуулбар (бүх платформд, тогтмол map):** CDP URL яг тэнцүү бол дараах URL-ээр татна —
+
+| CDP (гэрчилгээнд) | татах URL |
+|---|---|
+| `http://esign.gov.mn/MNICA-2022.crl` (03-ийн CDP, олгогч 02) | `https://crl.eidmongolia.mn/MNICA-2022.crl` |
+| `http://esign.gov.mn/MNRCA-2021.crl` (02-ийн CDP, олгогч 01) | `https://crl.eidmongolia.mn/MNRCA-2021.crl` |
+
+Бусад URL-ийг буулгахгүй. CRL-ийн гарын үсгийг олгогчоор (02/01) шалгадаг тул толинд итгэх шаардлагагүй (CA !352;
+2026-10-14 шалгасан: 200, `Access-Control-Allow-Origin: *`). Fixture түлхүүр нь **татсан** URL-ээр.
+
 ## 4. Golden-ийн nonce
 
 `seed = UTF-8("golden-nonce:" + caseName)`; блок k (0, 1, …) = `SHA-256(prev ‖ byte(k))`, `prev` = эхэндээ seed, дараа
@@ -73,6 +83,6 @@ OCSPRequest ::= SEQUENCE { tbsRequest SEQUENCE { requestList SEQUENCE OF { Reque
 
 ## 5. HTTP
 
-Анхдагч client: timeout 10 с, redirect дагахгүй, зөвхөн `http`/`https`, хариу ≤ 4 MiB. Хөтөч: AIA/CDP-ийн `http://`-ийг
-зөвхөн `ocsp.eidmongolia.mn`, `crl.eidmongolia.mn`, `tsa.timeserver.mn`-д `https://` болгоно, бусдыг татахгүй
-(docs/PADES_CLIENT_SIDE.md §8.4) — Go reference backend-д ажиллах тул энэ дүрэмгүй.
+Анхдагч client: timeout 10 с, redirect дагахгүй, зөвхөн `http`/`https`, хариу ≤ 4 MiB. Хөтөч: (§3-ийн толины дараа) AIA/CDP-ийн
+`http://`-ийг зөвхөн `ocsp.eidmongolia.mn`, `crl.eidmongolia.mn`, `tsa.timeserver.mn`-д `https://` болгоно, бусдыг
+татахгүй (docs/PADES_CLIENT_SIDE.md §8.4) — Go reference backend-д ажиллах тул энэ upgrade-гүй.

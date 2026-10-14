@@ -65,7 +65,7 @@ type PrepareOptions struct {
 	VerifyPage bool `json:"verifyPage,omitempty"`
 	// FileName — хуудсанд харуулах баримтын нэр (VerifyPage үед заавал; NFC, ≤ 120 тэмдэгт).
 	FileName string `json:"fileName,omitempty"`
-	// Lang — хуудасны хэл (mn|en). Одоогоор CA-ийн хуудастай байт-ижил байхын тулд зөвхөн англи бичвэр.
+	// Lang — хуудасны хэл: "mn" (анхдагч, хоосон бол) | "en" (PAGE_SPEC.md §3a).
 	Lang string `json:"lang,omitempty"`
 }
 
@@ -148,7 +148,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		base, err = core.AppendVerifyPage(doc, core.PageData{
 			Brand: pageBrand, FileName: fileName, DocumentHash: inHex, FileSize: int64(len(doc)), DocID: docID,
 			VerifyURL: pageVerifyURL + docID, TrustURL: pageTrustURL, CAName: cert.Issuer.CommonName, TSAName: pageTSAName,
-			Provider: pageProvider,
+			Provider: pageProvider, Lang: o.Lang,
 		})
 		if err != nil {
 			return nil, newErr(CodePDFInvalid, "PDF задарсангүй (хуудас нэмж чадсангүй)", err)

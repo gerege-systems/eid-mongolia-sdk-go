@@ -30,6 +30,46 @@ type PageData struct {
 	CAName       string
 	TSAName      string
 	Provider     string
+	Lang         string // "mn" (анхдагч) | "en" — PAGE_SPEC.md §3a
+}
+
+// pageText — хуудасны тогтмол бичвэр (PAGE_SPEC.md §3a).
+type pageText struct {
+	title, subtitle, document, fileName, hashAlg, size, docHash, docID, verification string
+	scan, scanHint, trust, provider                                                  string
+}
+
+var pageTexts = map[string]pageText{
+	"mn": {
+		title:        "-аар гарын үсэг зурсан баримт",
+		subtitle:     "Гарын үсгүүд энэ PDF-д шингэсэн. Доорх холбоосоор эсвэл Adobe Acrobat-ын Signatures самбараар шалгана уу.",
+		document:     "БАРИМТ",
+		fileName:     "БАРИМТЫН НЭР",
+		hashAlg:      "HASH АЛГОРИТМ",
+		size:         "ХЭМЖЭЭ",
+		docHash:      "БАРИМТЫН HASH",
+		docID:        "БАРИМТЫН ID",
+		verification: "ШАЛГАХ",
+		scan:         "Гарын үсгийг шалгах",
+		scanHint:     "QR кодыг утасны камераар уншуулах эсвэл холбоосыг нээнэ үү.",
+		trust:        "Adobe Acrobat-д Монгол Улсын үндэсний Root CA-д итгэх заавар:",
+		provider:     "Үйлчилгээ",
+	},
+	"en": {
+		title:        " — Electronically signed document",
+		subtitle:     "Signatures are embedded in this PDF. Verify them with the link below or in Adobe Acrobat's Signatures panel.",
+		document:     "DOCUMENT",
+		fileName:     "FILE NAME",
+		hashAlg:      "HASH ALGORITHM",
+		size:         "SIZE",
+		docHash:      "DOCUMENT HASH",
+		docID:        "DOCUMENT ID",
+		verification: "VERIFICATION",
+		scan:         "Scan to verify",
+		scanHint:     "Scan this QR code with your phone camera to verify.",
+		trust:        "Adobe Acrobat: trust the Mongolian National Root CA",
+		provider:     "Provider",
+	},
 }
 
 const (
@@ -226,18 +266,26 @@ func pageContent(p PageData, reg, bld *assets.Font) ([]byte, [][5]any, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	lang := p.Lang
+	if lang == "" {
+		lang = "mn"
+	}
+	tx, ok := pageTexts[lang]
+	if !ok {
+		return nil, nil, fmt.Errorf("pades: хуудасны хэл %q", p.Lang)
+	}
 	w := &pageWriter{reg: reg, bld: bld}
 	// Banner
 	w.op("%s rg", colBanner)
 	w.op("%s", bannerPath)
-	w.text(2, 13, 56, 778, colOK, p.Brand+" — Electronically signed document")
-	w.text(1, 9, 56, 760, colOK, "Signatures are embedded in this PDF. Verify them with the link below or in Adobe Acrobat's Signatures panel.")
+	w.text(2, 13, 56, 778, colOK, p.Brand+tx.title)
+	w.text(1, 9, 56, 760, colOK, tx.subtitle)
 	// DOCUMENT
 	y := 724
 	w.hline(y)
-	w.text(2, 11, pgLeft, y-17, colText, "DOCUMENT")
+	w.text(2, 11, pgLeft, y-17, colText, tx.document)
 	y -= 34
-	w.text(1, 8, pgLeft, y, colMuted, "FILE NAME")
+	w.text(1, 8, pgLeft, y, colMuted, tx.fileName)
 	y -= 14
 	for i, line := range w.wrap(2, 10, p.FileName, pgWidth, fileNameMax) {
 		if i > 0 {
@@ -246,20 +294,20 @@ func pageContent(p PageData, reg, bld *assets.Font) ([]byte, [][5]any, error) {
 		w.text(2, 10, pgLeft, y, colText, line)
 	}
 	y -= 20
-	w.text(1, 8, pgLeft, y, colMuted, "HASH ALGORITHM")
-	w.text(1, 8, pgCol2, y, colMuted, "SIZE")
+	w.text(1, 8, pgLeft, y, colMuted, tx.hashAlg)
+	w.text(1, 8, pgCol2, y, colMuted, tx.size)
 	w.text(2, 10, pgLeft, y-14, colText, "SHA256")
 	w.text(2, 10, pgCol2, y-14, colText, HumanSize(p.FileSize))
 	y -= 34
-	w.text(1, 8, pgLeft, y, colMuted, "DOCUMENT HASH")
+	w.text(1, 8, pgLeft, y, colMuted, tx.docHash)
 	w.text(3, 9, pgLeft, y-13, colText, p.DocumentHash)
 	y -= 31
-	w.text(1, 8, pgLeft, y, colMuted, "DOCUMENT ID")
+	w.text(1, 8, pgLeft, y, colMuted, tx.docID)
 	w.text(3, 9, pgLeft, y-13, colText, p.DocID)
 	y -= 35
 	// VERIFICATION
 	w.hline(y)
-	w.text(2, 11, pgLeft, y-17, colText, "VERIFICATION")
+	w.text(2, 11, pgLeft, y-17, colText, tx.verification)
 	y -= 35
 	w.text(1, 9, pgLeft, y, colLink, p.VerifyURL)
 	w.link(1, 9, pgLeft, y, p.VerifyURL)
@@ -281,17 +329,17 @@ func pageContent(p PageData, reg, bld *assets.Font) ([]byte, [][5]any, error) {
 		}
 	}
 	w.op("f")
-	w.text(2, 11, qrTextX, y-14, colText, "Scan to verify")
-	w.text(1, 9, qrTextX, y-29, colMuted, "Scan this QR code with your phone camera to verify.")
+	w.text(2, 11, qrTextX, y-14, colText, tx.scan)
+	w.text(1, 9, qrTextX, y-29, colMuted, tx.scanHint)
 	w.text(2, 9, qrTextX, y-43, colLink, urlHost(p.VerifyURL))
 	if p.TrustURL != "" {
-		w.text(1, 9, qrTextX, y-60, colMuted, "Adobe Acrobat: trust the Mongolian National Root CA")
+		w.text(1, 9, qrTextX, y-60, colMuted, tx.trust)
 		w.text(2, 9, qrTextX, y-74, colLink, p.TrustURL)
 		w.link(2, 9, qrTextX, y-74, p.TrustURL)
 	}
 	// Footer
 	w.hline(71)
-	w.text(1, 8, pgLeft, 58, colMuted, "CA: "+p.CAName+"  |  TSA: "+p.TSAName+"  |  Provider: "+p.Provider)
+	w.text(1, 8, pgLeft, 58, colMuted, "CA: "+p.CAName+"  |  TSA: "+p.TSAName+"  |  "+tx.provider+": "+p.Provider)
 	return w.ops.Bytes(), w.links, nil
 }
 

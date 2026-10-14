@@ -4,7 +4,7 @@ Native SDK (TS, Swift, Kotlin, C#)-ууд Go reference-тэй (`pades/internal/c
 **байт-ижил** гаргах дүрэм. Бүрэн жишээ: `testdata/golden/output/<case>.pdf` ба `manifest.json`. Бусад баримт:
 [PRECHECKS.md](PRECHECKS.md) (prepare-ийн шалгуур), [PAGE_SPEC.md](PAGE_SPEC.md) (verify хуудас), [WIRE.md](WIRE.md)
 (TSA/OCSP/CRL хүсэлтийн байт). Эх: ca-eidmongolia-mn `server/internal/pdfsign/pades` (digitorus/pdfsign-ийн fork, BSD-2,
-`internal/core/LICENSE.digitorus`); CA-аас ялгаа: runtime-д ШАХАЛТ ҮГҮЙ (xref stream), шууд `/Info`-г хуулна, verify хуудас өөр.
+`internal/core/LICENSE.digitorus`); CA-аас ялгаа: runtime-д ШАХАЛТ ҮГҮЙ (xref stream), шууд `/Info`-г хуулна, verify хуудас өөр (хоёр хэлтэй), `/M` +08:00.
 
 ## 0. Prepare / Complete-ийн дараалал
 
@@ -17,7 +17,9 @@ complete(state, signature):
   → TSA (WIRE.md §1) → CMS (§5) → embed (§6) → OCSP/CRL (§8, genTime-ийн дараа) → R_dss (§7)
 ```
 
-`signingTime` (`/M`) — үргэлж **UTC+08:00** бүсээр (`(D:YYYYMMDDHHmmSS+08'00')`); тэг бол одоо.
+`signingTime` (`/M`) — үргэлж **UTC+08:00** бүсээр (`(D:YYYYMMDDHHmmSS+08'00')`); тэг бол одоо. **CA-аас ялгаатай,
+санаатай:** CA-ийн серверийн бичигч `/M`-ийг UTC-ээр бичдэг (прод файлд `D:20261014120610+00'00'`). SDK-ууд хоорондоо
+тогтвортой байх нь чухал (ижил агшин → ижил DTBS), CA-тай таарах шаардлагагүй.
 `/Name` = opts.signerName эсвэл гэрчилгээний `GIVENNAME + " " + SURNAME` (хоёулаа алга бол CN).
 
 ## 1. Incremental бичигч
@@ -141,7 +143,7 @@ DSS = {Certs, OCSPs, CRLs (DER, §8-ийн дарааллаар), Contents = `/C
 3. OCSP: AIA OCSP URL бүрд дарааллаар (WIRE.md §2) — хариу олгогчийн (эсвэл OCSPSigning EKU-тэй delegated) гарын
    үсэгтэй, `good`, `nextUpdate ≥ now`; гинжийн **эхний** гэрчилгээнд (иргэн, TSA) `thisUpdate > genTime`. Эхний
    хүчинтэйг OCSPs-д нэмж (delegated responder cert-ийг Certs-д), бусад URL-ийг алгасна.
-4. CRL: CDP URL бүрд дарааллаар GET — олгогчийн гарын үсэгтэй, `issuer` = cert.issuer, `nextUpdate ≥ now`, serial
+4. CRL: CDP URL бүрд дарааллаар GET (үндэсний CRL — толин, WIRE.md §3) — олгогчийн гарын үсэгтэй, `issuer` = cert.issuer, `nextUpdate ≥ now`, serial
    цуцлагдаагүй бол CRLs-д нэмнэ (ижил URL-ийг нэг удаа татна).
 5. (3) ба (4)-өөс нэг ч хүчинтэй алга → `LTV_UNAVAILABLE`.
 

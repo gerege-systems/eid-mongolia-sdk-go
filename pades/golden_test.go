@@ -90,6 +90,8 @@ func goldenCases() []goldenCase {
 	}
 	return []goldenCase{
 		{Name: "quartz-pdf13", Input: "input/quartz-pdf13.pdf", Prep: page("6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f", "Гэрээ №1 (Quartz).pdf")},
+		{Name: "quartz-pdf13-en", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{VerifyPage: true, DocID: "71829304-b5c6-4d7e-9ef1-6c7d8e9fa0b1",
+			FileName: "Contract No.1 (Quartz).pdf", Lang: "en"}},
 		{Name: "quartz-objstm", Input: "input/quartz-objstm.pdf", Prep: page("1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b", "objstm.pdf")},
 		{Name: "quartz-linearized", Input: "input/quartz-linearized.pdf", Prep: page("2c3d4e5f-6071-4829-9bac-1d2e3f4a5b6c", "linearized.pdf")},
 		{Name: "desktop-objstm-nopage", Input: "input/desktop-objstm.pdf", Prep: PrepareOptions{DocID: "3d4e5f60-7182-493a-acbd-2e3f4a5b6c7d"}},

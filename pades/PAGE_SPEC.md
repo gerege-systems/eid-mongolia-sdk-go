@@ -2,7 +2,7 @@
 
 Хэрэгжүүлэлт (reference): `pades/internal/core/vpage.go` (`AppendVerifyPage`, `pageContent`), QR `pades/internal/qr/qr.go`,
 фонт `pades/assets`. Native SDK бүр **байт-ижил** гаргана — golden `testdata/golden/output/*.pdf` (хуудастай тохиолдол:
-`quartz-pdf13`, `quartz-objstm`, `quartz-linearized`) нь шалгуур. CA-ийн хуучин fpdf хуудастай төрх ойролцоо, байт-ижил биш.
+`quartz-pdf13` (mn), `quartz-pdf13-en` (en), `quartz-objstm`, `quartz-linearized`) нь шалгуур. CA-ийн хуучин fpdf хуудастай төрх ойролцоо, байт-ижил биш.
 
 ## 1. Хэзээ
 
@@ -43,26 +43,49 @@ incremental revision. `pageSha256 = SHA-256(хуудас нэмсэн барим
    h
    f
    ```
-2. Текст(F2, 13, 56, 778, ok, `"<Brand> — Electronically signed document"`) — Brand = `eID Mongolia`, тире U+2014.
-3. Текст(F1, 9, 56, 760, ok, `Signatures are embedded in this PDF. Verify them with the link below or in Adobe Acrobat's Signatures panel.`)
-4. `y = 724`: зураас(y); Текст(F2, 11, 42, y−17, text, `DOCUMENT`); `y −= 34`.
-5. Текст(F1, 8, 42, y, muted, `FILE NAME`); `y −= 14`; файлын нэрийн мөр бүр (§4, ≤ 3): эхнийхээс бусдын өмнө `y −= 14`,
+2. Текст(F2, 13, 56, 778, ok, Brand + `title`) — Brand = `eID Mongolia` (§3a).
+3. Текст(F1, 9, 56, 760, ok, `subtitle`)
+4. `y = 724`: зураас(y); Текст(F2, 11, 42, y−17, text, `document`); `y −= 34`.
+5. Текст(F1, 8, 42, y, muted, `fileName`); `y −= 14`; файлын нэрийн мөр бүр (§4, ≤ 3): эхнийхээс бусдын өмнө `y −= 14`,
    Текст(F2, 10, 42, y, text, мөр). Дараа нь `y −= 20`.
-6. Текст(F1, 8, 42, y, muted, `HASH ALGORITHM`); Текст(F1, 8, 297, y, muted, `SIZE`);
+6. Текст(F1, 8, 42, y, muted, `hashAlg`); Текст(F1, 8, 297, y, muted, `size`);
    Текст(F2, 10, 42, y−14, text, `SHA256`); Текст(F2, 10, 297, y−14, text, HumanSize(fileSize) §5); `y −= 34`.
-7. Текст(F1, 8, 42, y, muted, `DOCUMENT HASH`); Текст(F3, 9, 42, y−13, text, inSha256 (жижиг hex)); `y −= 31`.
-8. Текст(F1, 8, 42, y, muted, `DOCUMENT ID`); Текст(F3, 9, 42, y−13, text, docId); `y −= 35`.
-9. зураас(y); Текст(F2, 11, 42, y−17, text, `VERIFICATION`); `y −= 35`.
+7. Текст(F1, 8, 42, y, muted, `docHash`); Текст(F3, 9, 42, y−13, text, inSha256 (жижиг hex)); `y −= 31`.
+8. Текст(F1, 8, 42, y, muted, `docId`); Текст(F3, 9, 42, y−13, text, docId); `y −= 35`.
+9. зураас(y); Текст(F2, 11, 42, y−17, text, `verification`); `y −= 35`.
 10. Текст(F1, 9, 42, y, link, verifyUrl); link annotation #1 (§6) = (F1, 9, 42, y, verifyUrl); `y −= 14`.
 11. QR (§7): `0 0 0 rg`, тэгш өнцөгтүүд, дараа нь `f` мөр. QR-ийн дээд зүүн булан = (42, y).
-12. Текст(F2, 11, 136, y−14, text, `Scan to verify`);
-    Текст(F1, 9, 136, y−29, muted, `Scan this QR code with your phone camera to verify.`);
+12. Текст(F2, 11, 136, y−14, text, `scan`);
+    Текст(F1, 9, 136, y−29, muted, `scanHint`);
     Текст(F2, 9, 136, y−43, link, urlHost(verifyUrl)) — urlHost: `https://`/`http://`-ийг хасаад хоёр дахь `/` хүртэл
     (`ca.eidmongolia.mn/verify`).
-13. trustUrl хоосон биш бол: Текст(F1, 9, 136, y−60, muted, `Adobe Acrobat: trust the Mongolian National Root CA`);
+13. trustUrl хоосон биш бол: Текст(F1, 9, 136, y−60, muted, `trust`);
     Текст(F2, 9, 136, y−74, link, trustUrl); link annotation #2 = (F2, 9, 136, y−74, trustUrl).
-14. Footer: зураас(71); Текст(F1, 8, 42, 58, muted, `"CA: " + caName + "  |  TSA: " + tsaName + "  |  Provider: " + provider`)
+14. Footer: зураас(71); Текст(F1, 8, 42, 58, muted, `"CA: " + caName + "  |  TSA: " + tsaName + "  |  " + provider + ": " + providerName`)
     (`|`-ийн хоёр талд ХОЁР зай).
+
+### 3a. Бичвэр (хэл: `lang` = `mn` анхдагч, хоосон бол mn; `en`; бусад → `REQUEST_INVALID`)
+
+| түлхүүр | mn | en |
+|---|---|---|
+| title (Brand-ийн ард шууд залгана) | `-аар гарын үсэг зурсан баримт` | ` — Electronically signed document` (U+2014) |
+| subtitle | `Гарын үсгүүд энэ PDF-д шингэсэн. Доорх холбоосоор эсвэл Adobe Acrobat-ын Signatures самбараар шалгана уу.` | `Signatures are embedded in this PDF. Verify them with the link below or in Adobe Acrobat's Signatures panel.` |
+| document | `БАРИМТ` | `DOCUMENT` |
+| fileName | `БАРИМТЫН НЭР` | `FILE NAME` |
+| hashAlg | `HASH АЛГОРИТМ` | `HASH ALGORITHM` |
+| size | `ХЭМЖЭЭ` | `SIZE` |
+| docHash | `БАРИМТЫН HASH` | `DOCUMENT HASH` |
+| docId | `БАРИМТЫН ID` | `DOCUMENT ID` |
+| verification | `ШАЛГАХ` | `VERIFICATION` |
+| scan | `Гарын үсгийг шалгах` | `Scan to verify` |
+| scanHint | `QR кодыг утасны камераар уншуулах эсвэл холбоосыг нээнэ үү.` | `Scan this QR code with your phone camera to verify.` |
+| trust | `Adobe Acrobat-д Монгол Улсын үндэсний Root CA-д итгэх заавар:` | `Adobe Acrobat: trust the Mongolian National Root CA` |
+| provider | `Үйлчилгээ` | `Provider` |
+
+Бичвэр UTF-8 (NFC) — яг энэ code point-ууд; бүх glyph фонтын subset-д бий, мөрөндөө багтана (Go тест `TestPageTextsFit`).
+`SHA256`, KB/MB/GB, URL, CA/TSA нэр хоёр хэлэнд ижил. mn бичвэрийн эх: CA-ийн хуудасны анхны хувилбар (ca-eidmongolia-mn
+18904d75 `pdfsign/page.go`: гарчиг, «Баримтын нэр/ID», «Гарын үсгийг шалгах», QR-ийн тайлбар, Root CA заавар); одоогийн CA
+хуудас зөвхөн англи тул бусад нь орчуулга.
 
 Профайлын утгууд: verifyUrl = `https://ca.eidmongolia.mn/verify/` + docId, trustUrl = `https://eidmongolia.mn/trust`,
 caName = signerCert-ийн **issuer CN**, tsaName = `eID Mongolia TSA (tsa.timeserver.mn)`, provider = `ca.eidmongolia.mn`,
