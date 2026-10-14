@@ -60,6 +60,8 @@ type goldenExpect struct {
 	DocID          string   `json:"docId,omitempty"`
 	Digest         string   `json:"digest,omitempty"`
 	DTBS           string   `json:"dtbs,omitempty"`
+	SignedAttrs    string   `json:"signedAttrs,omitempty"` // DER SET (hex)
+	Signature      string   `json:"signature,omitempty"`   // иргэний гарын үсэг DTBS дээр (hex) — SDK-ууд түлхүүргүйгээр complete-д өгнө
 	PreparedSHA256 string   `json:"preparedSha256,omitempty"`
 	ByteRange      [4]int64 `json:"byteRange,omitempty"`
 	OutSHA256      string   `json:"outSha256,omitempty"`
@@ -129,16 +131,15 @@ func loadOrCreatePKI(t *testing.T) *goldenPKI {
 	p := &goldenPKI{}
 	ptrs := map[string]**gCert{"root": &p.root, "02": &p.ca02, "03": &p.ca03, "04": &p.ca04, "citizen": &p.citizen, "tsa": &p.tsa}
 	for name, ptr := range ptrs {
-		raw, err := os.ReadFile(filepath.Join(dir, name+".pem")) // #nosec G304 -- тест
-		if err != nil {
-			t.Fatal(err)
-		}
 		c := &gCert{}
-		for {
-			var b *pem.Block
-			b, raw = pem.Decode(raw)
+		for _, file := range []string{name + ".pem", name + ".key.pem"} {
+			raw, err := os.ReadFile(filepath.Join(dir, file)) // #nosec G304 -- тест
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := pem.Decode(raw)
 			if b == nil {
-				break
+				t.Fatalf("%s: PEM алга", file)
 			}
 			switch b.Type {
 			case "CERTIFICATE":
@@ -209,10 +210,12 @@ func createPKI(t *testing.T, dir string) {
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtraExtensions: []pkix.Extension{eidcrypto.TSAEKUExtension()},
 		OCSPServer: []string{"http://ocsp.pki.test/04"}, CRLDistributionPoints: []string{"http://crl.pki.test/04.crl"}}, 2048)
 	for name, c := range p.byName() {
-		var b bytes.Buffer
-		_ = pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: c.cert.Raw})
-		_ = pem.Encode(&b, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(c.key)})
-		if err := os.WriteFile(filepath.Join(dir, name+".pem"), b.Bytes(), 0o644); err != nil { // #nosec G306 -- тестийн түлхүүр
+		certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.cert.Raw})
+		keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(c.key)})
+		if err := os.WriteFile(filepath.Join(dir, name+".pem"), certPEM, 0o644); err != nil { // #nosec G306 -- тест
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".key.pem"), keyPEM, 0o644); err != nil { // #nosec G306 -- ТЕСТИЙН түлхүүр
 			t.Fatal(err)
 		}
 	}
@@ -382,6 +385,7 @@ func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, in
 	if err != nil {
 		t.Fatal(err)
 	}
+	got.SignedAttrs, got.Signature = hex.EncodeToString(st.SignedAttrs), hex.EncodeToString(sig)
 	nonceReader = &seededReader{seed: []byte("golden-nonce:" + c.Name)}
 	defer func() { nonceReader = rand.Reader }()
 	res, err := Complete(context.Background(), prep.State, sig, CompleteOptions{
@@ -433,6 +437,14 @@ func TestGolden(t *testing.T) {
 		}
 		got, out := runGolden(t, p, rt, c, input)
 		outputs[c.Name] = out
+		if *update && out != nil {
+			if err := os.MkdirAll(filepath.Join(goldenDir, "output"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(goldenDir, "output", c.Name+".pdf"), out, 0o644); err != nil { // #nosec G306 -- тест
+				t.Fatal(err)
+			}
+		}
 		if out != nil {
 			rep, err := Verify(out, VerifyOptions{Roots: [][]byte{p.root.cert.Raw}, Issuers: [][]byte{p.ca04.cert.Raw}, Time: goldenNow})
 			if err != nil || rep.Indication != Valid {
