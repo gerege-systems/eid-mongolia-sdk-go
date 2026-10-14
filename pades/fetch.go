@@ -3,12 +3,10 @@ package pades
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"runtime"
 	"time"
 )
 
@@ -20,15 +18,6 @@ const (
 	maxHTTPResponse = 4 << 20
 )
 
-// browserHTTPS — js/WASM орчинд http://-ээр fetch хийхэд mixed content болдог тул эдгээр eID хостыг https болгоно;
-// бусад http:// URL-ийг fetch хийхгүй (docs/PADES_CLIENT_SIDE.md §8.4).
-var browserHTTPS = map[string]bool{"ocsp.eidmongolia.mn": true, "crl.eidmongolia.mn": true, "tsa.timeserver.mn": true}
-
-// jsUpgrade — js/WASM орчин (тестийн сүлжээгүй fixture-д унтраана).
-var jsUpgrade = runtime.GOOS == "js"
-
-var errNotFetchable = errors.New("js/WASM: http URL нь https allowlist-д алга")
-
 // defaultHTTPClient — timeout 10 с, redirect дагахгүй.
 func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -36,7 +25,6 @@ func defaultHTTPClient() *http.Client {
 
 type fetcher struct {
 	client *http.Client
-	js     bool
 	cache  map[string][]byte // GET (CRL) URL → хариу
 }
 
@@ -44,24 +32,17 @@ func newFetcher(c *http.Client) *fetcher {
 	if c == nil {
 		c = defaultHTTPClient()
 	}
-	return &fetcher{client: c, js: jsUpgrade, cache: map[string][]byte{}}
+	return &fetcher{client: c, cache: map[string][]byte{}}
 }
 
-// target — зөвхөн http/https; js/WASM-д http-ийг allowlist host-д https болгоно, бусдыг татгалзана.
+// target — зөвхөн http/https.
 func (f *fetcher) target(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
 	}
 	switch u.Scheme {
-	case "https":
-	case "http":
-		if f.js {
-			if !browserHTTPS[u.Hostname()] {
-				return "", fmt.Errorf("%w: %s", errNotFetchable, u.Hostname())
-			}
-			u.Scheme = "https"
-		}
+	case "https", "http":
 	default:
 		return "", fmt.Errorf("URL scheme %q дэмжигдэхгүй", u.Scheme)
 	}

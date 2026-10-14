@@ -52,3 +52,7 @@ func ErrorCode(err error) string {
 func newErr(code, msg string, cause error) *Error {
 	return &Error{Code: code, Message: msg, Err: cause}
 }
+
+// ProfileVersion — PDF/CMS профайлын хувилбар (pades/PROFILE.md). Профайл өөрчлөгдвөл нэмэгдэж golden шинэчлэгдэнэ;
+// native SDK бүр ижил хувилбарын golden-ийг байт-ижил давтана.
+const ProfileVersion = "pades-client/1"

@@ -2,6 +2,7 @@ package pades
 
 import (
 	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -21,6 +22,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -401,6 +403,7 @@ func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, in
 // TestGolden — бүх тохиолдлын prepare/complete-ийг manifest-тэй байт-түвшинд (sha256) тулгана. Дараа нь гаралт бүрийг
 // Verify-ээр шалгана.
 func TestGolden(t *testing.T) {
+	requireReferenceDeflate(t)
 	p := loadOrCreatePKI(t)
 	mpath := filepath.Join(goldenDir, "manifest.json")
 	var m goldenManifest
@@ -480,5 +483,19 @@ func TestGolden(t *testing.T) {
 	out, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(mpath, append(out, '\n'), 0o644); err != nil { // #nosec G306 -- тест
 		t.Fatal(err)
+	}
+}
+
+// requireReferenceDeflate — golden-ий байт нь Go-ийн compress/flate-аас хамаарна (verify хуудасны fpdf font/content,
+// QR PNG, xref stream). Go 1.27-д flate-ийн гаралт өөрчлөгдсөн (2026-10-14 шалгасан: ижил оролтод өөр байт) — CA (Go
+// 1.26) ба энэ manifest Go 1.25/1.26-ийн flate-аар. Өөр flate-тай toolchain-д гаралт хүчинтэй PDF хэвээр ч байт-ижил биш.
+func requireReferenceDeflate(t *testing.T) {
+	t.Helper()
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+	_, _ = w.Write([]byte{1, 0, 0, 1, 2, 0, 1, 0, 0, 2, 3, 0})
+	_ = w.Close()
+	if hex.EncodeToString(b.Bytes()) != "789c62646060646260646060626600040000ffff0043000b" {
+		t.Fatalf("%s-ийн compress/flate нь golden-ий (Go 1.25/1.26) flate-аас өөр — Go 1.25/1.26-аар build/test хийнэ", runtime.Version())
 	}
 }

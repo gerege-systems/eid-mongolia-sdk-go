@@ -23,14 +23,5 @@ require (
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/image v0.45.0 // indirect
-	golang.org/x/mobile v0.0.0-20260813181013-1960c775504c // indirect
-	golang.org/x/mod v0.39.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-)
-
-tool (
-	golang.org/x/mobile/cmd/gobind
-	golang.org/x/mobile/cmd/gomobile
 )

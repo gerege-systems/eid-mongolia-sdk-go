@@ -98,7 +98,7 @@ func TestEndToEndECDSA(t *testing.T) {
 			t.Fatalf("raw=%v: %v %s", raw, err, b)
 		}
 		if !res.HasPage || res.RevIndex != 1 || len(res.PriorCMSSHA256) != 0 || res.DocID == "" {
-			t.Fatalf("raw=%v: meta %+v", raw, res.Meta(false))
+			t.Fatalf("raw=%v: %+v", raw, res.RevIndex)
 		}
 	}
 }
@@ -213,39 +213,6 @@ func TestVerifyPageDeterministic(t *testing.T) {
 	}
 	if st, _ := decodeState(c.State); st.HasPage || docIDFromPage(st.PDF) != "" {
 		t.Fatal("хуудас нэмэгдэх ёсгүй")
-	}
-}
-
-// TestBindingJSON — options JSON (lowerCamelCase), үл мэдэгдэх түлхүүр, алдааны JSON.
-func TestBindingJSON(t *testing.T) {
-	o, err := ParsePrepareOptions(`{"signerCert":"AQI=","verifyPage":true,"fileName":"a.pdf","signingTime":"2026-10-14T12:00:00+08:00","docId":"x"}`)
-	if err != nil || !o.VerifyPage || o.FileName != "a.pdf" || len(o.SignerCert) != 2 || !o.SigningTime.Equal(goldenTime) {
-		t.Fatalf("%v %+v", err, o)
-	}
-	if _, err := ParseCompleteOptions(`{"tsaUrl":"x","bogus":1}`); ErrorCode(err) != CodeRequestInvalid {
-		t.Fatal(err)
-	}
-	var e struct{ Code, Message string }
-	if err := json.Unmarshal([]byte(ErrorJSON(newErr(CodePDFLocked, "m", nil))), &e); err != nil || e.Code != CodePDFLocked {
-		t.Fatal(e)
-	}
-}
-
-// TestFetcherJS — js/WASM: зөвхөн allowlist host-ийг https болгоно.
-func TestFetcherJS(t *testing.T) {
-	f := &fetcher{js: true}
-	if u, err := f.target("http://ocsp.eidmongolia.mn/ocsp"); err != nil || u != "https://ocsp.eidmongolia.mn/ocsp" {
-		t.Fatal(u, err)
-	}
-	if _, err := f.target("http://esign.gov.mn/MNRCA-2021.crl"); err == nil {
-		t.Fatal("allowlist-гүй host fetch хийгдэх ёсгүй")
-	}
-	if _, err := f.target("ldap://x"); err == nil {
-		t.Fatal("ldap")
-	}
-	f.js = false
-	if u, _ := f.target("http://esign.gov.mn/MNRCA-2021.crl"); u != "http://esign.gov.mn/MNRCA-2021.crl" {
-		t.Fatal(u)
 	}
 }
 
