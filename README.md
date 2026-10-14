@@ -59,6 +59,7 @@ login, err := eidlogin.New(eidlogin.Config{
 	CallbackURL: "https://bank.example.mn/auth/eid/callback", // host нь callbackHosts-д; утасны урсгалд заавал
 	OnSuccess: func(w http.ResponseWriter, r *http.Request, id *eidlogin.Identity) (*eidlogin.Success, error) {
 		// id.ETSI (PNOMN-…) — хэрэглэгчийг ҮҮГЭЭР таньна; id.GivenName/Surname (латин), id.Person (кирилл, байвал)
+		// id.SessionID, id.DocumentNumber, id.Certificate — дараагийн алхамд (гарын үсэг, гэрчилгээ холбох)
 		u, err := users.FindOrCreateByETSI(r.Context(), id.ETSI)
 		if err != nil {
 			return nil, err
@@ -70,8 +71,9 @@ login, err := eidlogin.New(eidlogin.Config{
 		http.SetCookie(w, &http.Cookie{Name: "app_session", Value: sid, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		return &eidlogin.Success{Redirect: "/dashboard"}, nil
 	},
+	ClientIP: eidlogin.ForwardedClientIP(1), // nginx/LB нэг hop-ийн ард; proxy-гүй бол eidlogin.RemoteAddrIP
 	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
-	// RateLimit, ClientIP: …    // "start:<ip>", "push:<idCode>"; анхдагч push 3/мин нэг дугаарт
+	// RateLimit: …              // "start:<ip>", "push:<idCode>"; анхдагч зөвхөн push 3/мин нэг дугаарт
 })
 if err != nil {
 	log.Fatal(err)
@@ -82,7 +84,7 @@ mux.Handle("/auth/eid/", login)
 Хөтөчид:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.14.0/dist/button.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.14.1/dist/button.js"></script>
 <eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
@@ -99,6 +101,59 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
   `userChallengeVerifier`. Web2App session-ийг poll дуусгахгүй (`WAIT_CALLBACK`). `OnSuccess` нэг session-д нэг л удаа
   (`Store.Delete` атомар — Redis `DEL`).
 - `Success.Data` хөтөчид очно — нууц бүү оруул. Push-ийн eID алдаа ерөнхий (`eid_unavailable`) — иргэн бүртгэлтэй эсэхийг задлахгүй.
+- `OnSuccess`-ээс ӨМНӨ tx store-оос атомар устгагдана (нэг удаагийн баталгаа) — `OnSuccess` дотор store-оос бүү унш;
+  хэрэгтэй бүхэн `Identity`-д (`SessionID`, `DocumentNumber`, `Certificate`, …).
+
+**Клиент IP** (`start:<ip>` хязгаар) — `Config.ClientIP`. Итгэмжит reverse proxy-ийн ард `eidlogin.ForwardedClientIP(n)`:
+`X-Forwarded-For`-ийн **баруунаас n** дахь утга (n = таны proxy-ийн тоо), XFF байхгүй бол `X-Real-IP`, hop дутвал `""`.
+Proxy-гүй бол `eidlogin.RemoteAddrIP`. nil бол IP-ээр хязгаарлахгүй (`New` нэг удаа Warn бичнэ). Анхдагч `RateLimit` зөвхөн
+`push:`-ийг хязгаарладаг — `start:<ip>`-ийг өөрийн `RateLimit`-ээр. TS SDK-ийн `trustProxy` / `getClientIp`-тэй ижил дүрэм.
+
+**Redis store** (SDK нэмэлт хамааралгүй — жишээ нь `github.com/redis/go-redis/v9`):
+
+```go
+type redisStore struct{ rdb *redis.Client }
+
+func (s redisStore) key(sid string) string { return "eid:login:" + sid }
+
+func (s redisStore) Get(ctx context.Context, sid string) (*eidlogin.Tx, error) {
+	b, err := s.rdb.Get(ctx, s.key(sid)).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("redis get: %w", err)
+	}
+	var tx eidlogin.Tx
+	if err := json.Unmarshal(b, &tx); err != nil {
+		return nil, fmt.Errorf("redis tx: %w", err)
+	}
+	return &tx, nil
+}
+
+func (s redisStore) Set(ctx context.Context, tx *eidlogin.Tx, ttl time.Duration) error {
+	b, err := json.Marshal(tx)
+	if err != nil {
+		return err
+	}
+	return s.rdb.Set(ctx, s.key(tx.SessionID), b, ttl).Err()
+}
+
+// DEL атомар — зэрэг хоёр status-ийн зөвхөн нэг нь OnSuccess дуудна.
+func (s redisStore) Delete(ctx context.Context, sid string) (bool, error) {
+	n, err := s.rdb.Del(ctx, s.key(sid)).Result()
+	return n == 1, err
+}
+```
+
+Tx-д `SessionSecret` (QR угсрах материал) байдаг — Redis-ийг сүлжээнээс хаалттай, TLS/AUTH-тай ашигла.
+
+**eID аппын доод хувилбар.** `flowType` бэхлэлт (device link v3) ба Web2App-ийн `userChallengeVerifier` нь
+**iOS 2.2.3 (build 59)**, **Android 2.2.3 (versionCode 60)**-аас эхэлсэн. eID сервер 2026-10-07-оос legacy холбоосыг
+бүрэн хассан (v3-гүй session-д утас `DEVICE_LINK_REQUIRED`) бөгөөд доод хувилбарыг `/mobile/app-config`-оор албадан
+шинэчлүүлдэг: Android 2026-10-07-оос ≥ 70, 2026-10-14-ний байдлаар iOS ≥ 2.2.7, Android ≥ 83
+(`curl https://ca.eidmongolia.mn/mobile/app-config`). Иймд гарын үсэг зурж чадах бүх апп эдгээрийг дэмжинэ. Эх сурвалж:
+eID CA-ийн `docs/DEVICE_LINK_V3.md` §5, §7; changelog `2026-10-02-ios-min-version-2-2-3`, `2026-10-07-android-min-70`.
 
 ## 3. RP-API client
 
@@ -406,6 +461,9 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
   registration number / Web2App 302), `status` (fresh QR every second), `callback` (Web2App + `userChallengeVerifier`).
   State server-side (`Store`), browser bound by an HttpOnly cookie; identity only after `ValidateAuth`. Pairs with the
   TS SDK's `<eid-login-button>` web component. The OIDC client (`oidc` package) was removed in v0.2.0.
+  `Identity` carries `SessionID`, `DocumentNumber` and `Certificate` for follow-up signing. Set `Config.ClientIP`
+  (`ForwardedClientIP(n)` behind n trusted proxies, `RemoteAddrIP` otherwise) for the `start:<ip>` limit. Requires eID
+  app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
 
 License: MIT.
