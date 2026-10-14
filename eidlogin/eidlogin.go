@@ -31,6 +31,7 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -57,6 +58,8 @@ const CallbackPath = "/auth/eid/callback"
 
 // Identity — баталгаажсан иргэн (OnSuccess-д).
 type Identity struct {
+	// SessionID — RP-API session-ий id: аудит, эсвэл энэ нэвтрэлтийг дараагийн алхамтай (гарын үсэг г.м.) холбоход.
+	SessionID string
 	// ETSI — гэрчилгээний SERIALNUMBER (PNOMN-<иргэний дугаар>). Хэрэглэгчийг ҮҮГЭЭР таньна (нэрээр биш).
 	ETSI string
 	// CivilID — PNOMN-гүй иргэний дугаар; ETSI өөр хэлбэртэй бол "".
@@ -64,9 +67,11 @@ type Identity struct {
 	// GivenName, Surname — гэрчилгээний нэр (латин).
 	GivenName, Surname string
 	Country            string
-	DocumentNumber     string
-	CertificateLevel   string
-	Certificate        *x509.Certificate
+	// DocumentNumber — иргэний баримтын дугаар; Client.Sign-ийн *ByDocument-аар ижил төхөөрөмж рүү гарын үсэг.
+	DocumentNumber   string
+	CertificateLevel string
+	// Certificate — нэвтрэлтийн гэрчилгээ (ValidateAuth-аар гинж шалгагдсан).
+	Certificate *x509.Certificate
 	// FlowType — гарын үсэг зурагдсан урсгал: QR | Notification | Web2App.
 	FlowType eid.FlowType
 	// Person — session-ий person блок (кирилл нэр г.м.), гэрчилгээтэй таарсан үед л; эс бөгөөс nil.
@@ -187,7 +192,9 @@ type Config struct {
 	// RateLimit — "start:<ip>" (ClientIP өгсөн бол) ба "push:<idCode>" түлхүүрээр; false → 429. Анхдагч: push-д нэг
 	// дугаарт 60 секундэд 3 (санах ойд) — хохирогчийн утсыг мэдэгдлээр дарахаас (MFA fatigue).
 	RateLimit func(ctx context.Context, key string) bool
-	// ClientIP — хүсэлтийн IP (итгэмжит proxy-ийн ард өөрөө тодорхойл). nil бол IP-ээр хязгаарлахгүй.
+	// ClientIP — "start:<ip>" хязгаарын клиент IP. Итгэмжит reverse proxy-ийн ард ForwardedClientIP(n), шууд
+	// холбогддог бол RemoteAddrIP, эсвэл өөрийн функц. nil бол IP-ээр хязгаарлахгүй (New нэг удаа Warn бичнэ) — TS-ийн
+	// createEidLogin-ий trustProxy / getClientIp-тэй ижил дүрэм.
 	ClientIP func(*http.Request) string
 	// Logger — дотоод алдаа (анхдагч slog.Default()). Иргэний мэдээлэл бичихгүй.
 	Logger *slog.Logger
@@ -210,6 +217,41 @@ var (
 	bindingRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 	civilRe   = regexp.MustCompile(`^PNOMN-([0-9]+)$`)
 )
+
+// ForwardedClientIP — итгэмжит reverse proxy-ийн ард Config.ClientIP: X-Forwarded-For-ийн БАРУУНААС hops дахь утга
+// (hops = таны итгэмжит proxy-ийн тоо; nginx нэг бол 1), XFF байхгүй бол X-Real-IP. XFF-д hop дутвал "" (хуурамч
+// header-ээр тойрохоос). Proxy-гүй үед бүү хэрэглэ — header-ийг клиент өөрөө илгээнэ. hops < 1 бол panic.
+func ForwardedClientIP(hops int) func(*http.Request) string {
+	if hops < 1 {
+		panic("eidlogin: ForwardedClientIP hops >= 1 байх ёстой")
+	}
+	return func(r *http.Request) string {
+		var xff []string
+		for _, v := range r.Header.Values("X-Forwarded-For") {
+			for _, p := range strings.Split(v, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					xff = append(xff, p)
+				}
+			}
+		}
+		if len(xff) > 0 {
+			if hops > len(xff) {
+				return ""
+			}
+			return xff[len(xff)-hops]
+		}
+		return strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	}
+}
+
+// RemoteAddrIP — proxy-гүй (клиент шууд холбогддог) үед Config.ClientIP: r.RemoteAddr-ийн host.
+func RemoteAddrIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
 
 // New — тохиргоог шалгаж Handler үүсгэнэ.
 func New(cfg Config) (*Handler, error) {
@@ -258,6 +300,9 @@ func New(cfg Config) (*Handler, error) {
 	h := &Handler{cfg: cfg, log: cfg.Logger, failURL: *failURL, pushHits: map[string][]time.Time{}}
 	if h.log == nil {
 		h.log = slog.Default()
+	}
+	if cfg.ClientIP == nil {
+		h.log.Warn("eidlogin: Config.ClientIP алга — start:<ip> хязгаар ажиллахгүй; ForwardedClientIP(n) эсвэл RemoteAddrIP өг")
 	}
 	h.interactions = []eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: text}}
 	if h.cfg.RateLimit == nil {
@@ -541,7 +586,8 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request, tx *Tx, res *ei
 		return nil, err
 	}
 	id := &Identity{
-		ETSI: v.Subject.SerialNumber, GivenName: v.Subject.GivenName, Surname: v.Subject.Surname, Country: v.Subject.Country,
+		SessionID: tx.SessionID,
+		ETSI:      v.Subject.SerialNumber, GivenName: v.Subject.GivenName, Surname: v.Subject.Surname, Country: v.Subject.Country,
 		DocumentNumber: v.DocumentNumber, CertificateLevel: v.CertificateLevel, Certificate: v.Certificate, FlowType: flow,
 	}
 	if m := civilRe.FindStringSubmatch(id.ETSI); m != nil {
