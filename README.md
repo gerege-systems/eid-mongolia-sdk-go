@@ -558,12 +558,33 @@ rep, err := pades.Verify(done.PDF, pades.VerifyOptions{}) // CA-ийн /v3/valid
   `LTV_UNAVAILABLE`, `SELF_VALIDATION_FAILED`, `PLACEHOLDER_OVERFLOW`, `STATE_INVALID`.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
 
+### 7.1. Харагдах гарын үсэг (сонголттой)
+
+Анхдагч нь үл харагдах (өмнөхтэй байт-ижил). RP хуудсан дээр тэгш өнцөгт өгвөл widget нь нэр, (onBehalfOf бол) үүрэг,
+«eID Mongolia-аар зурсан» / «Signed with eID Mongolia», `YYYY-MM-DD HH:MM (+08)` огноо, гарын үсэг тус бүрийн QR
+(`https://ca.eidmongolia.mn/verify/<docID>/<revIndex>`)-тэй дүрслэл зурна:
+
+```go
+p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "Гэрээ.pdf",
+	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = оролтын сүүлийн хуудас
+```
+
+- Координат — pt, хуудасны CropBox (байхгүй бол MediaBox)-ийн **дэлгэцэнд харагдах** (`/Rotate`-ийн дараах) зүүн доод
+  булангаас; `/Rotate` 0/90/180/270 бүгд дэмжигдэнэ (дүрслэл босоо харагдана). 0.01 pt хүртэл тойрно.
+- `Page` нь Prepare-д өгсөн баримтын хуудас (1-ээс; энэ удаа нэмэх verify хуудас тооцогдохгүй).
+- Өндөр ≥ 45 pt (QR модуль ≥ 1 pt), бичвэр багтахгүй (нэр 7 pt, бусад 5 pt хүртэл жижгэрнэ), хуудаснаас гарсан, хуудас
+  алга, `/Name` бичигдэхгүй нэр, docID тодорхойгүй → `REQUEST_INVALID`. Огноо нь мэдүүлсэн SigningTime (TSA-ийн цаг prepare-д
+  мэдэгдэхгүй).
+- `Verify` тайлан: `visible` (энэ гарын үсэг харагдах), `visible_later_signature`. Шалгагч зөвхөн яг энэ хэлбэрийг (widget +
+  `/AP`-ийг дахин үүсгэж байт-түвшинд тулгана) хүлээн авна. Дэлгэрэнгүй: [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md).
+
 Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verify`-тэй, backend-д); TS / Swift / Kotlin / C# native SDK-ууд гарын
 үсгийн замыг ([PROFILE.md](pades/PROFILE.md), [PAGE_SPEC.md](pades/PAGE_SPEC.md), [PRECHECKS.md](pades/PRECHECKS.md),
-[WIRE.md](pades/WIRE.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
+[WIRE.md](pades/WIRE.md), [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
 хоорондын байт-ижил байдалд.
 
-Golden vector: `pades/testdata/golden/` (README) — native SDK бүрийн CI тулгана.
+Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v3`) — native SDK бүрийн CI тулгана; энэ репогийн CI
+гаралт бүрийг qpdf (`--check`) ба pyHanko-оор (INTACT/VALID/TRUSTED, DSS-ээс LT, харагдах эсэх) бие даан шалгана.
 
 ## Хөгжүүлэлт
 

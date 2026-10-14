@@ -228,17 +228,33 @@ type SignOptions struct {
 	NoDSS  bool
 	// DropOCSP — DSS-ээс иргэний OCSP-г хасна (ltv=false сөрөг тест).
 	DropOCSP bool
+	// Visible — харагдах гарын үсэг (Name = SignerDisplayName); Role — signer-attributes-v2 claimedRole.
+	Visible *pades.Visible
+	// SigningTime — /M; тэг бол одоо.
+	SigningTime time.Time
 }
 
 // Sign — doc-д иргэний PAdES гарын үсэг (prod-ийн memory урсгалтай ижил алхмууд: prepare → DTBS-д PKCS#1 v1.5 →
 // TSA → CMS → embed → DSS) нэмнэ. DSS = гинж + TSA гинж, OCSP (иргэн, TSA ← 04; 04 ← 03), CRL (03 ← 02, 02 ← 01).
 func (p *PKI) Sign(t testing.TB, doc []byte, citizen *Cert, o SignOptions) []byte {
 	t.Helper()
-	prep, err := pades.PrepareSignature(doc, time.Now(), pades.SignerDisplayName(citizen.Cert))
+	at := o.SigningTime
+	if at.IsZero() {
+		at = time.Now()
+	}
+	var prep *pades.Prepared
+	var err error
+	role := ""
+	if o.Visible != nil {
+		role = o.Visible.Role
+		prep, err = pades.PrepareSignatureVisible(doc, at, pades.SignerDisplayName(citizen.Cert), "", *o.Visible)
+	} else {
+		prep, err = pades.PrepareSignature(doc, at, pades.SignerDisplayName(citizen.Cert))
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	attrs, err := pades.SignedAttributes(prep.Digest, citizen.Cert)
+	attrs, err := pades.SignedAttributesWithRole(prep.Digest, citizen.Cert, role)
 	if err != nil {
 		t.Fatal(err)
 	}

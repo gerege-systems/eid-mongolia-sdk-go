@@ -13,6 +13,7 @@ import (
 	"encoding/asn1"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -357,5 +358,51 @@ func TestRegistrationAndPSS(t *testing.T) {
 	// Хуудасгүй эхний гарын үсэг CA-д бүртгэгдэхгүй.
 	if _, err := Registration(&Completed{RevIndex: 1, FileName: "a.pdf"}, RegistrationOptions{}); ErrorCode(err) != CodeRequestInvalid {
 		t.Fatal(err)
+	}
+}
+
+// TestAppearanceRejects — APPEARANCE_SPEC.md §1, §3: байршил/хэмжээ буруу, багтахгүй бол REQUEST_INVALID.
+func TestAppearanceRejects(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	doc := readInput(t, "quartz-pdf13.pdf") // 612 × 792, 1 хуудас
+	vis := func(a Appearance) func(*PrepareOptions) {
+		return func(o *PrepareOptions) { o.Appearance = &a }
+	}
+	ok := Appearance{X: 36, Y: 36, Width: 220, Height: 64}
+	cases := map[string]func(*PrepareOptions){
+		"хуудас алга":          vis(Appearance{Page: 2, X: 36, Y: 36, Width: 220, Height: 64}),
+		"сөрөг page":           vis(Appearance{Page: -1, X: 36, Y: 36, Width: 220, Height: 64}),
+		"хуудаснаас гарна":     vis(Appearance{X: 500, Y: 36, Width: 220, Height: 64}),
+		"дээш гарна":           vis(Appearance{X: 36, Y: 760, Width: 220, Height: 64}),
+		"нам (QR < 1 pt)":      vis(Appearance{X: 36, Y: 36, Width: 220, Height: 44}),
+		"нарийн (бичвэр)":      vis(Appearance{X: 36, Y: 36, Width: 90, Height: 64}),
+		"тэг өргөн":            vis(Appearance{X: 36, Y: 36, Width: 0, Height: 64}),
+		"NaN":                  vis(Appearance{X: math.NaN(), Y: 36, Width: 220, Height: 64}),
+		"хэл":                  vis(Appearance{X: 36, Y: 36, Width: 220, Height: 64, Lang: "de"}),
+		"/Name бичигдэхгүй":    func(o *PrepareOptions) { vis(ok)(o); o.SignerName = "a stream b" },
+		"role удирдах тэмдэгт": func(o *PrepareOptions) { vis(ok)(o); o.ClaimedRole = "a‎b" },
+	}
+	for name, f := range cases {
+		o := testOpts(p, p.citizen.cert)
+		f(&o)
+		if _, err := Prepare(doc, o); ErrorCode(err) != CodeRequestInvalid {
+			t.Errorf("%s: хүлээсэн REQUEST_INVALID, авсан %v", name, err)
+		}
+	}
+	// Хамгийн бага (45 pt өндөр) хүлээн авна; гарын үсэгтэй, хуудасгүй, docId-гүй баримтад → REQUEST_INVALID.
+	o := testOpts(p, p.citizen.cert)
+	vis(Appearance{X: 36, Y: 36, Width: 220, Height: 45})(&o)
+	if _, err := Prepare(doc, o); err != nil {
+		t.Fatalf("45 pt: %v", err)
+	}
+	signed, err := os.ReadFile(filepath.Join(goldenDir, "output", "quartz-pdf13-nopage.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o = testOpts(p, p.citizen.cert)
+	o.DocID, o.VerifyPage = "", false
+	vis(ok)(&o)
+	if _, err := Prepare(signed, o); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatalf("docId-гүй: %v", err)
 	}
 }

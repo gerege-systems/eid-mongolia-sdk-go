@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,7 +70,18 @@ func PrepareSignature(base []byte, signingTime time.Time, signerName string) (*P
 
 // PrepareSignatureWithReason — PrepareSignature + /Reason (хоосон биш бол; байгууллагын нэрийн өмнөөс гарын үсэгт
 // «<байгууллага>-ийг төлөөлж»). Урт нь ReasonMaxUnits-ээс хэтэрвэл /Reason бичихгүй — дуудагч өөрөө богиносгоно.
-func PrepareSignatureWithReason(base []byte, signingTime time.Time, signerName, reason string) (out *Prepared, err error) {
+func PrepareSignatureWithReason(base []byte, signingTime time.Time, signerName, reason string) (*Prepared, error) {
+	return prepareSignature(base, signingTime, signerName, reason, nil)
+}
+
+// PrepareSignatureVisible — PrepareSignatureWithReason + харагдах widget (APPEARANCE_SPEC.md): /Rect нь vis.Page
+// хуудсан дээр, /F 4, /AP /N form XObject (+ 2 фонт), widget тэр хуудасны /Annots-д. vis.Name нь /Name-тэй ижил
+// (бичигдэх ёстой — эс бөгөөс ErrAppearance).
+func PrepareSignatureVisible(base []byte, signingTime time.Time, signerName, reason string, vis Visible) (*Prepared, error) {
+	return prepareSignature(base, signingTime, signerName, reason, &vis)
+}
+
+func prepareSignature(base []byte, signingTime time.Time, signerName, reason string, vis *Visible) (out *Prepared, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, fmt.Errorf("%w: %v", ErrPDF, r)
@@ -97,6 +110,12 @@ func PrepareSignatureWithReason(base []byte, signingTime time.Time, signerName, 
 	fieldName := "Signature " + strconv.Itoa(k)
 
 	sigID, fieldID, catID := inc.reserve(), inc.reserve(), inc.reserve()
+	var apIDs [11]uint32 // харагдах: form, F1 ×5, F2 ×5
+	if vis != nil {
+		for i := range apIDs {
+			apIDs[i] = inc.reserve()
+		}
+	}
 
 	// ── Sig толь (placeholder) ──
 	var sig bytes.Buffer
@@ -116,16 +135,67 @@ func PrepareSignatureWithReason(base []byte, signingTime time.Time, signerName, 
 	sig.WriteString("\n>>")
 	sigStart := inc.writeObject(sigID, sig.Bytes())
 
-	// ── Талбар + үл харагдах widget (digitorus createVisualSignature, invisible) ──
-	var fld bytes.Buffer
-	fld.WriteString("<<\n  /Type /Annot\n  /Subtype /Widget\n  /Rect [0 0 0 0]\n")
-	page, hasPage := firstPage(root.Key("Pages"), 0)
-	if hasPage {
+	// ── Талбар + widget ──
+	var page pdf.Value
+	var hasPage bool
+	if vis == nil {
+		// Үл харагдах (digitorus createVisualSignature, invisible): эхний хуудас.
+		var fld bytes.Buffer
+		fld.WriteString("<<\n  /Type /Annot\n  /Subtype /Widget\n  /Rect [0 0 0 0]\n")
+		page, hasPage = firstPage(root.Key("Pages"), 0)
+		if hasPage {
+			p := page.GetPtr()
+			fmt.Fprintf(&fld, "  /P %d %d R\n", p.GetID(), p.GetGen())
+		}
+		fmt.Fprintf(&fld, "  /F 132\n  /FT /Sig\n  /T (%s)\n  /V %d 0 R\n>>", fieldName, sigID)
+		inc.writeObject(fieldID, fld.Bytes())
+	} else {
+		if sigName(signerName) == "" || strings.TrimSpace(signerName) != vis.Name {
+			return nil, fmt.Errorf("%w: /Name бичигдэхгүй нэр", ErrAppearance)
+		}
+		if page, hasPage = nthPage(root.Key("Pages"), vis.Page); !hasPage {
+			return nil, fmt.Errorf("%w: хуудас %d алга", ErrAppearance, vis.Page)
+		}
+		box, rot, err := pageGeometry(page)
+		if err != nil {
+			return nil, err
+		}
+		rect, err := VisibleRect(box, rot, vis.X, vis.Y, vis.W, vis.H)
+		if err != nil {
+			return nil, err
+		}
+		bodies, err := AppearanceObjects(AppearanceParams{W: vis.W, H: vis.H, Rotate: rot, Name: vis.Name, Role: vis.Role,
+			Lang: vis.Lang, Date: vis.Date, URL: vis.URL}, apIDs)
+		if err != nil {
+			return nil, err
+		}
 		p := page.GetPtr()
-		fmt.Fprintf(&fld, "  /P %d %d R\n", p.GetID(), p.GetGen())
+		widget := VisibleWidget(fieldName, rect, p.GetID(), int(p.GetGen()), sigID, apIDs[0])
+		if tm := vis.Tamper; tm != nil && tm.Body != nil {
+			widget = tm.Body("widget", widget)
+			for i := range bodies {
+				role := "form"
+				if i > 0 {
+					role = fmt.Sprintf("F%d.%d", (i-1)/5+1, (i-1)%5)
+				}
+				bodies[i] = tm.Body(role, bodies[i])
+			}
+		}
+		inc.writeObject(fieldID, widget)
+		for i, b := range bodies {
+			inc.writeObject(apIDs[i], b)
+		}
+		if tm := vis.Tamper; tm != nil {
+			for _, id := range slices.Sorted(maps.Keys(tm.Extra)) {
+				inc.writeObject(id, tm.Extra[id])
+			}
+		}
+		if tm := vis.Tamper; tm != nil && tm.AnnotsPage != 0 {
+			if hasPage = tm.AnnotsPage > 0; hasPage {
+				page, _ = nthPage(root.Key("Pages"), tm.AnnotsPage)
+			}
+		}
 	}
-	fmt.Fprintf(&fld, "  /F 132\n  /FT /Sig\n  /T (%s)\n  /V %d 0 R\n>>", fieldName, sigID)
-	inc.writeObject(fieldID, fld.Bytes())
 	// Widget нь annotation тул хуудасны /Annots-д заавал орно (ISO 32000-1 §12.5.2; эс бөгөөс Adobe/pyHanko
 	// талбарыг хуудасгүй гэж үзнэ).
 	if hasPage {

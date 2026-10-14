@@ -179,12 +179,15 @@ type SignatureReport struct {
 	// LaterSignatures — энэ гарын үсгийн мужийн дараа нэмэгдсэн гарын үсэг / баримтын цагийн тэмдгийн тоо.
 	LaterSignatures int `json:"later_signatures"`
 	// VisibleLaterSignature — дараагийн аль нэг гарын үсгийн widget хоосон биш /Rect эсвэл /AP-тэй
-	// (хуудсан дээр харагдах дүрслэл нэмэгдсэн). Prod-ийн горимд (profileOwnSigner) харагдах гарын үсэг
-	// зөвшөөрөгддөггүй (modified_after_signing) тул ҮРГЭЛЖ false; талбар гэрээний дагуу хэвээр гарна.
-	VisibleLaterSignature bool      `json:"visible_later_signature"`
-	ChainTrusted          bool      `json:"chain_trusted"`
-	Chain                 []string  `json:"chain"`
-	Certificate           *CertInfo `json:"certificate,omitempty"`
+	// (хуудсан дээр харагдах дүрслэл нэмэгдсэн). Prod-ийн горимд (profileOwnSigner) зөвхөн PAdES бичигчийн яг
+	// хэлбэрийн харагдах гарын үсэг (pades/APPEARANCE_SPEC.md §5) зөвшөөрөгдөнө; бусад нь modified_after_signing.
+	VisibleLaterSignature bool `json:"visible_later_signature"`
+	// Visible — ЭНЭ гарын үсгийн widget хуудсан дээр харагдана (/AP эсвэл хоосон биш /Rect; APPEARANCE_SPEC.md).
+	// Мэдээллийн талбар — indication-д нөлөөлөхгүй.
+	Visible      bool      `json:"visible"`
+	ChainTrusted bool      `json:"chain_trusted"`
+	Chain        []string  `json:"chain"`
+	Certificate  *CertInfo `json:"certificate,omitempty"`
 	// CivilID — гарын үсэг зурагчийн гэрчилгээний subject SERIALNUMBER "PNOMN-<civil_id>"-ийн civil_id (иргэний
 	// гэрчилгээ биш бол хоосон). Зөвхөн ОРУУЛСАН ФАЙЛ дахь гэрчилгээнээс гарна — файлтай хүн SERIALNUMBER-ийг
 	// (certificate.subject-д ч мөн) аль хэдийн эзэмшдэг тул маскгүй. Холбоосоор (файлгүй) нээх /v3/verify/* нь
@@ -372,6 +375,7 @@ func (v *Validator) evaluateSignature(r RawSignature) SignatureReport {
 		Location:            r.Location,
 		ClaimedTime:         r.ClaimedTime,
 		CoversWholeDocument: r.CoversWhole,
+		Visible:             r.Visible,
 		Chain:               []string{},
 	}
 	// Worker-ийн хариуг дахин хатуу болгоно: бүтэн хамарсан эсвэл зөвшөөрөгдөөгүй үед бүгд тэг.
