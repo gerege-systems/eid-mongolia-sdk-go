@@ -8,8 +8,10 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 > SDK **backend**-д ажиллана: бүх дуудлага API secret (`rp_sk_…`)-ээр баталгаажна. Secret, `SessionSecret`-ийг
 > браузер/гар утсанд хэзээ ч бүү гарга — браузерт зөвхөн таны backend-ийн өгсөн холбоос / QR / товч харагдана.
 
-- Go ≥ 1.22, **зөвхөн стандарт сан** (гадны хамааралгүй).
-- Багц: `eid` (RP-API, device link, validator, PDF) ба `eid/eidlogin` («eID-ээр нэвтрэх» товчны net/http handler).
+- Go ≥ 1.25. `eid`, `eidlogin` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь digitorus/pdf, pkcs7, timestamp,
+  x/crypto.
+- Багц: `eid` (RP-API, device link, validator, PDF), `eid/eidlogin` («eID-ээр нэвтрэх» товчны net/http handler),
+  `pades` (клиент талын PAdES — PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
 
 [English summary](#english)
 
@@ -451,10 +453,72 @@ c, err := eid.NewClient(eid.Config{
 })
 ```
 
+## 7. Клиент талын PAdES (`pades`)
+
+PDF **eID-ийн аль ч серверт очихгүй** (Smart-ID + DigiDoc загвар): CA зөвхөн 32 байт hash (DTBS) зурна, PDF-ийн бүх
+ажлыг (баталгаажуулалтын QR хуудас, placeholder, signedAttrs, CMS, RFC 3161, OCSP/CRL, DSS, өөрийн шалгалт) энэ сан
+хийнэ. Профайл `pades-client/1` нь CA-ийн серверийн бичигчээс гаралтай (verify хуудас — шинэ минимал writer,
+runtime-д шахалтгүй); ижил оролт → ижил байт.
+
+```go
+import "github.com/gerege-systems/eid-mongolia-sdk-go/pades"
+
+// 1. Гэрчилгээ (certificate-choice) — signedAttrs-ийн signingCertificateV2-д hash-аас ӨМНӨ хэрэгтэй.
+cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil)
+r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
+signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
+// 2. (байгууллагын нэрийн өмнөөс бол) CA-ийн тооцоолсон мэдүүлсэн үүрэг — өөрчлөхгүй дамжуулна.
+reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678")
+claimedRole := reps.Representations[0].ClaimedRole // OrgEtsi == onBehalfOf-той мөр
+// 3. Prepare — PDF таны серверт үлдэнэ; эхний eID гарын үсэгт QR хуудас (mn, Lang: "en").
+p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: signer.Certificate.Raw, VerifyPage: true,
+	FileName: "Гэрээ №12.pdf", ClaimedRole: claimedRole, Reason: "Тест ХХК-ийг төлөөлж"})
+// 4. DTBS-ийг ЯГ ТЭР төхөөрөмжөөр зуруулна. DigestForSigner / DeviceLinkForSigner-ийн анхдагч алгоритм =
+//    sha256WithRSAEncryption (PKCS#1 v1.5) — CMS-д заавал (DigestByEtsi-ийн анхдагч rsassa-pss-ийг Complete
+//    REQUEST_INVALID-аар татгалзана).
+s, err := c.Sign.DigestForSigner(ctx, signer, base64.StdEncoding.EncodeToString(p.DTBS), interactions,
+	&eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
+res, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
+_, err = c.Validator.ValidateSign(res, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
+	ExpectedAlgorithm: s.Sign.SignatureAlgorithm, ExpectedCertificate: signer.Certificate, ExpectedFlowType: eid.FlowNotification})
+sig, _ := base64.StdEncoding.DecodeString(res.SignatureValueB64)
+// 5. Complete — TSA https://tsa.timeserver.mn/, OCSP/CRL (AIA/CDP), DSS, өөрийн шалгалт.
+done, err := pades.Complete(ctx, p.State, sig, pades.CompleteOptions{})
+if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State хэвээр — дахин оролдоно */ }
+// 6. CA-ийн бүртгэл (docID, /verify) — заавал.
+reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: s.SessionID,
+	OnBehalfOf: "NTRMN-6235972"})
+_, err = c.PDF.RegisterSignature(ctx, reg) // POST /pdf/signatures
+// done.PDF — PAdES-BASELINE-LT
+rep, err := pades.Verify(done.PDF, pades.VerifyOptions{}) // CA-ийн /v3/validate/pdf-тэй ижил тайлан, сүлжээгүй
+```
+
+Бүтэн, compile-оор шалгагддаг хувилбар: `pades/example_test.go` (`Example`).
+
+- `signature`: RSA PKCS#1 v1.5, ECDSA `r‖s` (P-256 64 / P-384 96 байт) эсвэл DER — гэрчилгээний түлхүүрээр автоматаар;
+  RSASSA-PSS → `REQUEST_INVALID` («PKCS#1 v1.5 шаардлагатай»).
+- `RegisterSignature` — `POST /pdf/signatures`, бие нь CA-ийн `PDFSignatureRegisterRequest`-тэй яг ижил (`hasPage`
+  илгээхгүй; `signerEtsi` = гэрчилгээний SERIALNUMBER). Эхний гарын үсэг бүртгэгдэхийн тулд verify хуудастай байна.
+- Итгэлийн тулгуур нь шигтгэсэн Mongolian National Root CA (01); 02–05 шигтгэсэн завсрын гинж (`Chain` өгөөгүй бол
+  signer-ийн олгогчоор бүтээнэ). Тестийн PKI-д `CompleteOptions.Roots` / `VerifyOptions.Roots` (DER).
+- Алдаа `*pades.Error` (`Code`): `PDF_INVALID`, `PDF_ENCRYPTED`, `PDF_LOCKED` (DocMDP P=1), `PDF_TOO_LARGE`
+  (оролт > 10 223 616 байт), `PDF_TOO_MANY_SIGNATURES`, `PDF_PRIOR_SIGNATURE_INVALID`, `PDF_FOREIGN_SIGNATURE` (өмнөх
+  гарын үсгийн signer нь eID-ийн 04/05-аас биш эсвэл SubFilter CAdES биш — [PRECHECKS.md](pades/PRECHECKS.md)), `SIGNER_INVALID`, `REQUEST_INVALID`, `SIGNATURE_INVALID`, `TSA_UNAVAILABLE`,
+  `LTV_UNAVAILABLE`, `SELF_VALIDATION_FAILED`, `PLACEHOLDER_OVERFLOW`, `STATE_INVALID`.
+- Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
+
+Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verify`-тэй, backend-д); TS / Swift / Kotlin / C# native SDK-ууд гарын
+үсгийн замыг ([PROFILE.md](pades/PROFILE.md), [PAGE_SPEC.md](pades/PAGE_SPEC.md), [PRECHECKS.md](pades/PRECHECKS.md),
+[WIRE.md](pades/WIRE.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
+хоорондын байт-ижил байдалд.
+
+Golden vector: `pades/testdata/golden/` (README) — native SDK бүрийн CI тулгана.
+
 ## Хөгжүүлэлт
 
 ```bash
 go vet ./... && go test -race ./...
+go test ./pades -run Golden -update                                              # golden-ийг дахин бичих (профайл өөрчлөгдөхөд л)
 ```
 
 Тест: CA серверийн device link golden векторууд (`testdata/devicelink_golden.json`, TS SDK-тэй ижил файл), Smart-ID
@@ -476,7 +540,8 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 
 ## English
 
-Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK, standard library only (Go ≥ 1.22).
+Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
+standard library only).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest), `PDF` (PAdES, CA-assembled,
   `OnBehalfOf`), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
@@ -508,6 +573,11 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
   `Identity` carries `SessionID`, `DocumentNumber` and `Certificate` for follow-up signing. Set `Config.ClientIP`
   (`ForwardedClientIP(n)` behind n trusted proxies, `RemoteAddrIP` otherwise) for the `start:<ip>` limit. Requires eID
   app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
+- `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
+  `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
+  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `Verify`. Derived from the CA writer
+  (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
+  PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
 
 License: MIT.
