@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.3 — 2026-10-14
+
+Порталын (eid-mongolia-mn !140) SDK шилжилтийн үлдэгдэл — TS SDK 0.11.0-тэй ижил:
+
+- **Validator гинж → `x509.Certificate.Verify`** (аюулгүй байдал, High). Өмнө гинжийг гараар угсардаг байсан тул
+  pathLenConstraint, name constraints, завсрын CA-ийн EKU, CA-ийн keyCertSign, үл таних critical extension шалгагддаггүй
+  байв (портал өмнө нь x509.Verify-аар шалгадаг байсан — SDK руу шилжихэд регресс). Одоо `Roots` = trust anchor,
+  `Intermediates` = `IntermediatesPEM`, `KeyUsages`: auth → clientAuth, sign → emailProtection (CA `ca_profile.go`:
+  P-CITIZEN-AUTH = clientAuth+emailProtection, P-CITIZEN-SIGN = emailProtection), `CurrentTime` = leaf-ийн хугацаанд
+  хавчсан мөч (`ClockSkew`). `AllowedIssuerSKIs`, `CheckKeyUsage`, revocation hook — хэвээр, Verify-ийн дараа.
+  **Зан төлөвийн өөрчлөлт:** EKU-г `CheckKeyUsage`-ээс үл хамааран гинжийн шалгалт шалгана — гарын үсгийн
+  (emailProtection-only) гэрчилгээ `ValidateAuth`-д татгалзагдана. certificatePolicies шалгахгүй (Go 1.22) — CA-ийн
+  гинжинд policyConstraints / inhibitAnyPolicy алга. Алдааны текстэд subject орохгүй (шалтгааны ангилал л).
+- **`Config.PDFMaxBytes`** (`DefaultPDFMaxBytes` = 64 MiB) — `PDF.Document` / `PDF.TokenDocument`; хэтэрвэл
+  **`*ResponseTooLargeError`** (`Op`, `Limit`). JSON хариу 4 MiB-ээс хэтэрвэл мөн `*ResponseTooLargeError` (өмнө нь
+  таслагдаад задлалтын алдаа болдог байсан).
+- **`RepresentationsResponse.Raw`** — `GetRepresentations`-ийн түүхий JSON.
+- **USB токены PAdES:** `PDF.TokenPrepare` (multipart, токены SIGN гэрчилгээ + `OnBehalfOf`), `PDF.TokenFinalize`
+  (түүхий r||s 64 байт), `PDF.TokenDocument` — CA `docs/PADES_SIGNING.md` §16.5, `TOKEN_CERT.md`. Замууд CA-д бий ч
+  `/.well-known/eid`-д алга тул `rpRoutesUndiscovered` (гэрээний тест WARN).
+- Шалгасан: бодит гинж (01→02→03→04) ба CA-ийн бодит иргэний AUTH/SIGN (RSA + токены EC) гэрчилгээнүүд Go
+  `x509.Verify`-аар амжив (репод оруулаагүй — хувийн мэдээлэлтэй); тест: бодит профайлын хуулбар гинж амжина,
+  pathLen / завсрын EKU / CA:false / keyCertSign-гүй / хугацаа дууссан завсрын / буруу root / MDDC дутуу / name
+  constraints / үл таних critical extension → татгалзана; 04 ← 03 бодит гэрчилгээ x509.Verify. `gofmt`, `go vet`,
+  `go test -race` (1.25 + 1.22), `GOOS=linux go build`, `go test -tags contract` (live).
+
 ## 0.1.2 — 2026-10-14
 
 Порталыг (eid-mongolia-mn, MR !140) SDK руу шилжүүлэхэд илэрсэн дутагдлууд — бүгд additive (TS SDK 0.10.0-тэй ижил):
