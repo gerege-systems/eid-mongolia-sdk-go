@@ -14,11 +14,17 @@
 //
 // Төлөв (sessionToken, sessionSecret, rpChallenge, ACSP) серверт (Store); хөтчид зөвхөн HttpOnly cookie
 // (<sessionId>.<binding>) — status/callback зөвхөн session-ийг эхлүүлсэн хөтчид хариулна (login CSRF, relay хаалт).
-// Иргэн зөвхөн Validator.ValidateAuth (гинж + ACSP_V2 + flowType + Web2App-д userChallengeVerifier)-ийн дараа OnSuccess-д.
+// Иргэн зөвхөн Validator.ValidateAuth (гинж + ACSP_V2 + flowType + Web2App-д userChallengeVerifier) ба гэрчилгээний
+// цуцлалтын шалгалтын (OCSP, Config.Revocation) дараа OnSuccess-д.
+//
+// Push (регистрийн дугаараар) нь бүртгэлтэй эсэхийг задлахгүй: eID дугаарыг татгалзвал decoy session (бодит хариутай
+// ижил хэлбэр, хэн ч хариулаагүй мэт PENDING → EXPIRED), хариу бүр PushFloor-оос (анхдагч 1 с) хурдан гарахгүй.
 package eidlogin
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -30,6 +36,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"mime"
 	"net"
 	"net/http"
@@ -77,6 +84,9 @@ type Identity struct {
 	FlowType eid.FlowType
 	// Person — session-ий person блок (кирилл нэр г.м.), гэрчилгээтэй таарсан үед л; эс бөгөөс nil.
 	Person *eid.Person
+	// Revocation — гэрчилгээний цуцлалтын шалгалтын дүн: eid.RevocationGood | eid.RevocationUnchecked (OCSP хариугүй,
+	// soft-fail-ээр зөвшөөрөв) | eid.RevocationSkipped (DisableRevocation). Аудитад хадгал.
+	Revocation eid.RevocationStatus
 }
 
 // Link — QR/Web2App холбоос угсрах материал. Secret нь ЗӨВХӨН серверт.
@@ -98,6 +108,8 @@ type Tx struct {
 	VC          string           `json:"vc"`
 	ACSP        *eid.ACSPContext `json:"acsp"`
 	Link        *Link            `json:"link,omitempty"`
+	// Decoy — eID татгалзсан push-ийн оронд өгсөн хуурмаг session (eID-д байхгүй; хэзээ ч дуусахгүй). Зөвхөн серверт.
+	Decoy bool `json:"decoy,omitempty"`
 }
 
 // Store — төлөвийн сан. Анхдагч NewMemoryStore (нэг процесс); олон instance бол Redis г.м.
@@ -184,6 +196,31 @@ func DefaultRateLimit() map[string]RateRule {
 
 var rateKinds = []string{"start", "push"}
 
+// EventKind — Config.OnEvent-ийн аудитын үйл явдал.
+type EventKind string
+
+const (
+	// EventPushSent — push start амжилттай хариулсан (meta: mode, pushKey, decoy). decoy=true бол eID дугаарыг татгалзаж,
+	// утас руу юу ч очоогүй — хариу (хөтөч рүү) үүнийг илэрхийлэхгүй, зөвхөн таны аудитад.
+	EventPushSent EventKind = "push_sent"
+	// EventPushLimited — push хязгаарт хүрсэн, 429 (meta: mode, pushKey). sessionID "".
+	EventPushLimited EventKind = "push_limited"
+	// EventRefused — иргэн утсан дээрээ татгалзсан (endResult USER_REFUSED*; meta: mode, endResult).
+	EventRefused EventKind = "refused"
+	// EventExpired — eID session хугацаа дууссан (endResult TIMEOUT эсвэл eID-д олдохгүй; meta: mode).
+	EventExpired EventKind = "expired"
+	// EventUnverified — eID COMPLETE/OK гэсэн ч баталгаажуулалт унасан: гарын үсэг/гинж/flowType/verifier эсвэл
+	// гэрчилгээ цуцлагдсан (meta: mode, reason = "validation" | "revoked" | "revocation_unavailable").
+	EventUnverified EventKind = "unverified"
+	// EventFlowRefused — Web2App callback эхлүүлсэн хөтчийн session-тэй холбогдоогүй (өөр хөтөч / sessionId зөрсөн /
+	// verifier алга; meta: mode, reason = "unbound").
+	EventFlowRefused EventKind = "flow_refused"
+	// EventSuccess — иргэн баталгаажиж OnSuccess дуудагдсан (meta: mode, flow, revocation).
+	EventSuccess EventKind = "success"
+	// EventFailed — бусад endResult (WRONG_VC, DOCUMENT_UNUSABLE г.м.; meta: mode, endResult).
+	EventFailed EventKind = "failed"
+)
+
 // Config — Handler-ийн тохиргоо.
 type Config struct {
 	Client *eid.Client
@@ -219,6 +256,35 @@ type Config struct {
 	ClientIP func(*http.Request) string
 	// Logger — дотоод алдаа (анхдагч slog.Default()). Иргэний мэдээлэл бичихгүй.
 	Logger *slog.Logger
+
+	// DisableDecoy — eID push-ийг татгалзвал (танихгүй / ашиглах боломжгүй дугаар — eID-ийн JSON 4xx) decoy-ийн оронд
+	// 502 eid_unavailable буцаана. АНХААР: тэгвэл /start нь «энэ регистр eID-д бүртгэлтэй эсэх»-ийг нэвтрээгүй хэнд ч
+	// хэлдэг oracle болно. Зөвхөн дотоод/тестийн орчинд.
+	DisableDecoy bool
+	// PushFloor — push start-ийн хариу (бодит ба decoy, 502 ч мөн) хамгийн багадаа энэ хугацаанд гарна: decoy
+	// микросекундэд, бодит push eID-ийн round trip-ээр бэлэн болдог тул цаг нь л ялгана. Анхдагч 1 с; хүсэлт
+	// тасарвал хүлээхгүй. 429 (хязгаар) ба 400-д хамаарахгүй.
+	PushFloor time.Duration
+	// DisablePushFloor — PushFloor-ийг унтраана. АНХААР: decoy-г хариуны хугацаагаар ялгаж болно.
+	DisablePushFloor bool
+
+	// Revocation — иргэний гэрчилгээний цуцлалт шалгагч (OnSuccess-ийн өмнө). nil бол eid.NewOCSPChecker(eid.OCSPOptions{})
+	// — гэрчилгээний AIA OCSP responder. Цуцлагдсан / олгогч мэдэхгүй → FAILED "VALIDATION".
+	Revocation eid.RevocationChecker
+	// RevocationMode — OCSP хариугүй үед (timeout, 5xx, AIA алга): "" = eid.RevocationSoftFail — зөвшөөрч Warn бичнэ,
+	// Identity.Revocation = unchecked (eID порталын EID_OCSP=soft: CA-ийн responder унавал бүх иргэн түгжигдэхгүй);
+	// eid.RevocationHardFail — FAILED "VALIDATION".
+	RevocationMode eid.RevocationMode
+	// DisableRevocation — цуцлалт шалгахгүй (Identity.Revocation = skipped). АНХААР: хулгайлагдсан утасны цуцалсан
+	// гэрчилгээгээр нэвтэрч болно.
+	DisableRevocation bool
+
+	// OnEvent — аудитын hook (EventKind-ийг үз), хүсэлтийн goroutine дотор синхрон — удаан ажлыг өөрөө async болго.
+	// meta-д токен/нууц, регистрийн дугаар (PII) орохгүй: push-д pushKey = HMAC-SHA256(AuditKey, дугаар)-ын 32 hex.
+	OnEvent func(ctx context.Context, kind EventKind, sessionID string, meta map[string]any)
+	// AuditKey — pushKey-ийн HMAC түлхүүр (≥ 32 байт санал болгоно). nil бол New-д санамсаргүй үүснэ — pushKey зөвхөн
+	// процесс дотор тогтвортой; instance/restart хооронд харьцуулах бол тогтмол нууц өг.
+	AuditKey []byte
 }
 
 // Handler — /start, /status, /callback (замын сүүлийн хэсгээр). goroutine-safe.
@@ -229,6 +295,26 @@ type Handler struct {
 	failURL      url.URL
 
 	limits map[string]func(ctx context.Context, key string) bool
+
+	floor      time.Duration
+	revocation eid.RevocationChecker
+	auditKey   []byte
+	// now, sleep — PushFloor ба decoy poll-ын цаг (тестэд солино).
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration)
+}
+
+// sleepCtx — d хүлээнэ, эсвэл хүсэлт тасрах хүртэл.
+func sleepCtx(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
 }
 
 var (
@@ -321,7 +407,29 @@ func New(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &Handler{cfg: cfg, log: cfg.Logger, failURL: *failURL, limits: limits}
+	h := &Handler{cfg: cfg, log: cfg.Logger, failURL: *failURL, limits: limits, now: time.Now, sleep: sleepCtx}
+	if !cfg.DisablePushFloor {
+		h.floor = cfg.PushFloor
+		if h.floor <= 0 {
+			h.floor = time.Second
+		}
+	}
+	if !cfg.DisableRevocation {
+		h.revocation = cfg.Revocation
+		if h.revocation == nil {
+			h.revocation = eid.NewOCSPChecker(eid.OCSPOptions{})
+		}
+		if h.cfg.RevocationMode == "" {
+			h.cfg.RevocationMode = eid.RevocationSoftFail
+		}
+	}
+	h.auditKey = cfg.AuditKey
+	if len(h.auditKey) == 0 {
+		h.auditKey = make([]byte, 32)
+		if _, err := rand.Read(h.auditKey); err != nil {
+			return nil, fmt.Errorf("eidlogin: AuditKey: %w", err)
+		}
+	}
 	if h.log == nil {
 		h.log = slog.Default()
 	}
@@ -529,6 +637,9 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limited := func() {
+		if b.Mode == ModePush {
+			h.event(r.Context(), EventPushLimited, "", map[string]any{"mode": string(b.Mode), "pushKey": h.pushKey(idCode)})
+		}
 		w.Header().Set("Retry-After", "60")
 		errJSON(w, http.StatusTooManyRequests, "rate_limited")
 	}
@@ -546,9 +657,26 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	if b.Lang == "en" {
 		lang = "eng"
 	}
+	began := h.now()
 	tx, binding, appLink, err := h.begin(r, b.Mode, idCode, lang)
+	decoy := false
+	if err != nil && b.Mode == ModePush && !h.cfg.DisableDecoy && isRefusal(err) {
+		// eID дугаарыг татгалзсан (танихгүй / ашиглах боломжгүй): ялгаатай хариу нь «энэ регистр бүртгэлтэй эсэх»-ийн
+		// oracle болно. Хэн ч хариулаагүй push-тэй ижил decoy өгнө; шалтгаан энд (лог) ба OnEvent-д л үлдэнэ.
+		// Биеийг бичихгүй (дугаарыг давтаж болзошгүй) — статус/код л.
+		var ae *eid.APIError
+		errors.As(err, &ae)
+		h.log.Warn("eidlogin: eID push-ийг татгалзсан; decoy session-оор хариулав", "status", ae.Status, "code", ae.Code)
+		tx, binding, err = h.startDecoy(r.Context())
+		decoy = true
+	}
+	if b.Mode == ModePush && h.floor > 0 {
+		// Decoy микросекундэд, бодит push eID-ийн round trip-ээр бэлэн болно — хоёуланг ижил доод хугацаанд барина.
+		h.sleep(r.Context(), began.Add(h.floor).Sub(h.now()))
+	}
 	if err != nil {
-		// Иргэн бүртгэлтэй эсэхийг задлахгүй — eID-ийн 4xx/5xx аль нь ч ерөнхий алдаа.
+		// eID-ийн 5xx / холболт / 401-403 — манай талын тасалдал (decoy-оор нуувал иргэн дуусахгүй spinner харна).
+		// Бүртгэлтэй ба бүртгэлгүй дугаар хоёулаа ижил 502 авна.
 		h.log.Error("eidlogin: session эхлүүлж чадсангүй", "mode", b.Mode, "err", err)
 		var ae *eid.APIError
 		if errors.As(err, &ae) && ae.Status == http.StatusTooManyRequests {
@@ -559,6 +687,9 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setCookie(w, tx.SessionID+"."+binding, int(h.cfg.TTL/time.Second))
+	if b.Mode == ModePush {
+		h.event(r.Context(), EventPushSent, tx.SessionID, map[string]any{"mode": string(b.Mode), "pushKey": h.pushKey(idCode), "decoy": decoy})
+	}
 	if b.Mode == ModeWeb2App {
 		// iOS Universal Link зөвхөн хэрэглэгчийн tap-аас эхэлсэн redirect гинжид аппыг нээнэ — JS биш, 302.
 		w.Header().Set("Cache-Control", "no-store")
@@ -612,17 +743,114 @@ func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string) (*Tx, s
 	if !uuidRe.MatchString(tx.SessionID) {
 		return nil, "", "", fmt.Errorf("eID sessionID хэлбэр буруу")
 	}
+	binding, err := h.save(ctx, tx)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return tx, binding, appLink, nil
+}
+
+// save — cookie binding үүсгэж tx-ийг TTL-тэй хадгална.
+func (h *Handler) save(ctx context.Context, tx *Tx) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return nil, "", "", fmt.Errorf("binding: %w", err)
+		return "", fmt.Errorf("binding: %w", err)
 	}
 	binding := base64.RawURLEncoding.EncodeToString(raw)
 	tx.BindingHash = sha256hex(binding)
 	tx.ExpiresAt = time.Now().Add(h.cfg.TTL)
 	if err := h.cfg.Store.Set(ctx, tx, h.cfg.TTL); err != nil {
-		return nil, "", "", fmt.Errorf("store: %w", err)
+		return "", fmt.Errorf("store: %w", err)
 	}
-	return tx, binding, appLink, nil
+	return binding, nil
+}
+
+// startDecoy — eID-д байхгүй, хэзээ ч дуусахгүй push session: санамсаргүй UUID v4 sessionID, eID-тэй ижил 5 оронтой
+// vc (CA: %05d), бодит push-ийн TTL. Status нь Poll-ийн хугацаанд барьж PENDING, TTL-ийн дараа EXPIRED — утсаа
+// аваагүй иргэнтэй ижил.
+func (h *Handler) startDecoy(ctx context.Context) (*Tx, string, error) {
+	id := make([]byte, 16)
+	if _, err := rand.Read(id); err != nil {
+		return nil, "", fmt.Errorf("decoy: %w", err)
+	}
+	id[6] = id[6]&0x0f | 0x40
+	id[8] = id[8]&0x3f | 0x80
+	n, err := rand.Int(rand.Reader, big.NewInt(100000))
+	if err != nil {
+		return nil, "", fmt.Errorf("decoy: %w", err)
+	}
+	h16 := hex.EncodeToString(id)
+	tx := &Tx{
+		SessionID: h16[0:8] + "-" + h16[8:12] + "-" + h16[12:16] + "-" + h16[16:20] + "-" + h16[20:32],
+		Mode:      ModePush, VC: fmt.Sprintf("%05d", n.Int64()), Decoy: true,
+	}
+	binding, err := h.save(ctx, tx)
+	if err != nil {
+		return nil, "", err
+	}
+	return tx, binding, nil
+}
+
+// isRefusal — eID-ийн ӨӨРИЙН (JSON биетэй) 4xx: дугаарыг татгалзсан (танихгүй / ашиглах боломжгүй, хүсэлтийн
+// параметр). JSON бус 4xx нь eID-ийн өмнөх proxy-ийнх (mTLS татгалзал г.м.) — тасалдал. 401/403 (RP-ийн нууц/эрх) ба
+// 429 (хязгаар) нь дугаараас хамаардаггүй тул decoy-гүй — тэдгээрийг нуувал тасалдал харагдахгүй.
+func isRefusal(err error) bool {
+	var ae *eid.APIError
+	if !errors.As(err, &ae) || ae.Status < 400 || ae.Status >= 500 {
+		return false
+	}
+	switch ae.Status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		return false
+	}
+	return json.Valid(bytes.TrimSpace([]byte(ae.Body)))
+}
+
+func (h *Handler) event(ctx context.Context, kind EventKind, sessionID string, meta map[string]any) {
+	if h.cfg.OnEvent != nil {
+		h.cfg.OnEvent(ctx, kind, sessionID, meta)
+	}
+}
+
+// pushKey — регистрийн дугаарыг аудитад нэрлэх HMAC (дугаарын орон зай жижиг тул энгийн hash-ийг давтан тооцож болно).
+func (h *Handler) pushKey(idCode string) string {
+	mac := hmac.New(sha256.New, h.auditKey)
+	_, _ = mac.Write([]byte("eid-push-audit:" + idCode))
+	return hex.EncodeToString(mac.Sum(nil)[:16])
+}
+
+// endEvent — COMPLETE, endResult != OK-ийн аудит.
+func (h *Handler) endEvent(ctx context.Context, tx *Tx, endResult string) {
+	kind := EventFailed
+	switch {
+	case strings.HasPrefix(endResult, eid.EndResultUserRefused):
+		kind = EventRefused
+	case endResult == eid.EndResultTimeout:
+		kind = EventExpired
+	}
+	h.event(ctx, kind, tx.SessionID, map[string]any{"mode": string(tx.Mode), "endResult": orUnknown(endResult)})
+}
+
+// revocationError — гэрчилгээний цуцлалтын шалгалт унасан (ValidationError-ийг боож, isValidation-д танигдана).
+type revocationError struct {
+	status eid.RevocationStatus
+	err    error
+}
+
+func (e *revocationError) Error() string { return e.err.Error() }
+func (e *revocationError) Unwrap() error { return e.err }
+
+// unverified — баталгаажуулалт унасны аудит (шалтгаан нь зөвхөн аудит/логт).
+func (h *Handler) unverified(ctx context.Context, tx *Tx, err error) {
+	reason := "validation"
+	var re *revocationError
+	if errors.As(err, &re) {
+		reason = "revocation_unavailable"
+		if re.status == eid.RevocationRevoked {
+			reason = "revoked"
+		}
+	}
+	h.event(ctx, EventUnverified, tx.SessionID, map[string]any{"mode": string(tx.Mode), "reason": reason})
 }
 
 func isValidation(err error) bool {
@@ -637,6 +865,18 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request, tx *Tx, res *ei
 	if err != nil {
 		return nil, err
 	}
+	rev, err := h.cfg.Client.Validator.CheckRevocationWith(r.Context(), v.Certificate, h.revocation, h.cfg.RevocationMode)
+	if err != nil {
+		var ve *eid.ValidationError
+		if !errors.As(err, &ve) {
+			// Шалгагчийн алдаа (өөрийн Revocation) — итгэхгүй, гэхдээ 500 биш: баталгаажуулалт унасан.
+			err = &eid.ValidationError{Reason: err.Error()}
+		}
+		return nil, &revocationError{status: rev, err: err}
+	}
+	if rev == eid.RevocationUnchecked {
+		h.log.Warn("eidlogin: OCSP хариугүй — цуцлалт шалгалгүй зөвшөөрөв (soft-fail)", "sessionId", tx.SessionID)
+	}
 	ok, err := h.cfg.Store.Delete(r.Context(), tx.SessionID)
 	if err != nil || !ok {
 		return nil, err
@@ -645,6 +885,7 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request, tx *Tx, res *ei
 		SessionID: tx.SessionID,
 		ETSI:      v.Subject.SerialNumber, GivenName: v.Subject.GivenName, Surname: v.Subject.Surname, Country: v.Subject.Country,
 		DocumentNumber: v.DocumentNumber, CertificateLevel: v.CertificateLevel, Certificate: v.Certificate, FlowType: flow,
+		Revocation: rev,
 	}
 	if m := civilRe.FindStringSubmatch(id.ETSI); m != nil {
 		id.CivilID = m[1]
@@ -659,6 +900,7 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request, tx *Tx, res *ei
 	if s == nil {
 		s = &Success{}
 	}
+	h.event(r.Context(), EventSuccess, tx.SessionID, map[string]any{"mode": string(tx.Mode), "flow": string(flow), "revocation": string(rev)})
 	return s, nil
 }
 
@@ -682,11 +924,19 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		expired()
 		return
 	}
-	res, err := h.cfg.Client.Session.Poll(r.Context(), tx.SessionID, h.cfg.Poll)
+	var res *eid.SessionResult
+	if tx.Decoy {
+		// eID-ээс асуухгүй (асуувал 404 → EXPIRED болж ялгарна): бодит long-poll шиг Poll-ын хугацаанд барина.
+		h.sleep(r.Context(), h.cfg.Poll)
+		res = &eid.SessionResult{State: eid.StateRunning}
+	} else {
+		res, err = h.cfg.Client.Session.Poll(r.Context(), tx.SessionID, h.cfg.Poll)
+	}
 	if err != nil {
 		var ae *eid.APIError
 		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
 			h.deleteTx(r.Context(), tx)
+			h.event(r.Context(), EventExpired, tx.SessionID, map[string]any{"mode": string(tx.Mode)})
 			expired()
 			return
 		}
@@ -709,6 +959,13 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"state": "FAILED", "error": code})
 	}
 	if res.EndResult != eid.EndResultOK {
+		h.endEvent(r.Context(), tx, res.EndResult)
+		if tx.Mode == ModePush && res.EndResult == eid.EndResultTimeout {
+			// Хариугүй бодит push decoy-той ижил төгсөнө (EXPIRED) — FAILED/TIMEOUT нь «бүртгэлтэй» гэж хэлнэ.
+			h.deleteTx(r.Context(), tx)
+			expired()
+			return
+		}
 		failed(orUnknown(res.EndResult))
 		return
 	}
@@ -725,6 +982,7 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err != nil && isValidation(err):
 		h.log.Warn("eidlogin: баталгаажуулалт унасан", "err", err)
+		h.unverified(r.Context(), tx, err)
 		failed("VALIDATION")
 	case err != nil:
 		h.log.Error("eidlogin: дуусгаж чадсангүй", "err", err)
@@ -772,6 +1030,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if tx.SessionID != sid || tx.Mode != ModeWeb2App || verifier == "" {
+		h.event(r.Context(), EventFlowRefused, tx.SessionID, map[string]any{"mode": string(tx.Mode), "reason": "unbound"})
 		fail("unbound")
 		return
 	}
@@ -787,6 +1046,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.EndResult != eid.EndResultOK {
 		h.deleteTx(r.Context(), tx)
+		h.endEvent(r.Context(), tx, res.EndResult)
 		fail(orUnknown(res.EndResult))
 		return
 	}
@@ -795,6 +1055,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	case err != nil && isValidation(err):
 		h.log.Warn("eidlogin: баталгаажуулалт унасан", "err", err)
 		h.deleteTx(r.Context(), tx)
+		h.unverified(r.Context(), tx, err)
 		fail("VALIDATION")
 	case err != nil:
 		h.log.Error("eidlogin: дуусгаж чадсангүй", "err", err)

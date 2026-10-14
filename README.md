@@ -18,7 +18,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.3.1
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.3.2
 ```
 
 ```go
@@ -76,6 +76,10 @@ login, err := eidlogin.New(eidlogin.Config{
 	ClientIP: eidlogin.ForwardedClientIP(1), // nginx/LB нэг hop-ийн ард; proxy-гүй бол eidlogin.RemoteAddrIP
 	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
 	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // анхдагчтай нэгтгэгдэнэ (push 3/мин хэвээр)
+	OnEvent: func(ctx context.Context, kind eidlogin.EventKind, sessionID string, meta map[string]any) {
+		audit.Record(ctx, "auth.eid_"+string(kind), sessionID, meta) // таны аудит
+	},
+	// AuditKey: []byte(os.Getenv("EID_AUDIT_KEY")), // pushKey-ийг instance/restart хооронд тогтвортой болгох
 })
 if err != nil {
 	log.Fatal(err)
@@ -86,7 +90,7 @@ mux.Handle("/auth/eid/", login)
 Хөтөчид:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.1/dist/button.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.2/dist/button.js"></script>
 <eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
@@ -103,7 +107,30 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
 - `OK` нь зөвхөн `Validator.ValidateAuth` амжилттай үед: QR → `FlowQR`, push → `FlowNotification`, утас → `FlowWeb2App` +
   `userChallengeVerifier`. Web2App session-ийг poll дуусгахгүй (`WAIT_CALLBACK`). `OnSuccess` нэг session-д нэг л удаа
   (`Store.Delete` атомар — Redis `DEL`).
-- `Success.Data` хөтөчид очно — нууц бүү оруул. Push-ийн eID алдаа ерөнхий (`eid_unavailable`) — иргэн бүртгэлтэй эсэхийг задлахгүй.
+- `Success.Data` хөтөчид очно — нууц бүү оруул.
+- **Регистрийн oracle хаалт (decoy + доод хугацаа, анхдагчаар асаалттай).** eID push-ийг дугаарын шалтгаанаар татгалзвал
+  (eID-ийн өөрийн JSON 4xx — танихгүй / ашиглах боломжгүй дугаар) handler бодит push-тэй **ижил** хариу өгнө: `{mode, vc
+  (санамсаргүй 5 оронтой — eID-тэй ижил хэлбэр), expiresIn}`, ижил cookie; `status` нь eID-ээс асуулгүй `Poll`-ын хугацаанд
+  барьж `PENDING`, TTL-ийн дараа `EXPIRED` — утсаа аваагүй иргэнтэй ялгаагүй (бодит push-ийн CA `TIMEOUT` ч `EXPIRED` болно). Push start-ийн хариу бүр (бодит, decoy, 502)
+  `PushFloor`-оос (анхдагч 1 с) хурдан гарахгүй — decoy-г цагаар ялгахгүйн тулд. Хязгаар (`push:<idCode>`, `start:<ip>`)
+  decoy-д ч үйлчилнэ; 429 ба 400 (`invalid_id` — хэлбэрийн алдаа, бүртгэлээс хамааралгүй) нь floor-гүй.
+  eID-ийн 5xx, холболтын алдаа, JSON бус 4xx (eID-ийн өмнөх proxy, ж: mTLS татгалзал), 401/403 (RP-ийн нууц/эрх) ба 429 нь
+  **decoy биш** — `502 eid_unavailable` / `429` (eID порталын зан: тасалдлыг decoy-оор нуувал иргэн дуусахгүй spinner харна;
+  эдгээр нь дугаараас хамаардаггүй тул oracle биш). Унтраах: `DisableDecoy`, `DisablePushFloor` — **АНХААР:** тэгвэл
+  `/start` нь «энэ регистр eID-д бүртгэлтэй эсэх»-ийг нэвтрээгүй хэнд ч хэлнэ; зөвхөн дотоод/тестийн орчинд.
+- **Гэрчилгээний цуцлалт (OCSP, анхдагчаар асаалттай).** `ValidateAuth`-ийн дараа, `OnSuccess`-ийн өмнө иргэний гэрчилгээг
+  түүний AIA-д бичигдсэн OCSP responder-оос асууна (`Config.Revocation`, nil = `eid.NewOCSPChecker`; хариу олгогч эсвэл
+  түүний OCSPSigning responder-ийн гарын үсэгтэй, энэ serial-ийн, thisUpdate ≤ 48 цаг, good-ийг 5 мин кэшлэнэ).
+  `revoked`, мөн `unknown` (олгогч энэ гэрчилгээг олгоогүй) → `FAILED` / `VALIDATION` (500 биш), `OnSuccess` дуудагдахгүй.
+  Хариугүй (timeout 2 с, 5xx, AIA алга, шалгалт унасан хариу): `RevocationMode` "" = soft-fail — зөвшөөрч Warn лог,
+  `Identity.Revocation = unchecked` (eID порталын `EID_OCSP=soft`: CA-ийн responder унавал бүх иргэн түгжигдэхгүй; утас
+  session-ийг батлахад CA секундын өмнө хүрэх боломжтой байсан); `eid.RevocationHardFail` → `FAILED` / `VALIDATION`.
+  `DisableRevocation` — **АНХААР:** цуцалсан (хулгайлагдсан утасны) гэрчилгээгээр нэвтэрнэ.
+- **Аудит — `Config.OnEvent(ctx, kind, sessionID, meta)`** (синхрон): `push_sent` (meta `decoy` — зөвхөн таны аудитад,
+  хөтөч рүү хэзээ ч), `push_limited`, `refused` (иргэн татгалзсан), `expired` (TIMEOUT / eID-д олдохгүй), `unverified`
+  (`reason`: `validation` | `revoked` | `revocation_unavailable`), `flow_refused` (Web2App callback өөр хөтчид), `success`
+  (`flow`, `revocation`), `failed` (бусад `endResult`). meta-д `mode`; токен/нууц, регистрийн дугаар орохгүй — push-д
+  `pushKey` = HMAC-SHA256(`AuditKey`, дугаар)-ын 32 hex (`AuditKey` nil бол процесс бүрт санамсаргүй).
 - `OnSuccess`-ээс ӨМНӨ tx store-оос атомар устгагдана (нэг удаагийн баталгаа) — `OnSuccess` дотор store-оос бүү унш;
   хэрэгтэй бүхэн `Identity`-д (`SessionID`, `DocumentNumber`, `Certificate`, …).
 
@@ -439,7 +466,8 @@ if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
      өөрийг зурдаггүй; SHA-384/512 session-д ECDSA хариу ирвэл `ValidationError`).
 5. Цуцлалт — `TrustConfig.Revocation` (OCSP/CRL hook, `RevocationHardFail` анхдагч) → `CheckRevocation`, эсвэл
    `CheckRevocationStatus` (`good` / `unchecked` (soft-fail) / `skipped` (hook алга) + алдаа). QUALIFIED
-   non-repudiation-д RP тохируулна.
+   non-repudiation-д RP тохируулна. Бэлэн hook: `eid.NewOCSPChecker(eid.OCSPOptions{})` — гэрчилгээний AIA OCSP
+   (revoked/unknown → revoked; хариугүй → unknown, горим шийднэ). Өөр checker/горимоор нэг удаа: `CheckRevocationWith`.
 6. Нэмэлт (сонголттой): `AllowedIssuerSKIs: []string{eid.CitizenIssuingCASKI}` — зөвхөн иргэний Issuing CA (04)-ийн
    гэрчилгээ (ижил root-ийн доорх байгууллагын CA-г хаана); `CheckKeyUsage: true` — auth → clientAuth, sign →
    nonRepudiation (CA-ийн профайл); `SchemeName` — CA-ийн `acsp_scheme_name` (анхдагч `smart-id`).
@@ -594,7 +622,11 @@ standard library only).
   State server-side (`Store`), browser bound by an HttpOnly cookie; identity only after `ValidateAuth`. Pairs with the
   TS SDK's `<eid-login-button>` web component. The OIDC client (`oidc` package) was removed in v0.2.0.
   `Identity` carries `SessionID`, `DocumentNumber` and `Certificate` for follow-up signing. Set `Config.ClientIP`
-  (`ForwardedClientIP(n)` behind n trusted proxies, `RemoteAddrIP` otherwise) for the `start:<ip>` limit. Requires eID
+  (`ForwardedClientIP(n)` behind n trusted proxies, `RemoteAddrIP` otherwise) for the `start:<ip>` limit. On by default:
+  a push the CA refuses for the number (its own JSON 4xx) is answered with a decoy session identical to a real unanswered
+  push (no registration oracle), every push start takes at least `PushFloor` (1 s), the certificate is checked over OCSP
+  (`eid.NewOCSPChecker`, soft-fail when the responder does not answer, revoked/unknown → `FAILED`/`VALIDATION`), and
+  `OnEvent` receives audit events. Opt-outs: `DisableDecoy`, `DisablePushFloor`, `DisableRevocation` (not recommended). Requires eID
   app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
