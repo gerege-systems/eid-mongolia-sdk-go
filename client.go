@@ -81,7 +81,12 @@ type Client struct {
 	Token        *TokenService
 	Session      *SessionService
 	Validator    *Validator
+
+	rpName string
 }
+
+// RPName — Credentials.RPName (иргэний утсанд харагдах RP нэр).
+func (c *Client) RPName() string { return c.rpName }
 
 // NewClient — тохиргоог шалгаж Client үүсгэнэ.
 func NewClient(cfg Config) (*Client, error) {
@@ -126,6 +131,7 @@ func NewClient(cfg Config) (*Client, error) {
 		Token:        &TokenService{h: h, creds: cfg.Credentials},
 		Session:      &SessionService{h: h},
 		Validator:    v,
+		rpName:       cfg.Credentials.RPName,
 	}, nil
 }
 
