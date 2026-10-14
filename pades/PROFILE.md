@@ -3,7 +3,7 @@
 Native SDK (TS, Swift, Kotlin, C#)-ууд Go reference-тэй (`pades/internal/core/*`, `pades/{prepare,complete,ltv,tsa}.go`)
 **байт-ижил** гаргах дүрэм. Бүрэн жишээ: `testdata/golden/output/<case>.pdf` ба `manifest.json`. Бусад баримт:
 [PRECHECKS.md](PRECHECKS.md) (prepare-ийн шалгуур), [PAGE_SPEC.md](PAGE_SPEC.md) (verify хуудас), [WIRE.md](WIRE.md)
-(TSA/OCSP/CRL хүсэлтийн байт). Эх: ca-eidmongolia-mn `server/internal/pdfsign/pades` (digitorus/pdfsign-ийн fork, BSD-2,
+(TSA/OCSP/CRL хүсэлтийн байт), [APPEARANCE_SPEC.md](APPEARANCE_SPEC.md) (харагдах гарын үсэг, сонголттой). Эх: ca-eidmongolia-mn `server/internal/pdfsign/pades` (digitorus/pdfsign-ийн fork, BSD-2,
 `internal/core/LICENSE.digitorus`); CA-аас ялгаа: runtime-д ШАХАЛТ ҮГҮЙ (xref stream), шууд `/Info`-г хуулна, verify хуудас өөр (хоёр хэлтэй), `/M` +08:00.
 
 ## 0. Prepare / Complete-ийн дараалал
@@ -59,6 +59,8 @@ array → `[` + зайгаар + `]`. Гүн ≤ 32.
    бөгөөс `FEFF` + UTF-16BE hex.
 2. **Widget/талбар** (`fieldID`): `<<\n  /Type /Annot\n  /Subtype /Widget\n  /Rect [0 0 0 0]\n[  /P <page> <gen> R\n]  /F 132\n  /FT /Sig\n  /T (Signature k)\n  /V <sigID> 0 R\n>>`
    — `k` = AcroForm /Fields-ийн `/FT /Sig` тоо + 1, нэр давхцвал k++. `/P` = /Pages модны эхний /Page (гүн ≤ 32).
+   **Харагдах** (`appearance` өгсөн) бол энэ widget-ийн оронд APPEARANCE_SPEC.md §2-ийн widget + 11 /AP объект, хуудас нь
+   `appearance.page`-ийн хуудас (доорх 3 дахь алхам тэр хуудсанд).
 3. Эхний хуудасны `/Annots`-д widget: `/Annots` шууд бус массив бол тэр массивыг (ижил дугаар/үе) `[… <fieldID> 0 R]`;
    эс бөгөөс хуудсыг (ижил дугаар/үе) бусад түлхүүрээр (§1a) + ` /Annots [… <fieldID> 0 R]` дахин бичнэ.
 4. **Catalog** (`catID`): `<<\n  /Type /Catalog\n` + [`  /Version /1.5\n` — Catalog-д /Version алга ба толгой < 1.5 бол]
@@ -127,6 +129,14 @@ DSS = {Certs, OCSPs, CRLs (DER, §8-ийн дарааллаар), Contents = `/C
 2. Шинэ мөр бүр (Certs, дараа нь OCSPs, CRLs): агуулга нь хуучин/шинэ stream-тэй ижил бол тэр заалт; эс бөгөөс шинэ объект
    `<< /Length n >>\nstream\n<DER>\nendstream` (шахалтгүй), заалтыг жагсаалтын төгсгөлд. VRI-ийн тухайн ангилалд заалт
    (давхардалгүй, дарааллаар).
+
+   **Давхардалгүй байдал (заавал, детерминист).** Байт-ижил DER нь баримтад НЭГ stream, `/Certs`/`/OCSPs`/`/CRLs` массивт
+   НЭГ удаа: (а) §8-ийн цуглуулалт дотор — Certs-д гэрчилгээ ижил DER-ээр нэг удаа (иргэн ба TSA гинжийн давхцал 04/03/02,
+   delegated responder), OCSPs/CRLs мөн ижил DER-ийг нэг удаа, эхэлж гарсан дарааллаар; (б) R_dss бичихэд — хуучин DSS-ийн
+   stream (бүх гурван массивын, SHA-256(агуулга)) эсвэл энэ revision-д аль хэдийн бичсэн stream-тэй ижил агуулга бол шинэ
+   объект үүсгэхгүй, тэр заалтыг дахин ашиглана (2 дахь гарын үсгийн R_dss нь өмнөх гэрчилгээ/CRL-ийг дахин бичихгүй, массивт
+   нэмэхгүй — зөвхөн VRI-д заана). Go тест `dssUnique` (golden бүр) ба CI-ийн pyHanko шалгалт. Энэ дүрэм v1-ээс хойш
+   хэрэгжсэн; v3-т тодорхой бичсэн — golden v2-ийн гаралт өөрчлөгдөөгүй.
 3. DSS толь (шинэ дугаар): `<<` + (` /Certs [..]`, ` /OCSPs [..]`, ` /CRLs [..]` — хоосон биш бол) + ` /VRI <<` + хуучин
    VRI-ийн бусад түлхүүр (§1a) + ` /<HEX(SHA-1(Contents)) ТОМ> << /Cert [..] /OCSP [..] /CRL [..] >>` (хоосон ангиллыг
    орхино) + ` >> >>`.

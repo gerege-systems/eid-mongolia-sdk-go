@@ -169,7 +169,11 @@ func (w *pageWriter) hline(y int) {
 // wrap — PAGE_SPEC.md §Мөр таслах: U+0020-оор үг, greedy; үг ганцаараа багтахгүй бол тэмдэгтээр; ≤ maxLines, илүү
 // бол сүүлийн мөрийг «…»-тэй богиносгоно.
 func (w *pageWriter) wrap(id, size int, s string, maxW, maxLines int) []string {
-	limit := maxW * 1000
+	return w.wrapLimit(id, size, s, maxW*1000, maxLines)
+}
+
+// wrapLimit — wrap, өргөний хязгаар limit нь 1/1000 pt-ээр (харагдах гарын үсэгт: 1/100 pt × 10).
+func (w *pageWriter) wrapLimit(id, size int, s string, limit, maxLines int) []string {
 	fits := func(t string) bool { return w.width1000(id, size, t) <= limit }
 	var lines []string
 	cur := ""
@@ -458,8 +462,16 @@ func streamObj(extra string, data []byte) []byte {
 
 // writeFont — Type0 (Identity-H) + CIDFontType2 + FontDescriptor + FontFile2 (asset, FlateDecode) + ToUnicode.
 func writeFont(inc *incremental, ids [5]uint32, f *assets.Font) {
-	inc.writeObject(ids[0], fmt.Appendf(nil, "<< /Type /Font /Subtype /Type0 /BaseFont /%s /Encoding /Identity-H /DescendantFonts [%d 0 R] /ToUnicode %d 0 R >>",
-		f.PSName, ids[1], ids[4]))
+	for i, body := range fontBodies(ids, f) {
+		inc.writeObject(ids[i], body)
+	}
+}
+
+// fontBodies — writeFont-ийн 5 объектын бие (ids-ийн дарааллаар); verify хуудас ба харагдах гарын үсэгт ижил.
+func fontBodies(ids [5]uint32, f *assets.Font) [5][]byte {
+	var out [5][]byte
+	out[0] = fmt.Appendf(nil, "<< /Type /Font /Subtype /Type0 /BaseFont /%s /Encoding /Identity-H /DescendantFonts [%d 0 R] /ToUnicode %d 0 R >>",
+		f.PSName, ids[1], ids[4])
 	var wa strings.Builder
 	for g := range f.Advance {
 		if g > 0 {
@@ -467,12 +479,13 @@ func writeFont(inc *incremental, ids [5]uint32, f *assets.Font) {
 		}
 		wa.WriteString(strconv.Itoa(f.Width1000(uint16(g)))) // #nosec G115 -- glyph тоо < 65536
 	}
-	inc.writeObject(ids[1], fmt.Appendf(nil, "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /%s /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor %d 0 R /CIDToGIDMap /Identity /W [0 [%s]] >>",
-		f.PSName, ids[2], wa.String()))
-	inc.writeObject(ids[2], fmt.Appendf(nil, "<< /Type /FontDescriptor /FontName /%s /Flags 32 /FontBBox [%d %d %d %d] /ItalicAngle 0 /Ascent %d /Descent %d /CapHeight %d /StemV 80 /FontFile2 %d 0 R >>",
-		f.PSName, f.BBox[0], f.BBox[1], f.BBox[2], f.BBox[3], f.Ascent, f.Descent, f.CapHeight, ids[3]))
-	inc.writeObject(ids[3], streamObj(fmt.Sprintf(" /Length1 %d /Filter /FlateDecode", f.Length1), f.Stream))
-	inc.writeObject(ids[4], streamObj("", toUnicode(f)))
+	out[1] = fmt.Appendf(nil, "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /%s /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor %d 0 R /CIDToGIDMap /Identity /W [0 [%s]] >>",
+		f.PSName, ids[2], wa.String())
+	out[2] = fmt.Appendf(nil, "<< /Type /FontDescriptor /FontName /%s /Flags 32 /FontBBox [%d %d %d %d] /ItalicAngle 0 /Ascent %d /Descent %d /CapHeight %d /StemV 80 /FontFile2 %d 0 R >>",
+		f.PSName, f.BBox[0], f.BBox[1], f.BBox[2], f.BBox[3], f.Ascent, f.Descent, f.CapHeight, ids[3])
+	out[3] = streamObj(fmt.Sprintf(" /Length1 %d /Filter /FlateDecode", f.Length1), f.Stream)
+	out[4] = streamObj("", toUnicode(f))
+	return out
 }
 
 // toUnicode — glyph ID → Unicode (нэг glyph-д хамгийн бага code point), glyph ID-ээр эрэмбэлж 100-аар бүлэглэнэ.

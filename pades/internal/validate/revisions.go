@@ -105,7 +105,8 @@ const (
 	// signing service (internal/pdfsign → digitorus/pdfsign, go.mod-д бэхлэгдсэн хувилбар)-ийн нэмэлт approval
 	// гарын үсэгт бичдэг ЯГ тэр хэлбэртэй байх ёстой:
 	//   - шинэ объект: нэг Sig толь (/Type /Sig, ownSigDictKeys), нэг ҮЛ ХАРАГДАХ талбар/widget (ownFieldKeys,
-	//     /Rect [0 0 0 0], /F 132, /AP-гүй), ШИНЭ дугаартай Catalog (digitorus Catalog-ийг үргэлж шинэ
+	//     /Rect [0 0 0 0], /F 132, /AP-гүй) ЭСВЭЛ PAdES бичигчийн ХАРАГДАХ widget + /AP-ийн 11 объект (pades/APPEARANCE_SPEC.md
+	//     §5 — дахин үүсгэж байт-түвшинд тулгана, appearance.go), ШИНЭ дугаартай Catalog (digitorus Catalog-ийг үргэлж шинэ
 	//     объектоор бичдэг; хуучин нь өнчирнө), xref stream-тэй суурьт xref stream объект (өөрийгөө Index-д
 	//     бүртгэсэн эсвэл үгүй). Өөр юу ч үгүй;
 	//   - Catalog: /AcroForm (шууд толь, яг /Fields = өмнөх талбарууд + шинэ нэг талбар, /SigFlags 3) ба
@@ -119,10 +120,11 @@ const (
 	//     ASCII эсвэл BOM-той UTF-16BE, удирдах тэмдэгт (NUL/CR/LF …) болон PDF-ийн бүтцийн түлхүүр үггүй
 	//     (ownTextForbidden); /M нь яг «D:YYYYMMDDHHmmSS±HH'mm'»;
 	//   - revision бүрд яг нэг гарын үсэг; гарын үсэггүй revision, /DSS /VRI (LTV), /Perms, /Extensions,
-	//     /AP ба харагдах widget, бөглөгдсөн хуучин талбар, DocTimeStamp, нэмэгдсэн ObjStm — бүгд татгалзана;
+	//     APPEARANCE_SPEC-ээс өөр /AP ба харагдах widget, бөглөгдсөн хуучин талбар, DocTimeStamp, нэмэгдсэн ObjStm — бүгд татгалзана;
 	//   - trailer-ийн /Info: суурийнхтай ижил, эсвэл xref STREAM хэсэгт орхигдсон (digitorus xref stream-ийн
 	//     толинд /Info бичдэггүй; classic trailer-т хуулдаг тул тэнд орхихыг зөвшөөрөхгүй).
-	// Тиймээс энэ горимд visible_later_signature үргэлж false, later_signatures нь revision-ийн тоо.
+	// Тиймээс энэ горимд visible_later_signature нь зөвхөн APPEARANCE_SPEC-ийн харагдах гарын үсэгт үнэн, later_signatures
+	// нь revision-ийн тоо.
 	profileOwnSigner profile = iota
 	// profileBroad — энэ файлын толгойд тайлбарласан өргөн жагсаалт (харагдах гарын үсэг, LTV, /Perms,
 	// бөглөгдсөн талбар, хуудасны /Annots …). Зөвхөн тестээс.
@@ -225,6 +227,10 @@ type revisions struct {
 	// (жишээ нь Extract-ийн алгасдаг /Type /DocTimeStamp) гарын үсэгт тооцогдохгүй.
 	known   map[int][]int64
 	profile profile
+	// sigs — known-ийн гарын үсэг бүрийн харагдах дүрслэлийн өгөгдөл (appearance.go); docID — баримтын verify
+	// хуудасны холбоосын UUID ("" — хуудасгүй).
+	sigs  map[int]sigMeta
+	docID string
 }
 
 func newRevisions(doc []byte, known map[int][]int64, p profile) *revisions {
@@ -363,6 +369,7 @@ func (r *revisions) classify(from, to int, strict bool, mode classifyMode) *Late
 	var res *LaterChanges
 	if base, fin := r.view(from), r.view(to); base != nil && fin != nil {
 		c := newClassifier(base, fin, strict, r.known)
+		c.sigs, c.docID = r.sigs, r.docID
 		c.own, c.dssOnly, c.ownProfile = mode == modeOwn, mode == modeDSSOnly, r.profile == profileOwnSigner
 		if c.run() == nil {
 			res = &LaterChanges{SignaturesOnly: true, Signatures: len(c.sigDicts), Visible: c.visible}
@@ -423,7 +430,11 @@ type classifier struct {
 	annotsOf   map[int]int     // шууд бус /Annots массив → эзэн хуудас
 	fieldNames map[string]bool // own: суурийн болон шинэ талбаруудын /T
 	visible    bool
-	sigWork    bool // DSS-ээс өөр (гарын үсэгтэй холбоотой) өөрчлөлт орсон
+	// ownVis — own: APPEARANCE_SPEC-ийн яг хэлбэрээр шалгагдсан харагдах widget-ууд (/P хуудасны /Annots-д заавал).
+	ownVis  map[int]bool
+	sigs    map[int]sigMeta
+	docID   string
+	sigWork bool // DSS-ээс өөр (гарын үсэгтэй холбоотой) өөрчлөлт орсон
 }
 
 func newClassifier(base, fin *pdfView, strict bool, known map[int][]int64) *classifier {
@@ -432,7 +443,7 @@ func newClassifier(base, fin *pdfView, strict bool, known map[int][]int64) *clas
 		infra: map[int]bool{}, xrefSelf: map[int]bool{}, edges: map[[2]int]int{}, sigDicts: map[int]bool{}, widgets: map[int]bool{},
 		role: map[int]string{}, seen: map[int]bool{}, pages: map[int]bool{}, widgetP: map[int]int{},
 		widgetPage: map[int]int{}, annotsOf: map[int]int{}, fieldNames: map[string]bool{}, rewritten: map[int]bool{},
-		ownRewrite: map[int]bool{}}
+		ownRewrite: map[int]bool{}, ownVis: map[int]bool{}}
 }
 
 // claim — num объектыг role үүрэгт бүртгэнэ; өөр үүрэг аль хэдийн авсан бол алдаа.
@@ -515,7 +526,7 @@ func (c *classifier) run() error {
 	}
 	// Шинэ widget-ийн /P: байхгүй, эсвэл /Annots-д нь орсон хуудас (аль ч /Annots-д ороогүй бол дурын хуудас).
 	for w, p := range c.widgetP {
-		if at, placed := c.widgetPage[w]; p != 0 && (!c.pages[p] || placed && at != p) {
+		if at, placed := c.widgetPage[w]; p != 0 && (!c.pages[p] || placed && at != p) || c.ownVis[w] && (!placed || at != p) {
 			return errNotSignatureOnly
 		}
 	}
@@ -543,14 +554,15 @@ func (c *classifier) run() error {
 	if c.own {
 		// Алхам бүр: яг нэг гарын үсэг + нэг талбар + шинэ Catalog (+ xref stream). Хуримтлагдсан горимд
 		// алхмуудын нийлбэр тул зөвхөн «дор хаяж нэг» ба «гарын үсэг = талбар».
-		if !c.isNew[c.root] || len(c.sigDicts) != len(c.widgets) || len(c.sigDicts) == 0 || c.strict && len(c.sigDicts) != 1 || c.visible {
+		if !c.isNew[c.root] || len(c.sigDicts) != len(c.widgets) || len(c.sigDicts) == 0 || c.strict && len(c.sigDicts) != 1 ||
+			c.visible && len(c.ownVis) == 0 {
 			return errNotSignatureOnly
 		}
 		// Шинэ объект: зөвхөн Sig толь, талбар, Catalog. ObjStm бичдэггүй; xref stream-ийг digitorus бүртгэдэггүй
 		// байсан, PAdES бичигч (2026-10-07-оос) өөрийгөө бүртгэдэг — тэр мөрөөс өөр файлын бүтцийн шинэ объект
 		// (infra) байх ёсгүй.
 		for n := range c.isNew {
-			if r := c.role[n]; c.strict && !c.xrefSelf[n] && r != "sig" && r != "field" && r != "catalog" {
+			if r := c.role[n]; c.strict && !c.xrefSelf[n] && r != "sig" && r != "field" && r != "catalog" && (r != "ap" || len(c.ownVis) == 0) {
 				return errNotSignatureOnly
 			}
 		}
@@ -778,8 +790,16 @@ func (c *classifier) diff() error {
 		}
 		// Хэлбэр (шууд ↔ ObjStm доторх) эсвэл үеийн дугаар солигдсон бол утга ижил ч татгалзана: үе
 		// солигдвол хуучин заалтууд «сул» болно, манай signer хэзээ ч ингэдэггүй.
-		if be.kind != fe.kind || be.gen != fe.gen {
+		// Ганц үл хамаарах (own, APPEARANCE_SPEC.md §5): ObjStm доторх хуучин хуудас / /Annots массивыг PAdES бичигч
+		// шууд объектоор (ижил дугаар, үе 0) дахин бичнэ — ref-үүд хүчинтэй хэвээр; үүргийг run() (ownRewrite: өөрчлөгдсөн,
+		// зөвшөөрөгдсөн page/annots) шалгана. Хуримтлагдсан (strict биш) own-profile шалгалтад алхам бүр аль хэдийн own
+		// горимоор шалгагдсан. Шууд → ObjStm, үе солих — үргэлж татгалзана.
+		unpack := be.kind == entComp && fe.kind == entUse && fe.gen == 0 && (c.own || !c.strict && c.ownProfile && !c.dssOnly)
+		if (be.kind != fe.kind || be.gen != fe.gen) && !unpack {
 			return errNotSignatureOnly
+		}
+		if unpack && pdfEqual(bo, fo) {
+			return errNotSignatureOnly // ижил утгаар дахин бичихгүй
 		}
 		if !pdfEqual(bo, fo) {
 			c.changed[num] = true
@@ -1212,8 +1232,14 @@ func (c *classifier) newField(r pdfRef, owner int) error {
 	}
 	if c.own {
 		// digitorus-ийн үл харагдах widget: /Type /Annot /Subtype /Widget /Rect [0 0 0 0] (/P хуудас) /F 132
-		// (Print|Locked) /FT /Sig /T /V. /AP болон өөр түлхүүр байхгүй.
-		if !onlyKeys(d, ownFieldKeys...) || d["Type"] != pdfName("Annot") || d["Subtype"] != pdfName("Widget") ||
+		// (Print|Locked) /FT /Sig /T /V. /AP болон өөр түлхүүр байхгүй. Эсвэл PAdES бичигчийн харагдах widget
+		// (APPEARANCE_SPEC.md): widget + /AP-ийн 11 объект яг дахин үүсгэсэнтэй тэнцүү (ownVisible).
+		if _, vis := d["AP"]; vis {
+			if err := c.ownVisible(d, r.num); err != nil {
+				return err
+			}
+			c.ownVis[r.num] = true
+		} else if !onlyKeys(d, ownFieldKeys...) || d["Type"] != pdfName("Annot") || d["Subtype"] != pdfName("Widget") ||
 			!pdfEqual(d["Rect"], pdfArr{int64(0), int64(0), int64(0), int64(0)}) || d["F"] != int64(132) {
 			return errNotSignatureOnly
 		}

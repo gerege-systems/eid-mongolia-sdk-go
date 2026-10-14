@@ -2,12 +2,16 @@ package pades
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -67,6 +71,23 @@ type PrepareOptions struct {
 	FileName string `json:"fileName,omitempty"`
 	// Lang — хуудасны хэл: "mn" (анхдагч, хоосон бол) | "en" (PAGE_SPEC.md §3a).
 	Lang string `json:"lang,omitempty"`
+	// Appearance — харагдах гарын үсэг (APPEARANCE_SPEC.md); nil бол үл харагдах (анхдагч, өмнөхтэй байт-ижил).
+	Appearance *Appearance `json:"appearance,omitempty"`
+}
+
+// Appearance — харагдах гарын үсгийн байршил (APPEARANCE_SPEC.md §1). Координат нь pt, тухайн хуудасны CropBox
+// (байхгүй бол MediaBox)-ийн /Rotate-ийн ДАРААХ (дэлгэцэнд харагдах) зүүн доод булангаас; x баруун тийш, y дээш.
+// Утга бүр 0.01 pt хүртэл тойрогдоно.
+type Appearance struct {
+	// Page — оролтын баримтын хуудас, 1-ээс; 0 (анхдагч) = оролтын сүүлийн хуудас (энэ Prepare-ийн нэмэх verify
+	// хуудас тооцогдохгүй).
+	Page   int     `json:"page,omitempty"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	// Lang — "mn" | "en"; хоосон бол PrepareOptions.Lang (тэр нь хоосон бол mn).
+	Lang string `json:"lang,omitempty"`
 }
 
 // Prepared — Prepare-ийн үр дүн.
@@ -108,6 +129,9 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	}
 	if o.Lang != "" && o.Lang != "mn" && o.Lang != "en" {
 		return nil, newErr(CodeRequestInvalid, "lang: mn | en", nil)
+	}
+	if err := checkAppearance(o); err != nil {
+		return nil, err
 	}
 	now := o.SigningTime
 	if now.IsZero() {
@@ -160,7 +184,19 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if strings.TrimSpace(name) == "" {
 		name = core.SignerDisplayName(cert)
 	}
-	prep, err := core.PrepareSignatureWithReason(base, now, name, o.Reason)
+	var prep *core.Prepared
+	if o.Appearance == nil {
+		prep, err = core.PrepareSignatureWithReason(base, now, name, o.Reason)
+	} else {
+		var vis core.Visible
+		if vis, err = visibleSpec(doc, o, name, now, docID, revIndex); err != nil {
+			return nil, err
+		}
+		prep, err = core.PrepareSignatureVisible(base, now, name, o.Reason, vis)
+		if errors.Is(err, core.ErrAppearance) {
+			return nil, newErr(CodeRequestInvalid, "appearance: "+strings.TrimPrefix(err.Error(), "pades: "), err)
+		}
+	}
 	if err != nil {
 		return nil, newErr(CodePDFInvalid, "PDF-д гарын үсгийн revision бичиж чадсангүй", err)
 	}
@@ -181,6 +217,66 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		return nil, err
 	}
 	return &Prepared{DTBS: core.DTBS(attrs), Digest: prep.Digest, DocID: docID, State: state}, nil
+}
+
+// checkAppearance — Appearance-ийн PDF-ээс үл хамаарах шалгалт (APPEARANCE_SPEC.md §1).
+func checkAppearance(o PrepareOptions) error {
+	a := o.Appearance
+	if a == nil {
+		return nil
+	}
+	bad := func(msg string) error { return newErr(CodeRequestInvalid, "appearance: "+msg, nil) }
+	for _, v := range []float64{a.X, a.Y, a.Width, a.Height} {
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 14400 {
+			return bad("x, y, width, height нь 0…14400 pt")
+		}
+	}
+	if a.Page < 0 {
+		return bad("page ≥ 0")
+	}
+	if a.Lang != "" && a.Lang != "mn" && a.Lang != "en" {
+		return bad("lang: mn | en")
+	}
+	if o.ClaimedRole != "" && !roleText(o.ClaimedRole) {
+		return bad("claimedRole-д удирдах тэмдэгт")
+	}
+	return nil
+}
+
+// roleText — validator-ийн validClaimedRole-тэй ижил (харагдах дүрслэлийг validator claimedRole-оос дахин үүсгэнэ).
+func roleText(s string) bool {
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf) {
+			return false
+		}
+	}
+	return utf8.ValidString(s)
+}
+
+// visibleSpec — Appearance → core.Visible: хуудас (0 → оролтын сүүлийн), h100, хэл, огноо, verify URL.
+func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID string, revIndex int) (core.Visible, error) {
+	a := o.Appearance
+	if docID == "" {
+		return core.Visible{}, newErr(CodeRequestInvalid, "appearance: docId заавал (баримтад verify хуудас алга)", nil)
+	}
+	n, err := core.PageCount(doc)
+	if err != nil {
+		return core.Visible{}, newErr(CodePDFInvalid, "PDF задарсангүй", err)
+	}
+	page := a.Page
+	if page == 0 {
+		page = n
+	}
+	if page > n {
+		return core.Visible{}, newErr(CodeRequestInvalid, fmt.Sprintf("appearance: page %d > хуудасны тоо %d", page, n), nil)
+	}
+	lang := cmp.Or(a.Lang, o.Lang, "mn")
+	return core.Visible{
+		Page: page, X: core.Round100(a.X), Y: core.Round100(a.Y), W: core.Round100(a.Width), H: core.Round100(a.Height),
+		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
+		Date: now.Format("2006-01-02 15:04") + " (+08)",
+		URL:  pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
+	}, nil
 }
 
 // encrypted — trailer-д /Encrypt (digitorus panic-ийг recover).

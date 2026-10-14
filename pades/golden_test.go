@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/digitorus/pdf"
 	"github.com/digitorus/timestamp"
 	"golang.org/x/crypto/ocsp"
 
@@ -102,8 +103,56 @@ func goldenCases() []goldenCase {
 		{Name: "quartz-linearized-nopage", Input: "input/quartz-linearized.pdf", Prep: PrepareOptions{DocID: "60718293-a4b5-4c6d-8de0-5b6c7d8e9fa0"}},
 		{Name: "quartz-pdf13-nopage-second", Input: "case:quartz-pdf13-nopage", Prep: PrepareOptions{DocID: "4e5f6071-8293-4a4b-8bce-3f4a5b6c7d8e",
 			Reason: "Тест ХХК-ийг төлөөлж", ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}},
+		// Харагдах гарын үсэг (APPEARANCE_SPEC.md, golden v3): эхний гарын үсэг оролтын сүүлийн хуудсан дээр (mn, en),
+		// 2 дахь нь 2 хуудастай баримтын 1-р хуудсан дээр (onBehalfOf — үүргийн мөртэй), 2 дахь харагдах нь эхний
+		// харагдах дээр, /Rotate 90 хуудас.
+		{Name: "quartz-pdf13-visible", Input: "input/quartz-pdf13.pdf", Prep: visible(page("8a9b0c1d-2e3f-4a5b-8c6d-7e8f9a0b1c2d", "Гэрээ №1 (Quartz).pdf"),
+			Appearance{X: 36, Y: 36, Width: 220, Height: 64})},
+		{Name: "quartz-pdf13-visible-en", Input: "input/quartz-pdf13.pdf", Prep: visible(PrepareOptions{VerifyPage: true,
+			DocID: "9b0c1d2e-3f4a-4b5c-9d7e-8f9a0b1c2d3e", FileName: "Contract No.1 (Quartz).pdf", Lang: "en"},
+			Appearance{X: 36, Y: 36, Width: 220, Height: 64})},
+		{Name: "quartz-pdf13-visible-second", Input: "case:quartz-pdf13", Prep: visible(PrepareOptions{Reason: "Тест ХХК-ийг төлөөлж",
+			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{Page: 1, X: 340, Y: 36, Width: 236, Height: 72})},
+		{Name: "quartz-pdf13-visible-twice", Input: "case:quartz-pdf13-visible", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{Page: 1, X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "quartz-rotated90-visible", Input: "input/quartz-rotated90.pdf", Prep: visible(page("ac1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "rotated.pdf"),
+			Appearance{X: 36, Y: 36, Width: 220, Height: 64})},
 		{Name: "stamped-foreign", Input: "input/stamped.pdf", Prep: page("", "stamped.pdf")},
 		{Name: "encrypted", Input: "input/encrypted.pdf", Prep: page("", "enc.pdf")},
+	}
+}
+
+func visible(o PrepareOptions, a Appearance) PrepareOptions {
+	o.Appearance = &a
+	return o
+}
+
+// dssUnique — PROFILE.md §7: /DSS /Certs /OCSPs /CRLs-ийн stream бүрийн агуулга (DER) баримтад ганц удаа (citizen ба TSA
+// гинжийн давхцал, хоёр дахь гарын үсгийн R_dss өмнөх DSS-ийн объектыг заалтаар дахин ашиглана).
+func dssUnique(t *testing.T, name string, doc []byte) {
+	t.Helper()
+	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	dss := r.Trailer().Key("Root").Key("DSS")
+	seen := map[[32]byte]string{}
+	for _, key := range []string{"Certs", "OCSPs", "CRLs"} {
+		arr := dss.Key(key)
+		for i := range arr.Len() {
+			data, err := io.ReadAll(arr.Index(i).Reader())
+			if err != nil {
+				t.Fatalf("%s: DSS /%s[%d]: %v", name, key, i, err)
+			}
+			sum := sha256.Sum256(data)
+			if prev, dup := seen[sum]; dup {
+				t.Errorf("%s: DSS /%s[%d] нь %s-тэй ижил агуулгатай (давхардал)", name, key, i, prev)
+			}
+			seen[sum] = fmt.Sprintf("/%s[%d]", key, i)
+		}
+	}
+	if len(seen) == 0 {
+		t.Errorf("%s: DSS хоосон", name)
 	}
 }
 
@@ -320,7 +369,14 @@ func (rt *replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	key := httpKey(r, body)
 	var out []byte
 	status := 200
-	if *update {
+	if file, ok := rt.m.HTTP[key]; ok && *update {
+		// Байгаа fixture-ийг хэвээр (OCSP producedAt цагаас хамаардаг) — өмнөх тохиолдлууд байт-ижил үлдэнэ.
+		b, err := os.ReadFile(filepath.Join(goldenDir, file)) // #nosec G304 -- тест
+		if err != nil {
+			return nil, err
+		}
+		rt.record[key], out = b, b
+	} else if *update {
 		rec := httptest.NewRecorder()
 		r2 := r.Clone(context.Background())
 		r2.Body = io.NopCloser(bytes.NewReader(body))
@@ -453,6 +509,7 @@ func TestGolden(t *testing.T) {
 			}
 		}
 		if out != nil {
+			dssUnique(t, c.Name, out)
 			rep, err := Verify(out, VerifyOptions{Roots: [][]byte{p.root.cert.Raw}, Issuers: [][]byte{p.ca04.cert.Raw}, Time: goldenNow})
 			if err != nil || rep.Indication != Valid {
 				t.Errorf("%s: Verify: %v %+v", c.Name, err, rep)
@@ -471,6 +528,7 @@ func TestGolden(t *testing.T) {
 	if !*update {
 		return
 	}
+	oldHTTP := m.HTTP
 	m = goldenManifest{
 		Comment: "eID PAdES core golden vectors — ТЕСТИЙН PKI (pki/*.pem, хувийн түлхүүртэй) — бодит гинжид итгэгдэхгүй. " +
 			"prepare: signerCert = pki/citizen.pem, chain = 04/03/02, roots = pki/root.pem, signingTime; иргэний гарын үсэг = RSA PKCS#1 v1.5 (citizen key) DTBS дээр; " +
@@ -478,22 +536,37 @@ func TestGolden(t *testing.T) {
 		Profile: ProfileVersion, SigningTime: goldenTime, Now: goldenNow, NonceSeed: "golden-nonce:<case>",
 		HTTP: map[string]string{}, Cases: cases,
 	}
+	// Байгаа fixture-ийн нэр хэвээр; шинэ түлхүүр дараагийн дугаараас (түлхүүрээр эрэмбэлж). Ашиглагдаагүйг устгана.
 	httpDir := filepath.Join(goldenDir, "http")
-	_ = os.RemoveAll(httpDir)
 	if err := os.MkdirAll(httpDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	keys := make([]string, 0, len(rt.record))
+	next := 0
 	for k := range rt.record {
+		if name, ok := oldHTTP[k]; ok {
+			m.HTTP[k] = name
+			var i int
+			if _, err := fmt.Sscanf(name, "http/%d-", &i); err == nil && i >= next {
+				next = i + 1
+			}
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	for i, k := range keys {
-		name := fmt.Sprintf("http/%02d-%s.der", i, sha256hex([]byte(k))[:12])
+	for _, k := range keys {
+		name := fmt.Sprintf("http/%02d-%s.der", next, sha256hex([]byte(k))[:12])
+		next++
 		if err := os.WriteFile(filepath.Join(goldenDir, name), rt.record[k], 0o644); err != nil { // #nosec G306 -- тест
 			t.Fatal(err)
 		}
 		m.HTTP[k] = name
+	}
+	for k, name := range oldHTTP {
+		if _, used := m.HTTP[k]; !used {
+			_ = os.Remove(filepath.Join(goldenDir, name))
+		}
 	}
 	out, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(mpath, append(out, '\n'), 0o644); err != nil { // #nosec G306 -- тест

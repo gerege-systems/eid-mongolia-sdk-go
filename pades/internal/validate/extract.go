@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -68,6 +69,8 @@ type RawSignature struct {
 	LaterSignaturesOnly bool `json:"later_signatures_only"`
 	LaterSignatures     int  `json:"later_signatures"`
 	LaterVisible        bool `json:"later_visible"`
+	// Visible — энэ гарын үсгийн талбар/widget (/V → энэ толь) хоосон биш /Rect эсвэл /AP-тэй (хуудсан дээр харагдана).
+	Visible bool `json:"visible"`
 	// SignedEnd — ByteRange[2]+ByteRange[3]: гарын үсгийн revision-ийн төгсгөл (задарсан үед). Эцэг процесс
 	// doc[:SignedEnd]-ийн sha256-г ӨӨРӨӨ тооцно (ValidatePDF) — worker hash өгөхгүй.
 	SignedEnd int64   `json:"signed_end,omitempty"`
@@ -129,9 +132,25 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	if err != nil {
 		return nil, ErrNotPDF
 	}
+	visible := map[uint32]bool{} // Sig толийн дугаар → widget харагдах
+	docID := ""
 	for _, x := range rdr.Xref() {
 		obj := rdr.Resolve(x.Ptr(), x.Ptr())
-		if obj.Kind() != pdf.Dict || obj.Key("Contents").IsNull() || obj.Key("ByteRange").IsNull() {
+		if obj.Kind() != pdf.Dict {
+			continue
+		}
+		if obj.Key("FT").Name() == "Sig" && obj.Key("V").Kind() == pdf.Dict {
+			vp, xp := obj.Key("V").GetPtr(), x.Ptr()
+			if vp.GetID() != xp.GetID() {
+				visible[vp.GetID()] = visible[vp.GetID()] || widgetVisible(obj)
+			}
+		}
+		if u := obj.Key("A").Key("URI").RawString(); docID == "" && obj.Key("Subtype").Name() == "Link" {
+			if rest, ok := strings.CutPrefix(u, apVerifyPrefix); ok && uuidRe.MatchString(rest) {
+				docID = rest // verify хуудасны холбоос (PRECHECKS.md: эхнийх)
+			}
+		}
+		if obj.Key("Contents").IsNull() || obj.Key("ByteRange").IsNull() {
 			continue
 		}
 		// DocTimeStamp (PAdES-LTA) нь өөр бүтэцтэй (TSTInfo-г гарын үсэг гэж шалгавал худлаа
@@ -150,6 +169,9 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	if len(sigs) == 0 {
 		return nil, ErrNoSignature
 	}
+	for i := range sigs {
+		sigs[i].Visible = visible[uint32(sigs[i].objNum)] // #nosec G115 -- xref-ийн дугаар
+	}
 	if dss := extractDSS(rdr.Trailer().Key("Root").Key("DSS")); dss != nil {
 		for i := range sigs {
 			sigs[i].DSS = dss
@@ -158,22 +180,50 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	// Задарч, доорх шалгалтад орсон гарын үсгүүд: revision-ийн ангилагч «дараагийн гарын үсэг» гэж зөвхөн
 	// эдгээрийг л тооцно (алгассан DocTimeStamp, бүтэц эвдэрсэн толь тооцогдохгүй).
 	known := map[int][]int64{}
+	metas := map[int]sigMeta{}
 	for _, s := range sigs {
 		if !s.Malformed {
 			known[s.objNum] = s.byteRange
+			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1}
 		}
+	}
+	for num, m := range metas {
+		for _, s := range sigs {
+			if !s.Malformed && s.SignedEnd < known[num][2]+known[num][3] {
+				m.revIndex++
+			}
+			if s.objNum == num && len(s.ClaimedRoles) == 1 {
+				m.role = s.ClaimedRoles[0]
+			}
+		}
+		metas[num] = m
 	}
 	var revs *revisions
 	for i := range sigs {
 		if s := &sigs[i]; !s.Malformed && !s.CoversWhole {
 			if revs == nil {
 				revs = newRevisions(doc, known, p)
+				revs.sigs, revs.docID = metas, docID
 			}
 			later := revs.later(s.SignedEnd)
 			s.LaterSignaturesOnly, s.LaterSignatures, s.LaterVisible = later.SignaturesOnly, later.Signatures, later.Visible
 		}
 	}
 	return sigs, nil
+}
+
+var uuidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// widgetVisible — гарын үсгийн widget хуудсан дээр харагдах эсэх: /AP-тэй эсвэл /Rect-ийн өргөн, өндөр хоёулаа 0 биш.
+func widgetVisible(w pdf.Value) bool {
+	if !w.Key("AP").IsNull() {
+		return true
+	}
+	r := w.Key("Rect")
+	if r.Kind() != pdf.Array || r.Len() != 4 {
+		return false
+	}
+	return r.Index(0).Float64() != r.Index(2).Float64() && r.Index(1).Float64() != r.Index(3).Float64()
 }
 
 func extractSignature(doc []byte, obj pdf.Value) RawSignature {
