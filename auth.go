@@ -133,6 +133,7 @@ func (a *AuthService) deviceLink(ctx context.Context, path string, interactions 
 		RPChallenge:    acsp.RPChallenge,
 		ACSP:           acsp,
 		ReceivedAt:     time.Now(),
+		SessionType:    SessionAuth,
 	}, nil
 }
 
