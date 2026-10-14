@@ -58,7 +58,7 @@ type PrepareOptions struct {
 	Reason string `json:"reason,omitempty"`
 	// ClaimedRole — CA-ийн төлөөллийн хариуны claimedRole; signedAttrs-ийн signer-attributes-v2-д орно.
 	ClaimedRole string `json:"claimedRole,omitempty"`
-	// SigningTime — /M; тэг бол одоо.
+	// SigningTime — /M; тэг бол одоо. Үргэлж +08:00 бүсээр бичигдэнэ (агшин хэвээр).
 	SigningTime time.Time `json:"signingTime,omitempty"`
 	// DocID — баримтын UUID (verify хуудас/QR); хоосон бол эхний гарын үсэгт шинээр үүсгэнэ.
 	DocID string `json:"docId,omitempty"`
@@ -80,6 +80,9 @@ type Prepared struct {
 	DocID  string
 	State  []byte // тунгалаг, хадгалж болно (Complete-д буцааж өгнө)
 }
+
+// signingZone — /M ба хуудасны огнооны тогтмол бүс (Asia/Ulaanbaatar, DST-гүй).
+var signingZone = time.FixedZone("+08", 8*3600)
 
 var encryptKey = regexp.MustCompile(`/Encrypt\s+\d+\s+\d+\s+R`)
 
@@ -118,6 +121,9 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	// /M ба хуудасны огноо цагийн бүсийг хэвлэдэг — wrapper/төхөөрөмжийн time.Local-оос үл хамааран ижил агшин ижил
+	// DTBS өгөхийн тулд үргэлж +08:00 (docs/PADES_CLIENT_SIDE.md §5; LoadLocation биш — WASM/мобайлд tzdata алга).
+	now = now.In(signingZone)
 
 	inSum := sha256.Sum256(doc)
 	inHex := hex.EncodeToString(inSum[:])

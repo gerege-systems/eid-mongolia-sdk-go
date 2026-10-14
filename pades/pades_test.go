@@ -282,3 +282,28 @@ func TestDocMDPLocked(t *testing.T) {
 		t.Fatal("pdfsign /Perms бичдэггүй — CA-ийн дүрмээр түгжээгүй")
 	}
 }
+
+// TestSigningTimeZone — ижил агшин (UTC / +08 / өөр бүс) → ижил DTBS ба state; /M нь +08'00'.
+func TestSigningTimeZone(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	var first *Prepared
+	for _, tm := range []time.Time{goldenTime, goldenTime.UTC(), goldenTime.In(time.FixedZone("-05", -5*3600))} {
+		o := testOpts(p, p.citizen.cert)
+		o.SigningTime, o.DocID = tm, "6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f"
+		got, err := Prepare(readInput(t, "quartz-pdf13.pdf"), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == nil {
+			first = got
+			st, _ := decodeState(got.State)
+			if !bytes.Contains(st.PDF, []byte("/M (D:20261014120000+08'00')")) {
+				t.Fatal("/M +08 биш")
+			}
+			continue
+		}
+		if !bytes.Equal(first.DTBS, got.DTBS) || !bytes.Equal(first.State, got.State) {
+			t.Fatalf("%s: DTBS/state зөрөв", tm.Location())
+		}
+	}
+}
