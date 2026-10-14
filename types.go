@@ -204,8 +204,6 @@ type SessionResult struct {
 	// OnBehalfOf — байгууллагын нэрийн өмнөөс байсан бол СЕРВЕР төлөөллийг шалгасны баталгаа; nil = хувь хүн.
 	// RP энэ талбарт л итгэнэ (клиентийн сонголтод биш).
 	OnBehalfOf *OrgResult
-	// PDF — PAdES (/pdf/sign/prepare) session-ий pdf блок; PDF урсгал биш бол nil.
-	PDF *PDFSessionBlock
 	// Person — COMPLETE+OK auth session-ий person блок (CA бүртгэлээс: кирилл нэр, төрсөн огноо, хүйс — гэрчилгээнд
 	// байдаггүй). Зөвхөн session эзэмшигч RP-д; CA иргэнийг олоогүй бол nil. ГАРЫН ҮСЭГТ ОРДОГГҮЙ — Validator-оор
 	// баталгаажсаны дараа Person.CivilID-г гэрчилгээний SERIALNUMBER (PNOMN-<civilId>)-тэй тулгаж л хэрэглэнэ
@@ -273,46 +271,6 @@ type OrgResult struct {
 	// RightTypeLabel — эрхийн төрлийн хүнд харуулах нэр (Representation.RightTypeLabel). Эрх хураагдсан эсвэл
 	// хуучин CA бол хоосон.
 	RightTypeLabel string `json:"rightTypeLabel,omitempty"`
-}
-
-// PDF баримтын төлөв.
-const (
-	PDFPending = "PENDING"
-	PDFReady   = "READY"
-	PDFFailed  = "FAILED"
-	PDFExpired = "EXPIRED"
-)
-
-// PDFSessionBlock — GET /session/{id}-ийн pdf объект (PAdES, CA угсарна).
-type PDFSessionBlock struct {
-	DocID          string `json:"docID"`
-	DocumentStatus string `json:"documentStatus"`
-	// ErrorCode — FAILED үед (ж: REPRESENTATION_REVOKED).
-	ErrorCode string `json:"errorCode,omitempty"`
-	// OutSHA256 — гарын үсэгтэй PDF-ийн SHA-256 (hex) — татсан файлтай тулгана.
-	OutSHA256      string         `json:"outSha256,omitempty"`
-	Size           int64          `json:"size,omitempty"`
-	ExpiresAt      string         `json:"expiresAt,omitempty"`
-	SignatureLevel string         `json:"signatureLevel,omitempty"`
-	Signer         *PDFSigner     `json:"signer,omitempty"`
-	Validation     *PDFValidation `json:"validation,omitempty"`
-}
-
-// PDFSigner — PAdES гаралтын гарын үсэг зурагч.
-type PDFSigner struct {
-	Etsi       string `json:"etsi"`
-	CertSerial string `json:"certSerial"`
-	// OnBehalfOf — байгууллагын ETSI (NTRMN-…), баримтад бичигдсэн утга.
-	OnBehalfOf string `json:"onBehalfOf,omitempty"`
-	// ClaimedRole — CMS signer-attributes-v2: «<албан тушаал>, <нэр> (NTRMN-…)».
-	ClaimedRole string `json:"claimedRole,omitempty"`
-}
-
-// PDFValidation — CA-ийн гаралтын шалгалтын дүн.
-type PDFValidation struct {
-	Indication string `json:"indication"`
-	LTV        bool   `json:"ltv"`
-	Signatures int    `json:"signatures"`
 }
 
 // Representation — иргэний төлөөлж чадах нэг байгууллага.

@@ -19,13 +19,10 @@ const DefaultBaseURL = "https://rp.eidmongolia.mn"
 
 const (
 	defaultTimeout = 15 * time.Second
-	// DefaultPDFTimeout — PAdES prepare / баримт татах нэг дуудлагын анхдагч хугацаа. CA prepare нь ≤ 10 MiB уншиж,
-	// өмнөх гарын үсэг + LTV өгөгдөл шалгаад push эхлүүлдэг; баримт татахад угсралтыг ≤ 30с хүлээдэг
-	// (PADES_SIGNING §3.4). 80с нь хоёуланд хүрэлцэнэ, CA-ийн nginx proxy_read_timeout-оос бага.
+	// DefaultPDFTimeout — PDF.RegisterSignature-ийн анхдагч хугацаа (CA CMS + TSA + LTV-г шалгадаг), CA-ийн nginx
+	// proxy_read_timeout-оос бага.
 	DefaultPDFTimeout = 80 * time.Second
-	// DefaultPDFMaxBytes — гарын үсэгтэй PDF татахад санах ойд уншиж болох дээд хэмжээ (Config.PDFMaxBytes).
-	DefaultPDFMaxBytes = 64 << 20
-	maxErrorBody       = 64 << 10
+	maxErrorBody      = 64 << 10
 	// maxJSONBody — JSON хариуны дээд хэмжээ; хэтэрвэл *ResponseTooLargeError (таслахгүй).
 	maxJSONBody = 4 << 20
 )
@@ -43,11 +40,8 @@ type Config struct {
 	DefaultCertificateLevel CertificateLevel
 	// Timeout — нэг HTTP дуудлагын анхдагч хугацаа. 0 = 15s. Long-poll ба PDF өөрийн уртыг хэрэглэнэ.
 	Timeout time.Duration
-	// PDFTimeout — PAdES prepare / баримт татах дуудлагын хугацаа. 0 = DefaultPDFTimeout (80s).
+	// PDFTimeout — PDF.RegisterSignature-ийн дуудлагын хугацаа. 0 = DefaultPDFTimeout (80s).
 	PDFTimeout time.Duration
-	// PDFMaxBytes — PDF.Document / PDF.TokenDocument-ийн санах ойд унших дээд хэмжээ. 0 = DefaultPDFMaxBytes (64 MiB).
-	// Хэтэрвэл *ResponseTooLargeError.
-	PDFMaxBytes int64
 	// HTTPClient — mTLS client cert (tls.Config.Certificates) эсвэл proxy тохируулахад. nil = шинэ http.Client.
 	HTTPClient *http.Client
 	// Trust — validator-ийн итгэлийн тохиргоо. Production-д TrustAnchorsPEM ЗААВАЛ.
@@ -117,15 +111,11 @@ func NewClient(cfg Config) (*Client, error) {
 	if pt <= 0 {
 		pt = DefaultPDFTimeout
 	}
-	pmax := cfg.PDFMaxBytes
-	if pmax <= 0 {
-		pmax = DefaultPDFMaxBytes
-	}
 	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc, lang: strings.TrimSpace(cfg.Language)}
 	return &Client{
 		Auth:         &AuthService{h: h, creds: cfg.Credentials, level: level},
 		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level, ttl: cfg.SignSessionTTL},
-		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level, timeout: pt, maxBytes: pmax},
+		PDF:          &PDFService{h: h, timeout: pt},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
 		Token:        &TokenService{h: h, creds: cfg.Credentials},
@@ -220,17 +210,6 @@ func decodeJSON(raw []byte, path string, out any) error {
 		return fmt.Errorf("eid: %s: хариу задарсангүй: %w", maskPath(path), err)
 	}
 	return nil
-}
-
-func (h *httpDoer) getBytes(ctx context.Context, path string, timeout time.Duration, maxBytes int64) ([]byte, error) {
-	ctx, cancel := h.withTimeout(ctx, timeout)
-	defer cancel()
-	res, err := h.send(ctx, http.MethodGet, path, nil, "")
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	return readLimited(res, maxBytes, http.MethodGet, path)
 }
 
 // readLimited — хариуны биеийг limit хүртэл уншина; Content-Length эсвэл бодит урт limit-ээс хэтэрвэл

@@ -222,7 +222,7 @@ c, err := eid.NewClient(eid.Config{
 ```
 
 Бүх дуудлага `context.Context` авна (цуцлалт, deadline); дуудлага бүрийн анхдагч хугацаа `Config.Timeout` (15s),
-long-poll өөрийн уртыг, PAdES prepare / баримт татах `Config.PDFTimeout`-ийг (анхдагч 80s) хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
+long-poll өөрийн уртыг, `PDF.RegisterSignature` `Config.PDFTimeout`-ийг (анхдагч 80s) хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
 
 ### 3.1. Нэвтрэлт — push
 
@@ -326,7 +326,7 @@ Web2App/App2App); холбоосыг `eid.BuildDeviceLink(s.LinkInput(eid.LinkQR
 (`TIMEOUT`).
 
 **Session эхлэх алдаа** (`*eid.APIError`, `errors.Is`-ээр): `eid.ErrNoSigningCertificate` — 409 `NO_SIGNING_CERTIFICATE`
-(sign / certificate-choice start, `/pdf/sign/prepare`: иргэнд идэвхтэй төхөөрөмж / хүчинтэй гарын үсгийн гэрчилгээ алга,
+(sign / certificate-choice start: иргэнд идэвхтэй төхөөрөмж / хүчинтэй гарын үсгийн гэрчилгээ алга,
 session үүсээгүй); `eid.ErrCertChoiceInvalid` — 409 `CERT_CHOICE_INVALID` (linked sign-ийн certificate-choice хүчингүй /
 хуучирсан / ашиглагдсан → дахин эхлүүл); `eid.ErrRequestInvalid` — 400 `REQUEST_INVALID` (ж: linked-д `linkedSessionID` дутуу).
 
@@ -353,41 +353,26 @@ sig, err := c.Validator.ValidateSign(r, s.Sign.Digest, s.Sign.HashAlgorithm, eid
 алгоритмаар, PKCS#1 v1.5; хуучин threshold-ECDSA credential нь үргэлж `ecdsa-with-SHA256` — `ExpectedAlgorithm` үүнийг
 зөвхөн EC P-256 гэрчилгээтэй үед зөвшөөрнө). Digest-ийн урт hash-тай таарахгүй бол хүсэлт явахгүй.
 
-### 3.4. PDF (PAdES, CA угсарна) ба байгууллагын нэрийн өмнөөс
+### 3.4. Байгууллагын нэрийн өмнөөс
 
 Иргэн **өөрийн PIN2 гэрчилгээгээр** зурна; байгууллагыг төлөөлөх эрхийг eID өөрийн бүртгэлээр шалгана (хувь хүний
-квалификацтай гарын үсэг — байгууллагын тамга биш).
+квалификацтай гарын үсэг — байгууллагын тамга биш). PDF-д гарын үсэг зурах нь клиент талын PAdES — [§7](#7-клиент-талын-pades-pades).
 
 ```go
 reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678") // иргэн сүүлийн 24 цагт нэвтэрсэн байх
-s, err := c.PDF.Prepare(ctx, eid.PDFPrepareInput{
-	PDF: pdfBytes, FileName: "Гэрээ №12.pdf",
-	Signer: eid.PDFSignerRef{Etsi: "PNOMN-12345678"}, Flow: eid.PDFFlowNotification,
-	OnBehalfOf: "NTRMN-6235972", // заавал биш
-})
-show(s.VC) // s.Digest — хоёр урсгалд (ValidateSign-д); device-link-д s.DeviceLink, s.Interactions (BuildDeviceLink, SessionSign)
-r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
-if r.EndResult != eid.EndResultOK || r.PDF == nil || r.PDF.DocumentStatus != eid.PDFReady ||
-	r.PDF.Signer == nil || r.PDF.Signer.OnBehalfOf != "NTRMN-6235972" {
-	return errors.New("PDF гарын үсэг амжилтгүй")
-}
-signed, err := c.PDF.Document(ctx, s.SessionID)
-if !eid.DocumentVerified(signed, r.PDF) { // SHA-256 = pdf.outSha256, READY
-	return errors.New("татсан PDF session-ий outSha256-тай таарсангүй")
-}
+s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
+// r.OnBehalfOf — СЕРВЕР төлөөллийг шалгасны баталгаа (nil = хувь хүн)
 ```
 
 `OnBehalfOf` татгалзвал `*eid.ForbiddenError` / `*eid.APIError`-ийн `Code` (`eid.OnBehalfErrorCodes`):
 `REPRESENTATION_DENIED`, `REPRESENTATION_PENDING`, `REPRESENTATION_EXPIRED`, `ORG_NOT_ACTIVE`, `SIGNER_UNIDENTIFIED`
-(403) · `ORG_NOT_FOUND` (404) · `REPRESENTATION_REVOKED` (403, document татах үед).
+(403) · `ORG_NOT_FOUND` (404) · `REPRESENTATION_REVOKED` (403, `RegisterSignature` үед).
 
 Түр алдаа — `*eid.APIError.Retryable()` үнэн, `RetryAfter`-ийн (CA-ийн `Retry-After`, секунд эсвэл огноо) дараа
-давтана: prepare 429 `PDF_PREPARE_BUSY`, 503 `LTV_UNAVAILABLE` / `TSA_UNAVAILABLE`; document 503 `DOCUMENT_PENDING`,
-`TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`. `Header` — хариуны бүх header.
+давтана (`eid.RetryableCodes`; кодгүй 429/503 + `Retry-After` ч мөн). `Header` — хариуны бүх header.
 
-`PDF.Document` санах ойд `Config.PDFMaxBytes` (анхдагч `eid.DefaultPDFMaxBytes` = 64 MiB) хүртэл уншина; хэтэрвэл
-`*eid.ResponseTooLargeError`. JSON хариу 4 MiB-ээс хэтэрвэл мөн `*eid.ResponseTooLargeError` (таслахгүй).
-`GetRepresentations`-ийн `Raw` — серверийн түүхий JSON.
+JSON хариу 4 MiB-ээс хэтэрвэл `*eid.ResponseTooLargeError` (таслахгүй). `GetRepresentations`-ийн `Raw` — серверийн
+түүхий JSON.
 
 **Хүнд харуулахдаа `RoleLabel` / `RightTypeLabel` / `SourceLabel` ашигла** (`Representation`-д гурвуулаа, session-ий
 `OnBehalfOf`-д `RoleLabel` / `RightTypeLabel` — тэнд `Source` байхгүй) — `Role` (`ceo` / `founder` / `stakeholder` эсвэл
@@ -429,16 +414,10 @@ ch, err := c.Token.AuthChallenge(ctx)
 digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
 who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 
-// токеноор PDF (PAdES, SIGN эрх) — session/утасгүй; байгууллагын токенд OnBehalfOf = тухайн байгууллага
-p, err := c.PDF.TokenPrepare(ctx, eid.PDFTokenPrepareInput{PDF: pdfBytes, FileName: "Гэрээ.pdf",
-	SignerEtsi: etsi, Certificate: signCertDER})
-var rs []byte // токен (PKCS#11): CKM_ECDSA(p.HashToSign) → түүхий r||s, 64 байт — p.ExpiresAt хүртэл
-blk, err := c.PDF.TokenFinalize(ctx, p.SigningID, rs) // READY блок; 503 DOCUMENT_PENDING → ижил rs-ийг дахин
-signed, err := c.PDF.TokenDocument(ctx, p.SigningID)
-if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
+// токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
 ```
 
-`/token/auth/*`, `/pdf/token/*` нь CA-д байгаа ч `/.well-known/eid`-д хараахан жагсаагдаагүй (гэрээний тест WARN).
+`/token/auth/*` нь CA-д байгаа ч `/.well-known/eid`-д хараахан жагсаагдаагүй (гэрээний тест WARN).
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -483,7 +462,7 @@ if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
 | `*eid.ForbiddenError` | 403 — IP allowlist / mTLS / RP-ийн эрх; `OnBehalfOf` татгалзвал `.Code` |
 | `eid.ErrNoSigningCertificate` / `ErrCertChoiceInvalid` / `ErrRequestInvalid` | `errors.Is` — `*eid.APIError`-ийн `Code` (409 `NO_SIGNING_CERTIFICATE`, 409 `CERT_CHOICE_INVALID`, 400 `REQUEST_INVALID`) |
 | `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code`, `.RetryAfter`, `.Header`, `.Retryable()` — ж: 404 `ORG_NOT_FOUND`) |
-| `*eid.ResponseTooLargeError` | хариу SDK-ийн хязгаараас их (JSON 4 MiB, PDF `Config.PDFMaxBytes`) — `.Op`, `.Limit` |
+| `*eid.ResponseTooLargeError` | хариу SDK-ийн хязгаараас их (JSON 4 MiB) — `.Op`, `.Limit` |
 | `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.); `.Op`-д иргэний дугаар `…` болно |
 | `*eid.SessionFailedError` | endResult ≠ OK (`TIMEOUT`, `USER_REFUSED…`) — `.EndResult` |
 | `*eid.ValidationError` | гинж / гарын үсэг / түвшин / урсгалын шалгалт унасан |
@@ -594,8 +573,8 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
 standard library only).
 
-- `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest), `PDF` (PAdES, CA-assembled,
-  `OnBehalfOf`), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
+- `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
+  (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
@@ -608,10 +587,9 @@ standard library only).
   (`eid.NationalRootCAPEM`) via `x509.Certificate.Verify` (pathLen, keyCertSign, name constraints, EKU nesting —
   auth → clientAuth, sign → emailProtection — unknown critical extensions rejected), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
   guard; `CheckRevocation` with your OCSP/CRL hook. Never trust `endResult == OK` alone.
-- `eid.DocumentVerified` — downloaded PDF SHA-256 equals the session's `pdf.outSha256`. `Config.PDFMaxBytes` caps the
-  in-memory PDF (default 64 MiB), JSON responses over 4 MiB fail with `*eid.ResponseTooLargeError` (never truncated).
-  USB-token PAdES: `PDF.TokenPrepare` → token signs `HashToSign` (raw r||s) → `PDF.TokenFinalize` → `PDF.TokenDocument`. Transient CA errors
-  (`PDF_PREPARE_BUSY`, `DOCUMENT_PENDING`, `TSA_UNAVAILABLE`, `LTV_UNAVAILABLE`) → `APIError.Retryable()` + `RetryAfter`.
+- JSON responses over 4 MiB fail with `*eid.ResponseTooLargeError` (never truncated). Transient CA errors
+  (`eid.RetryableCodes`, or 429/503 with `Retry-After`) → `APIError.Retryable()` + `RetryAfter`. The upload-based PDF
+  client (`PDF.Prepare` / `Document` / `Token*`, `DocumentVerified`) was removed in v0.4.0 — use `pades`.
 - Show `RoleLabel` / `RightTypeLabel` / `SourceLabel` (representations; session `OnBehalfOf` has `RoleLabel` /
   `RightTypeLabel`), never translate `Role` / `RightType` / `Source` (machine values). `Config.Language` (`"mn"` | `"en"`) sends `Accept-Language`; unset = server default (mn).
 - `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:

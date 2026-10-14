@@ -2,13 +2,9 @@ package eid
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -193,7 +189,7 @@ func TestParseSessionResult(t *testing.T) {
 	if r.State != "COMPLETE" || r.SignatureProtocol != "ACSP_V2" || r.ServerRandom != "+wVP2U/SMKVkVrggDjNTXFV/" || r.FlowType != "Notification" ||
 		r.SignatureAlgorithmParameters.HashAlgorithm != "SHA-512" || *r.SignatureAlgorithmParameters.SaltLength != 64 || r.EndResult != "OK" ||
 		r.DocumentNumber != "AB1234567" || r.SignatureValueB64 != "c2ln" || r.CertificateDERB64 != "Y2VydA==" || r.CertificateLevel != "QUALIFIED" ||
-		r.OnBehalfOf != nil || r.PDF != nil || r.InitialCallbackURL != nil {
+		r.OnBehalfOf != nil || r.InitialCallbackURL != nil {
 		t.Fatalf("%+v", r)
 	}
 	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","signature":{"initialCallbackUrl":""},
@@ -202,18 +198,11 @@ func TestParseSessionResult(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},
-		"onBehalfOf":{"orgEtsi":"NTRMN-6235972","orgName":"Гэрэгэ Системс ХХК","role":"ceo","rightType":"ADMIN"},
-		"pdf":{"docID":"doc-1","documentStatus":"READY","outSha256":"ab","size":1234,"signatureLevel":"PAdES-BASELINE-LT",
-			"signer":{"etsi":"PNOMN-12345678","certSerial":"01","onBehalfOf":"NTRMN-6235972","claimedRole":"Гүйцэтгэх захирал, Гэрэгэ Системс ХХК (NTRMN-6235972)"},
-			"validation":{"indication":"valid","ltv":true,"signatures":1}}}`))
-	if r.PDF.DocumentStatus != PDFReady || r.PDF.Signer.OnBehalfOf != "NTRMN-6235972" || !r.PDF.Validation.LTV || r.OnBehalfOf.RightType != "ADMIN" {
-		t.Fatalf("%+v", r.PDF)
+		"onBehalfOf":{"orgEtsi":"NTRMN-6235972","orgName":"Гэрэгэ Системс ХХК","role":"ceo","rightType":"ADMIN"}}`))
+	if r.OnBehalfOf.RightType != "ADMIN" {
+		t.Fatalf("%+v", r.OnBehalfOf)
 	}
-	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","pdf":{"docID":"doc-1","documentStatus":"FAILED","errorCode":"REPRESENTATION_REVOKED"}}`))
-	if r.PDF.ErrorCode != CodeRepresentationRevoked || r.PDF.Signer != nil {
-		t.Fatal(r.PDF)
-	}
-	if r, _ = ParseSessionResult([]byte(`{"state":"RUNNING"}`)); r.PDF != nil || r.OnBehalfOf != nil {
+	if r, _ = ParseSessionResult([]byte(`{"state":"RUNNING"}`)); r.OnBehalfOf != nil {
 		t.Fatal(r)
 	}
 }
@@ -257,91 +246,5 @@ func TestOrganization(t *testing.T) {
 	}
 	if req, _ := rc.last(); req.URL.Path != "/organization/representations/etsi/PNOMN-12345678" || req.Method != http.MethodGet {
 		t.Fatal(req.URL.Path)
-	}
-}
-
-func TestPDF_PrepareDocument(t *testing.T) {
-	ctx := context.Background()
-	pdf := []byte("%PDF-1.7 test")
-	for _, tc := range []struct {
-		flow, reply string
-	}{
-		// notification: дээд түвшний digest (CA !332 dto.PDFSignPrepareResponse.Digest); interactions алга
-		{PDFFlowNotification, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},"digest":"ZA=="}`},
-		// device-link: дээд түвшний digest + deviceLink блок
-		{PDFFlowDeviceLink, `{"sessionID":"sess-1","docID":"doc-1","vc":{"type":"alphaNumeric5","value":"48210"},"digest":"ZA==",
-			"deviceLink":{"sessionToken":"t","sessionSecret":"sec","deviceLinkBase":"https://ca.eidmongolia.mn/dl","digest":"ZA==","interactions":"W10="}}`},
-	} {
-		c, rc := server(t, jsonReply(200, tc.reply))
-		s, err := c.PDF.Prepare(ctx, PDFPrepareInput{PDF: pdf, FileName: `Гэрээ №12 "a".pdf`, Signer: PDFSignerRef{Etsi: "PNOMN-12345678"},
-			Flow: tc.flow, OnBehalfOf: "NTRMN-6235972"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.SessionID != "sess-1" || s.DocID != "doc-1" || s.VC != "48210" || s.Digest != "ZA==" || s.ReceivedAt.IsZero() {
-			t.Fatalf("%s: %+v", tc.flow, s)
-		}
-		dl := tc.flow == PDFFlowDeviceLink
-		if dl != (s.DeviceLink != nil) || dl != (s.Interactions == "W10=") || (!dl && s.Interactions != "") {
-			t.Fatalf("deviceLink/interactions %+v", s)
-		}
-		req, body := rc.last()
-		mt, params, _ := mime.ParseMediaType(req.Header.Get("Content-Type"))
-		if req.URL.Path != "/pdf/sign/prepare" || mt != "multipart/form-data" {
-			t.Fatal(req.URL.Path, mt)
-		}
-		mr := multipart.NewReader(strings.NewReader(string(body)), params["boundary"])
-		var gotReq map[string]any
-		var gotPDF []byte
-		for {
-			p, err := mr.NextPart()
-			if err != nil {
-				break
-			}
-			b, _ := io.ReadAll(p)
-			switch p.FormName() {
-			case "request":
-				if p.Header.Get("Content-Type") != "application/json" {
-					t.Fatal("request ctype")
-				}
-				_ = json.Unmarshal(b, &gotReq)
-			case "pdf":
-				if p.Header.Get("Content-Type") != "application/pdf" || p.FileName() != `Гэрээ №12 "a".pdf` {
-					t.Fatal(p.Header, p.FileName())
-				}
-				gotPDF = b
-			}
-		}
-		want := map[string]any{"relyingPartyUUID": "rp-uuid", "relyingPartyName": "Гэрээний систем", "certificateLevel": "QUALIFIED",
-			"signer": map[string]any{"etsi": "PNOMN-12345678"}, "flow": tc.flow, "fileName": `Гэрээ №12 "a".pdf`, "onBehalfOf": "NTRMN-6235972"}
-		wb, _ := json.Marshal(want)
-		gb, _ := json.Marshal(gotReq)
-		if string(wb) != string(gb) || string(gotPDF) != string(pdf) {
-			t.Fatalf("request %s\nwant %s", gb, wb)
-		}
-	}
-
-	signed := []byte("%PDF signed")
-	c, rc := server(t, jsonReply(200, string(signed)))
-	got, err := c.PDF.Document(ctx, "sess-1")
-	if err != nil || string(got) != string(signed) {
-		t.Fatal(err)
-	}
-	if req, _ := rc.last(); req.URL.Path != "/pdf/sign/sess-1/document" {
-		t.Fatal(req.URL.Path)
-	}
-	h := sha256.Sum256(signed)
-	block := &PDFSessionBlock{DocID: "d", DocumentStatus: PDFReady, OutSHA256: strings.ToUpper(hex.EncodeToString(h[:]))}
-	if !DocumentVerified(signed, block) {
-		t.Fatal("DocumentVerified false")
-	}
-	if DocumentVerified(append(signed, ' '), block) || DocumentVerified(signed, nil) ||
-		DocumentVerified(signed, &PDFSessionBlock{DocumentStatus: PDFPending, OutSHA256: block.OutSHA256}) {
-		t.Fatal("DocumentVerified хуурамчийг зөвшөөрөв")
-	}
-	c, _ = server(t, jsonReply(403, `{"error":"эрх хасагдсан","code":"REPRESENTATION_REVOKED"}`))
-	var fe *ForbiddenError
-	if _, err := c.PDF.Document(ctx, "sess-1"); !errors.As(err, &fe) || fe.Code != CodeRepresentationRevoked {
-		t.Fatal(err)
 	}
 }

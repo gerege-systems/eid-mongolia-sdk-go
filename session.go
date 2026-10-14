@@ -44,7 +44,6 @@ type rawSession struct {
 	} `json:"cert"`
 	InteractionTypeUsed string                 `json:"interactionTypeUsed"`
 	OnBehalfOf          *OrgResult             `json:"onBehalfOf"`
-	PDF                 *PDFSessionBlock       `json:"pdf"`
 	Person              *Person                `json:"person"`
 	TokenCertificate    *TokenCertSessionBlock `json:"tokenCertificate"`
 }
@@ -74,16 +73,6 @@ func (r *rawSession) result() *SessionResult {
 	if org != nil && org.OrgEtsi == "" {
 		org = nil
 	}
-	pdf := r.PDF
-	if pdf != nil && pdf.DocID == "" {
-		pdf = nil
-	}
-	if pdf != nil && pdf.Signer != nil && pdf.Signer.Etsi == "" {
-		pdf.Signer = nil
-	}
-	if pdf != nil && pdf.Validation != nil && pdf.Validation.Indication == "" {
-		pdf.Validation = nil
-	}
 	person := r.Person
 	if person != nil && *person == (Person{}) {
 		person = nil
@@ -108,7 +97,6 @@ func (r *rawSession) result() *SessionResult {
 		SignatureAlgorithmParameters: params,
 		InteractionTypeUsed:          r.InteractionTypeUsed,
 		OnBehalfOf:                   org,
-		PDF:                          pdf,
 		Person:                       person,
 		TokenCertificate:             tok,
 	}
