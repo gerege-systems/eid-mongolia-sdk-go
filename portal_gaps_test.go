@@ -377,8 +377,13 @@ func TestTokenAuth(t *testing.T) {
 }
 
 func TestAuthenticationErrorBody(t *testing.T) {
-	c, _ := server(t, jsonReply(401, `{"error":"API secret буруу","code":"RP_AUTH_FAILED"}`))
+	// CA-ийн rpAuth: {"error":"RP API secret буруу"} (code-гүй)
+	c, _ := server(t, jsonReply(401, `{"error":"RP API secret буруу"}`))
 	var ae *AuthenticationError
+	if _, err := c.Session.Poll(context.Background(), "x", time.Second); !errors.As(err, &ae) || ae.Message != "RP API secret буруу" || ae.Code != "" {
+		t.Fatal(err)
+	}
+	c, _ = server(t, jsonReply(401, `{"error":"API secret буруу","code":"RP_AUTH_FAILED"}`))
 	if _, err := c.Session.Poll(context.Background(), "x", time.Second); !errors.As(err, &ae) ||
 		ae.Code != "RP_AUTH_FAILED" || ae.Message != "API secret буруу" || !strings.Contains(ae.Body, "RP_AUTH_FAILED") ||
 		!strings.Contains(ae.Error(), "RP_AUTH_FAILED") {

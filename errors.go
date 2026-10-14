@@ -15,8 +15,8 @@ import (
 
 // AuthenticationError — HTTP 401: API secret буруу эсвэл байхгүй. Тохиргооны (RP secret) алдаа.
 //
-// CA-ийн өөрийн 401 нь JSON {"error","code"} — Code/Message бөглөгдөнө; JSON биш (proxy / nginx) бол хоёул "" —
-// үүгээр CA-ийн 401-ийг урд талын proxy-ийнхоос ялгана.
+// CA-ийн өөрийн 401 нь JSON {"error"[,"code"]} — Message (ба байвал Code) бөглөгдөнө; JSON биш (proxy / nginx) бол
+// хоёул "" — үүгээр CA-ийн 401-ийг урд талын proxy-ийнхоос ялгана.
 type AuthenticationError struct {
 	// Code — серверийн {"code"}; JSON биш (proxy) бол "".
 	Code string
