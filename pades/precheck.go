@@ -3,6 +3,7 @@ package pades
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,7 +21,7 @@ func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex in
 	if encrypted(doc) {
 		return false, 0, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
 	}
-	sigs, locked, err := scanSignatures(doc)
+	sigs, locked, hasDSS, err := scanSignatures(doc)
 	if err != nil {
 		return false, 0, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", err)
 	}
@@ -31,18 +32,19 @@ func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex in
 		return false, 0, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
 	}
 	leaves := make([]*x509.Certificate, len(sigs))
+	stamped := make([]bool, len(sigs))
 	for i, s := range sigs {
-		leaf, err := checkPriorSignature(doc, s)
+		leaf, ts, err := checkPriorSignature(doc, s)
 		if err != nil {
 			return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
 		}
-		leaves[i] = leaf
+		leaves[i], stamped[i] = leaf, ts
 	}
 	if locked {
 		return false, 0, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
 	}
 	for i, s := range sigs {
-		if s.subFilter != "ETSI.CAdES.detached" || !issuedByAny(leaves[i], issuers) {
+		if s.subFilter != "ETSI.CAdES.detached" || !issuedByAny(leaves[i], issuers) || !stamped[i] || !hasDSS {
 			return false, 0, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
 		}
 	}
@@ -57,19 +59,20 @@ type sigDict struct {
 
 // scanSignatures — xref-ийн (сүүлийн revision) объект бүрээс /ByteRange ба /Contents хоёулаа бүхий толь (объектын
 // дугаараар эрэмбэлсэн) ба DocMDP P=1 түгжээ (Catalog /Perms /DocMDP эсвэл аль нэг Sig-ийн /Reference).
-func scanSignatures(doc []byte) (sigs []sigDict, locked bool, err error) {
+func scanSignatures(doc []byte) (sigs []sigDict, locked, hasDSS bool, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			sigs, locked, err = nil, false, fmt.Errorf("PDF задлах: %v", r)
+			sigs, locked, hasDSS, err = nil, false, false, fmt.Errorf("PDF задлах: %v", r)
 		}
 	}()
 	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if r.Trailer().Key("Root").Kind() != pdf.Dict {
-		return nil, false, errors.New("Catalog алга")
+		return nil, false, false, errors.New("Catalog алга")
 	}
+	hasDSS = r.Trailer().Key("Root").Key("DSS").Kind() == pdf.Dict
 	if docMDPP1(r.Trailer().Key("Root").Key("Perms").Key("DocMDP")) {
 		locked = true
 	}
@@ -95,7 +98,7 @@ func scanSignatures(doc []byte) (sigs []sigDict, locked bool, err error) {
 		sigs = append(sigs, s)
 	}
 	sort.Slice(sigs, func(i, j int) bool { return sigs[i].obj < sigs[j].obj })
-	return sigs, locked, nil
+	return sigs, locked, hasDSS, nil
 }
 
 // docMDPP1 — Sig толийн /Reference массивын аль нэг мөр /TransformMethod /DocMDP, /TransformParams /P 1.
@@ -115,43 +118,51 @@ func docMDPP1(sig pdf.Value) bool {
 // checkPriorSignature — ByteRange [0 a b c]: a > 0, doc[a] = '<', doc[b-1] = '>', b+c ≤ len; /Contents-ийн hex-ийн эхний
 // ASN.1 элемент = CMS SignedData, signer ганц, гарын үсэг (messageDigest + signedAttrs) ByteRange-ийн байт дээр
 // криптограф хүчинтэй. Гинж/цуцлалт шалгахгүй (validator-ийн ажил).
-func checkPriorSignature(doc []byte, s sigDict) (*x509.Certificate, error) {
+func checkPriorSignature(doc []byte, s sigDict) (leaf *x509.Certificate, stamped bool, err error) {
 	br := s.byteRange
 	if len(br) != 4 || br[0] != 0 || br[1] <= 0 || br[2] <= br[1]+1 || br[3] < 0 || br[2]+br[3] > int64(len(doc)) {
-		return nil, errors.New("ByteRange буруу")
+		return nil, false, errors.New("ByteRange буруу")
 	}
 	a, b := br[1], br[2]
 	if doc[a] != '<' || doc[b-1] != '>' {
-		return nil, errors.New("ByteRange нь /Contents-ийг заахгүй")
+		return nil, false, errors.New("ByteRange нь /Contents-ийг заахгүй")
+	}
+	// Гарын үсгийн revision-ий төгсгөл: doc[:b+c]-ийн төгсгөлийн CR/LF-ийг хассаны дараа "%%EOF".
+	if !bytes.HasSuffix(bytes.TrimRight(doc[:b+br[3]], "\r\n"), []byte("%%EOF")) {
+		return nil, false, errors.New("ByteRange нь revision-ий төгсгөл (%%EOF) хүртэл биш")
 	}
 	raw := make([]byte, (b-a-2)/2)
 	if (b-a-2)%2 != 0 {
-		return nil, errors.New("/Contents hex сондгой")
+		return nil, false, errors.New("/Contents hex сондгой")
 	}
 	if _, err := hex.Decode(raw, doc[a+1:b-1]); err != nil {
-		return nil, fmt.Errorf("/Contents hex: %w", err)
+		return nil, false, fmt.Errorf("/Contents hex: %w", err)
 	}
 	in := cryptobyte.String(raw)
 	var der cryptobyte.String
 	if !in.ReadASN1Element(&der, cbasn1.SEQUENCE) {
-		return nil, errors.New("CMS DER биш")
+		return nil, false, errors.New("CMS DER биш")
 	}
 	p7, err := pkcs7.Parse(der)
 	if err != nil || len(p7.Signers) != 1 {
-		return nil, errors.New("CMS задрахгүй / signer ганц биш")
+		return nil, false, errors.New("CMS задрахгүй / signer ганц биш")
 	}
-	leaf := p7.GetOnlySigner()
-	if leaf == nil {
-		return nil, errors.New("signer cert алга")
+	if leaf = p7.GetOnlySigner(); leaf == nil {
+		return nil, false, errors.New("signer cert алга")
 	}
 	signed := make([]byte, 0, br[1]+br[3])
 	signed = append(append(signed, doc[:a]...), doc[b:b+br[3]]...)
 	p7.Content = signed
 	if err := p7.Verify(); err != nil {
-		return nil, fmt.Errorf("гарын үсэг: %w", err)
+		return nil, false, fmt.Errorf("гарын үсэг: %w", err)
 	}
-	return leaf, nil
+	for _, at := range p7.Signers[0].UnauthenticatedAttributes {
+		stamped = stamped || at.Type.Equal(oidSignatureTimeStampToken)
+	}
+	return leaf, stamped, nil
 }
+
+var oidSignatureTimeStampToken = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 16, 2, 14}
 
 // issuedByAny — leaf-ийн олгогч нь issuers-ийн аль нэг (subject DN тэнцүү + гарын үсэг шалгагдсан).
 func issuedByAny(leaf *x509.Certificate, issuers []*x509.Certificate) bool {

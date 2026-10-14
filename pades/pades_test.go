@@ -242,7 +242,7 @@ func TestDocMDPLocked(t *testing.T) {
 			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>", fmt.Sprintf(sig, perm))
 	}
 	for perm, want := range map[int]bool{1: true, 2: false} {
-		if _, locked, err := scanSignatures(doc(perm)); err != nil || locked != want {
+		if _, locked, _, err := scanSignatures(doc(perm)); err != nil || locked != want {
 			t.Fatalf("P=%d: locked=%v %v", perm, locked, err)
 		}
 	}

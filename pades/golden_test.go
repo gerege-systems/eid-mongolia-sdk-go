@@ -95,6 +95,11 @@ func goldenCases() []goldenCase {
 		{Name: "desktop-objstm-nopage", Input: "input/desktop-objstm.pdf", Prep: PrepareOptions{DocID: "3d4e5f60-7182-493a-acbd-2e3f4a5b6c7d"}},
 		{Name: "quartz-pdf13-second", Input: "case:quartz-pdf13", Prep: PrepareOptions{VerifyPage: true, FileName: "ignored.pdf",
 			Reason: "Тест ХХК-ийг төлөөлж", ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}},
+		{Name: "quartz-pdf13-nopage", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{DocID: "4e5f6071-8293-4a4b-8bce-3f4a5b6c7d8e"}},
+		{Name: "quartz-objstm-nopage", Input: "input/quartz-objstm.pdf", Prep: PrepareOptions{DocID: "5f607182-93a4-4b5c-9cdf-4a5b6c7d8e9f"}},
+		{Name: "quartz-linearized-nopage", Input: "input/quartz-linearized.pdf", Prep: PrepareOptions{DocID: "60718293-a4b5-4c6d-8de0-5b6c7d8e9fa0"}},
+		{Name: "quartz-pdf13-nopage-second", Input: "case:quartz-pdf13-nopage", Prep: PrepareOptions{DocID: "4e5f6071-8293-4a4b-8bce-3f4a5b6c7d8e",
+			Reason: "Тест ХХК-ийг төлөөлж", ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}},
 		{Name: "stamped-foreign", Input: "input/stamped.pdf", Prep: page("", "stamped.pdf")},
 		{Name: "encrypted", Input: "input/encrypted.pdf", Prep: page("", "enc.pdf")},
 	}

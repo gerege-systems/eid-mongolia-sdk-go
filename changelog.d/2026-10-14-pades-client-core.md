@@ -1,17 +1,18 @@
-### Клиент талын PAdES core (`pades`, `mobile`, `capi`, `wasm`)
+### Клиент талын PAdES — Go reference (`pades`)
 
-- **Юу:** CA-ийн PAdES бичигч (`server/internal/pdfsign/pades/*`, баталгаажуулалтын хуудас + Noto Sans, TSA клиент,
-  LTV цуглуулалт, нийтийн шалгагч `validate/*`)-ийг SDK-д extract хийв: `pades.Prepare` (хуудас → R_sig → DTBS),
-  `pades.Complete` (гарын үсэг шалгах → RFC 3161 → CMS → OCSP/CRL → DSS → self-validation), `pades.Verify`.
-  Binding: `mobile` (gomobile), `capi` (c-shared, `eid_pades_*` + `eid_free`), `wasm` (`globalThis.eidPades`).
-- **Яагаад:** PDF eID-ийн серверт очихгүй (docs/PADES_CLIENT_SIDE.md, CA репо) — нэг Go core бүх платформд.
-- **Хаана:** `pades/`, `pades/internal/{core,vpage,validate,eidcrypto,padestest}`, `mobile/`, `capi/`, `wasm/`,
-  golden `pades/testdata/golden/`. `go.mod`: go 1.25 (pdfcpu v0.12.0-ийн шаардлага; өмнө 1.22), PDF/CMS хамаарлууд
-  CA-тай ижил хувилбар; `tool` directive-ээр `golang.org/x/mobile/cmd/{gomobile,gobind}` (go 1.25-тай нийцэх 2026-08-13
-  commit) — bind reproducible. CI: Go 1.25/stable, cross build, js/wasm тест (Node 22).
-- **CA-аас зөрөх:** verify хуудасны /CreationDate = гарын үсгийн цаг (тодорхойлогдсон гаралт); шууд `/Info` trailer-т
-  хуулагдана (профайл pades-client/1, P3); цуцлалтын төлөв DSS-ийн OCSP/CRL-ээс (CA DB-ээс); задлагч процесс дотор;
-  pdfcpu-ийн тохиргоо config.yml-гүй (js/мобайл sandbox); OCSP/CRL сүлжээгээр (AIA/CDP), leaf-ийн OCSP thisUpdate > genTime
-  хатуу (≤ 5 с давтана); өмнөх гарын үсэг eID-ийн хүчинтэй B-LT биш бол Prepare `PDF_FOREIGN_SIGNATURE` (CA: бүртгэлээр).
-- **Шалгасан:** `go test -race ./...`, desktop-ийн Swift golden (quartz байт-ижил, objstm zlib-ээс бусад нь ижил),
-  e2e (httptest TSA/OCSP/CRL), `GOOS=js GOARCH=wasm`, `-buildmode=c-shared`, linux/amd64.
+- **Юу:** CA-ийн PAdES бичигч (`server/internal/pdfsign/pades/*`) ба нийтийн шалгагч (`validate/*`)-ийг extract хийв:
+  `pades.Prepare` (хөнгөн precheck → verify хуудас → R_sig → DTBS), `pades.Complete` (гарын үсэг шалгах → RFC 3161 →
+  CMS → OCSP/CRL (AIA/CDP, genTime-ийн дараа) → DSS → self-validation) → `*Completed` (CA-ийн бүртгэлийн талбаруудтай),
+  `pades.Verify` (CA-ийн /v3/validate/pdf-тэй ижил тайлан). Verify хуудас — минимал детерминист writer + өөрийн QR
+  (pdfcpu/fpdf/go-qrcode-гүй). Профайлын баримт: `pades/{PROFILE,PAGE_SPEC,PRECHECKS,WIRE}.md`.
+- **Яагаад:** PDF eID-ийн серверт очихгүй (CA docs/PADES_CLIENT_SIDE.md); Go нь TS/Swift/Kotlin/C# native SDK-уудын
+  reference, golden vector-оор байт-ижил байдлыг баталгаажуулна.
+- **Хаана:** `pades/`, `pades/assets` (Noto Sans OFL, zlib тогтмол asset + metrics.json), `pades/internal/{core,qr,
+  validate,eidcrypto,padestest}`, golden `pades/testdata/golden/`. `go.mod`: go 1.22 → 1.25 (тестийн хамаарал pdfcpu
+  v0.12.0), CI matrix 1.25/stable.
+- **CA-аас зөрөх:** xref stream шахалтгүй; шууд `/Info` trailer-т хуулна; `/M` үргэлж +08:00; verify хуудас шинэ writer;
+  prepare-д validator биш хөнгөн precheck (бүртгэлийн оронд eID олгогч + SubFilter-ээр «гадны» гарын үсэг); цуцлалтын
+  төлөв DSS-ийн OCSP/CRL-ээс; задлагч процесс дотор.
+- **Шалгасан:** `go test -race ./...` (Go 1.25, 1.27), golden (prepare+complete байт-ижил), desktop Swift golden,
+  e2e (RSA/ECDSA r‖s, DER), QR-ийг CoreImage-ээр, хуудсыг PDFKit-ээр уншиж (текст ToUnicode, QR decode) шалгав,
+  `GOOS=linux GOARCH=amd64 go build ./...`.

@@ -8,10 +8,9 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 > SDK **backend**-д ажиллана: бүх дуудлага API secret (`rp_sk_…`)-ээр баталгаажна. Secret, `SessionSecret`-ийг
 > браузер/гар утсанд хэзээ ч бүү гарга — браузерт зөвхөн таны backend-ийн өгсөн холбоос / QR / товч харагдана.
 
-- Go ≥ 1.25. `eid`, `oidc` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь PDF/CMS сантай (digitorus, pdfcpu,
-  fpdf, go-qrcode, x/crypto — CA-тай ижил хувилбар).
+- Go ≥ 1.25. `eid` нь **зөвхөн стандарт сан** импортлодог; `pades` (PDF) нь digitorus/pdf, pkcs7, timestamp, x/crypto.
 - Багц: `eid` (RP-API, device link, validator, PDF), `eid/oidc` («eID-ээр нэвтрэх»), `pades` (клиент талын PAdES —
-  PDF eID-ийн серверт очихгүй) ба түүний binding `mobile`, `capi`, `wasm`.
+  PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
 
 [English summary](#english)
 
@@ -411,7 +410,8 @@ c, err := eid.NewClient(eid.Config{
 
 PDF **eID-ийн аль ч серверт очихгүй** (Smart-ID + DigiDoc загвар): CA зөвхөн 32 байт hash (DTBS) зурна, PDF-ийн бүх
 ажлыг (баталгаажуулалтын QR хуудас, placeholder, signedAttrs, CMS, RFC 3161, OCSP/CRL, DSS, өөрийн шалгалт) энэ сан
-хийнэ. Профайл `pades-client/1` нь CA-ийн серверийн бичигчийн 1:1 extract (ижил оролт → ижил байт).
+хийнэ. Профайл `pades-client/1` нь CA-ийн серверийн бичигчээс гаралтай (verify хуудас — шинэ минимал writer,
+runtime-д шахалтгүй); ижил оролт → ижил байт.
 
 ```go
 import "github.com/gerege-systems/eid-mongolia-sdk-go/pades"
@@ -431,32 +431,24 @@ rep, err := pades.Verify(c.PDF, pades.VerifyOptions{}) // CA-ийн /v3/validate
 
 - `signature`: RSA PKCS#1 v1.5, ECDSA `r‖s` (P-256 64 / P-384 96 байт) эсвэл DER — гэрчилгээний түлхүүрээр автоматаар.
 - Итгэлийн тулгуур нь шигтгэсэн Mongolian National Root CA (01); 02–05 шигтгэсэн завсрын гинж (`Chain` өгөөгүй бол
-  signer-ийн олгогчоор бүтээнэ). Тестийн PKI-д `Roots` (DER).
+  signer-ийн олгогчоор бүтээнэ). Тестийн PKI-д `CompleteOptions.Roots` / `VerifyOptions.Roots` (DER).
 - Алдаа `*pades.Error` (`Code`): `PDF_INVALID`, `PDF_ENCRYPTED`, `PDF_LOCKED` (DocMDP P=1), `PDF_TOO_LARGE`
   (оролт > 10 223 616 байт), `PDF_TOO_MANY_SIGNATURES`, `PDF_PRIOR_SIGNATURE_INVALID`, `PDF_FOREIGN_SIGNATURE` (өмнөх
-  гарын үсэг eID-ийн хүчинтэй B-LT биш), `SIGNER_INVALID`, `REQUEST_INVALID`, `SIGNATURE_INVALID`, `TSA_UNAVAILABLE`,
+  гарын үсгийн signer нь eID-ийн 04/05-аас биш эсвэл SubFilter CAdES биш — [PRECHECKS.md](pades/PRECHECKS.md)), `SIGNER_INVALID`, `REQUEST_INVALID`, `SIGNATURE_INVALID`, `TSA_UNAVAILABLE`,
   `LTV_UNAVAILABLE`, `SELF_VALIDATION_FAILED`, `PLACEHOLDER_OVERFLOW`, `STATE_INVALID`.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
 
-Binding (хил дээр зөвхөн `[]byte`, string, JSON; options-ийн түлхүүр lowerCamelCase, `[]byte` = base64):
+Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verify`-тэй, backend-д); TS / Swift / Kotlin / C# native SDK-ууд гарын
+үсгийн замыг ([PROFILE.md](pades/PROFILE.md), [PAGE_SPEC.md](pades/PAGE_SPEC.md), [PRECHECKS.md](pades/PRECHECKS.md),
+[WIRE.md](pades/WIRE.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
+хоорондын байт-ижил байдалд.
 
-```bash
-go tool gomobile bind -target ios,macos -o EidPades.xcframework ./mobile   # gobind PATH-д: go build -o bin/ golang.org/x/mobile/cmd/gobind
-go tool gomobile bind -target android -o eidpades.aar ./mobile
-go build -buildmode=c-shared -o eidpades.dll ./capi                       # eid_pades_prepare/complete/verify, eid_free
-GOOS=js GOARCH=wasm go build -o eidpades.wasm ./wasm                       # globalThis.eidPades
-```
-
-WASM (хөтөч): AIA/CDP-ийн `http://`-ийг зөвхөн `ocsp.eidmongolia.mn`, `crl.eidmongolia.mn`, `tsa.timeserver.mn`-д
-`https://` болгоно; бусад host (үндэсний CRL `esign.gov.mn`) fetch хийгдэхгүй → `LTV_UNAVAILABLE`.
-
-Golden vector: `pades/testdata/golden/` (README) — wrapper бүрийн CI тулгана.
+Golden vector: `pades/testdata/golden/` (README) — native SDK бүрийн CI тулгана.
 
 ## Хөгжүүлэлт
 
 ```bash
 go vet ./... && go test -race ./...
-PATH="$PATH:$(go env GOROOT)/lib/wasm" GOOS=js GOARCH=wasm go test ./pades/...   # core-ийг wasm + Node-д
 go test ./pades -run Golden -update                                              # golden-ийг дахин бичих (профайл өөрчлөгдөхөд л)
 ```
 
@@ -506,9 +498,9 @@ standard library only).
   `mtls_endpoint_aliases.token_endpoint` (RFC 8705 §5); falls back to `token_endpoint` when absent.
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
-  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `Verify`. Byte-identical to the CA writer
-  (profile `pades-client/1`); bindings `mobile` (gomobile), `capi` (c-shared), `wasm` (js); golden vectors in
-  `pades/testdata/golden`.
+  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `Verify`. Derived from the CA writer
+  (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
+  PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
 
 License: MIT.
