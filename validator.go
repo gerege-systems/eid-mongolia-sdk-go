@@ -149,6 +149,15 @@ type ValidateSignOptions struct {
 	// RAW_DIGEST_SIGNATURE-д flowType гарын үсэгт ОРДОГГҮЙ (зөвхөн digest зурагдана) — энэ нь RP-API хариуны
 	// тулгалт, криптограф баталгаа биш.
 	ExpectedFlowType FlowType
+	// ExpectedAlgorithm — хүсэлтэд илгээсэн signatureAlgorithm (SignContext.SignatureAlgorithm). Өгвөл хариуны RSA
+	// алгоритм ЯГ ИЖИЛ байх ёстой: sha256WithRSAEncryption хүссэн session-д rsassa-pss (эсвэл эсрэгээр) хариу →
+	// *ValidationError. CA-ийн хуучин threshold-ECDSA credential хүссэн алгоритмаас үл хамааран «ecdsa-with-SHA256»
+	// буцаадаг (түлхүүрийн төрөл гэрчилгээнд бэхлэгдсэн) — үүнийг зөвхөн EC P-256 гэрчилгээ + SHA-256 үед
+	// зөвшөөрнө. "" = хуучин зан (RSA алгоритмыг тулгахгүй).
+	ExpectedAlgorithm SignatureAlgorithm
+	// ExpectedCertificate — урьдчилж мэдсэн гэрчилгээ (certificate-choice: Signer.Certificate). Өгвөл хариуны
+	// гэрчилгээ байт-ижил байх ёстой — өөр төхөөрөмж/гэрчилгээгээр зурсан бол (олон утастай иргэн) *ValidationError.
+	ExpectedCertificate *x509.Certificate
 }
 
 // NewValidator — PEM-үүдийг задалж Validator үүсгэнэ.
@@ -293,15 +302,23 @@ func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAl
 	if err != nil {
 		return nil, err
 	}
-	if len(opts) == 1 && opts[0].ExpectedFlowType != "" && FlowType(r.FlowType) != opts[0].ExpectedFlowType {
-		return nil, invalid("flowType %s ≠ эхлүүлсэн урсгал %s (relay байж болзошгүй)", r.FlowType, opts[0].ExpectedFlowType)
+	var o ValidateSignOptions
+	if len(opts) == 1 {
+		o = opts[0]
+	}
+	if o.ExpectedFlowType != "" && FlowType(r.FlowType) != o.ExpectedFlowType {
+		return nil, invalid("flowType %s ≠ эхлүүлсэн урсгал %s (relay байж болзошгүй)", r.FlowType, o.ExpectedFlowType)
+	}
+	if o.ExpectedCertificate != nil && !bytes.Equal(leaf.Raw, o.ExpectedCertificate.Raw) {
+		return nil, invalid("гэрчилгээ certificate-choice-оор сонгосонтой таарахгүй (serial %s ≠ %s)",
+			certSerial(leaf), certSerial(o.ExpectedCertificate))
 	}
 	want := string(orDefault(hash, SHA256))
 	digest, err := base64.StdEncoding.DecodeString(digestB64)
 	if err != nil {
 		return nil, invalid("digest base64 буруу")
 	}
-	alg, h, err := algorithmOf(r, leaf.PublicKey, "", want)
+	alg, h, err := algorithmOf(r, leaf.PublicKey, string(o.ExpectedAlgorithm), want)
 	if err != nil {
 		return nil, err
 	}
@@ -425,18 +442,8 @@ func isP256(pub crypto.PublicKey) bool {
 
 // precheck — state/endResult, гэрчилгээ, гинж, хугацаа, certLevel — нийтлэг шалгалт.
 func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certificate, error) {
-	if r == nil {
-		return nil, invalid("хариу алга")
-	}
-	if r.State != StateComplete {
-		return nil, invalid("session дуусаагүй (state=%s)", r.State)
-	}
-	if r.EndResult != EndResultOK {
-		er := r.EndResult
-		if er == "" {
-			er = "UNKNOWN"
-		}
-		return nil, &SessionFailedError{EndResult: er}
+	if err := sessionDone(r); err != nil {
+		return nil, err
 	}
 	if r.SignatureProtocol != "" && r.SignatureProtocol != protocol {
 		return nil, invalid("signatureProtocol %s ≠ %s", r.SignatureProtocol, protocol)
@@ -446,6 +453,32 @@ func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certifica
 	}
 	if r.SignatureValueB64 == "" {
 		return nil, invalid("хариунд гарын үсэг алга")
+	}
+	return v.leafOf(r, protocol)
+}
+
+// sessionDone — COMPLETE + OK; амжилтгүй endResult → *SessionFailedError.
+func sessionDone(r *SessionResult) error {
+	if r == nil {
+		return invalid("хариу алга")
+	}
+	if r.State != StateComplete {
+		return invalid("session дуусаагүй (state=%s)", r.State)
+	}
+	if r.EndResult != EndResultOK {
+		er := r.EndResult
+		if er == "" {
+			er = "UNKNOWN"
+		}
+		return &SessionFailedError{EndResult: er}
+	}
+	return nil
+}
+
+// leafOf — хариуны гэрчилгээ: documentNumber, задлалт, хугацаа, certLevel, зориулалт (protocol), гинж, issuer.
+func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate, error) {
+	if r.CertificateDERB64 == "" {
+		return nil, invalid("хариунд гэрчилгээ алга")
 	}
 	if r.DocumentNumber == "" {
 		return nil, invalid("хариунд documentNumber алга")

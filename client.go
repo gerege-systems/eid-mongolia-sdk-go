@@ -52,6 +52,9 @@ type Config struct {
 	HTTPClient *http.Client
 	// Trust — validator-ийн итгэлийн тохиргоо. Production-д TrustAnchorsPEM ЗААВАЛ.
 	Trust TrustConfig
+	// SignSessionTTL — sign / certificate-choice session-ий ExpiresAt-ийг тооцоолох хугацаа (SessionExpiry). 0 =
+	// DefaultSignSessionTTL (600s, CA-ийн анхдагч). CA-ийн админ тохиргоог өөрчилсөн бол үүнийг тааруул.
+	SignSessionTTL time.Duration
 	// Language — хүнд харуулах текстийн хэл (RoleLabel г.м.): дуудлага бүрд Accept-Language болж илгээгдэнэ
 	// ("mn" | "en"). "" = илгээхгүй (сервер mn).
 	Language string
@@ -60,7 +63,7 @@ type Config struct {
 // Client — SDK-ийн гол үүд:
 //
 //	Auth         — нэвтрэлт эхлүүлэх (push / device link)
-//	Sign         — гарын үсэг эхлүүлэх (digest)
+//	Sign         — гарын үсэг эхлүүлэх (digest; push / device link) ба гэрчилгээ сонгуулах (certificate-choice)
 //	PDF          — PAdES гарын үсэг (CA угсарна; OnBehalfOf)
 //	Organization — иргэний төлөөлөх байгууллагууд
 //	Person       — иргэний PKI самбар (PKI_READ эрх): гэрчилгээ, төхөөрөмж, үйл ажиллагаа, тоо, хүүхдүүд
@@ -121,7 +124,7 @@ func NewClient(cfg Config) (*Client, error) {
 	h := &httpDoer{base: base, secret: cfg.Credentials.APISecret, timeout: t, hc: hc, lang: strings.TrimSpace(cfg.Language)}
 	return &Client{
 		Auth:         &AuthService{h: h, creds: cfg.Credentials, level: level},
-		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level},
+		Sign:         &SignService{h: h, creds: cfg.Credentials, level: level, ttl: cfg.SignSessionTTL},
 		PDF:          &PDFService{h: h, creds: cfg.Credentials, level: level, timeout: pt, maxBytes: pmax},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},

@@ -212,6 +212,38 @@ sig, err = c.Validator.ValidateSign(r, digest, eid.SHA256, eid.ValidateSignOptio
 
 RAW_DIGEST_SIGNATURE-д `flowType` гарын үсэгт ордоггүй (зөвхөн digest зурагдана) — энэ нь RP-API хариуны тулгалт.
 
+**QR / Web2App / App2App** — `c.Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (`SignOptions.CallbackURL`-тай бол
+Web2App/App2App); холбоосыг `eid.BuildDeviceLink(s.LinkInput(eid.LinkQR, "mon"))` (auth/cert session-д ч мөн).
+`s.Sign` (`SignContext`: digest, hash, алгоритм, interactions, callback)-ийг session-тэй хамт серверт хадгал.
+
+**`ExpiresAt`** — sign / certificate-choice session-ий *тооцоолсон* дуусах мөч: CA session start хариунд хугацаа буцаадаггүй
+(зөвхөн `sessionID`), CA-ийн анхдагч 600с (`eid.DefaultSignSessionTTL`; CA админ 60–1800с болгож болно →
+`Config.SignSessionTTL`). Хүсэлт илгээхээс өмнөх цагаас тооцдог тул CA-ийнхаас хойно хэзээ ч биш; эцсийн үнэн нь
+`GET /session` (`TIMEOUT`).
+
+**Гэрчилгээг урьдчилж мэдэх (client-side PAdES / CMS)** — гэрчилгээ DTBS-д (`signingCertificateV2`) ордог тул эхлээд
+certificate-choice, дараа нь digest-ийг **яг тэр төхөөрөмж рүү (`documentNumber`)** зуруулна. Олон утастай иргэнд
+etsi-ээр эхлүүлбэл өөр утас зурж, гарын үсэг гэрчилгээтэйгээ таарахгүй.
+
+```go
+cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // эсвэл CertificateChoiceDeviceLink (зөвхөн QR)
+r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
+signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID) // Signer{Certificate, DocumentNumber}
+dtbs := buildDTBS(signer.Certificate)                                 // 32 байт SHA-256, стандарт base64
+s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{FileName: "Гэрээ.pdf"}) // linked/{documentNumber}
+// QR / Web2App: c.Sign.DeviceLinkForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{CallbackURL: …})
+r, err = c.Session.WaitForResult(ctx, s.SessionID, nil)
+sig, err := c.Validator.ValidateSign(r, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
+	ExpectedFlowType:    eid.FlowNotification,
+	ExpectedAlgorithm:   s.Sign.SignatureAlgorithm, // sha256WithRSAEncryption — PSS хариуг татгалзана
+	ExpectedCertificate: signer.Certificate,        // өөр гэрчилгээгээр зурсан бол татгалзана
+})
+```
+
+`DigestForSigner` / `DeviceLinkForSigner`-ийн анхдагч: `sha256WithRSAEncryption` + `SHA-256` (CA SplitKey RSA нь хүссэн
+алгоритмаар, PKCS#1 v1.5; хуучин threshold-ECDSA credential нь үргэлж `ecdsa-with-SHA256` — `ExpectedAlgorithm` үүнийг
+зөвхөн EC P-256 гэрчилгээтэй үед зөвшөөрнө). Digest-ийн урт hash-тай таарахгүй бол хүсэлт явахгүй.
+
 ### 3.4. PDF (PAdES, CA угсарна) ба байгууллагын нэрийн өмнөөс
 
 Иргэн **өөрийн PIN2 гэрчилгээгээр** зурна; байгууллагыг төлөөлөх эрхийг eID өөрийн бүртгэлээр шалгана (хувь хүний
@@ -387,6 +419,11 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest), `PDF` (PAdES, CA-assembled,
   `OnBehalfOf`), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
+- `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
+  `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
+  `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
+  `sha256WithRSAEncryption`), `ValidateSignOptions.ExpectedAlgorithm` / `ExpectedCertificate`, estimated `ExpiresAt`
+  (`Config.SignSessionTTL`, default 600 s — the CA does not return a session expiry).
 - `eid.BuildDeviceLink` — device link v3 (QR / Web2App / App2App) with HMAC `authCode`, byte-identical to the server
   golden vectors. Prefer **Web2App** for same-device sign-in; the legacy `/dl?sessionId&vc` link is gone.
 - `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
