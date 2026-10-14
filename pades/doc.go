@@ -16,5 +16,5 @@
 //
 // Профайл (pades-client/1) нь ca-eidmongolia-mn-ийн server/internal/pdfsign/pades бичигчийн 1:1 extract — ижил
 // оролтод CA-тай ижил байт; гинжийн итгэлийн тулгуур нь зөвхөн Mongolian National Root CA (шигтгэсэн 01; 02–05 нь
-// завсрын). Binding: mobile (gomobile), capi (c-shared), wasm (GOOS=js). Golden vector: testdata/golden.
+// завсрын). Golden vector: testdata/golden.
 package pades

@@ -67,7 +67,7 @@ type APIError struct {
 	// Code — серверийн {"error","code"}-ийн code (ж: CodeOrgNotFound); байхгүй бол "".
 	Code string
 	// RetryAfter — хариуны Retry-After (секунд эсвэл HTTP-огноо задалсан); байхгүй/буруу бол 0. CA түр алдаанд
-	// (429 PDF_PREPARE_BUSY / RATE_LIMITED, 503 DOCUMENT_PENDING / TSA_UNAVAILABLE / LTV_UNAVAILABLE г.м.) тавина.
+	// (429 RATE_LIMITED, 503 STATE_UNAVAILABLE / ISSUANCE_PENDING г.м.) тавина.
 	RetryAfter time.Duration
 	// Header — хариуны header-ууд.
 	Header http.Header
@@ -119,15 +119,12 @@ func (e *APIError) Retryable() bool {
 	return (e.Status == http.StatusTooManyRequests || e.Status == http.StatusServiceUnavailable) && e.RetryAfter > 0
 }
 
-// CA-ийн түр (давтаж болох) алдааны кодууд — APIError.Code. docs: PADES_SIGNING §3.1/§3.4, TOKEN_CERT, TOKEN_AUTH.
+// CA-ийн түр (давтаж болох) алдааны кодууд — APIError.Code. docs: PADES_CLIENT_SIDE §4.3, TOKEN_CERT, TOKEN_AUTH.
+// TSA_UNAVAILABLE / LTV_UNAVAILABLE нь CA-ийн биш — клиент талын pades.Error (pades.CodeTSAUnavailable г.м.).
 const (
-	// CodeTSAUnavailable — 503: TSA хүрэхгүй/тохируулаагүй; Retry-After: 30 (document).
-	CodeTSAUnavailable = "TSA_UNAVAILABLE"
-	// CodeLTVUnavailable — 503: CRL/OCSP (LTV) өгөгдөл хүчингүй/шалгагдахгүй; Retry-After: 60.
-	CodeLTVUnavailable = "LTV_UNAVAILABLE"
-	// CodeRateLimited — 429 (токен, токеноор нэвтрэлт): хүсэлтийн хязгаар; Retry-After.
+	// CodeRateLimited — 429 (POST /pdf/signatures, токеноор нэвтрэлт): хүсэлтийн хязгаар; Retry-After.
 	CodeRateLimited = "RATE_LIMITED"
-	// CodeStateUnavailable — 503 (токен): state store түр хүрэхгүй; Retry-After.
+	// CodeStateUnavailable — 503 (session start, токен, бүртгэл): state store түр хүрэхгүй; Retry-After: 5.
 	CodeStateUnavailable = "STATE_UNAVAILABLE"
 	// CodeIssuancePending — 503 (токены гэрчилгээний үр дүн): олгогдож байна; Retry-After: 5.
 	CodeIssuancePending = "ISSUANCE_PENDING"
@@ -135,7 +132,6 @@ const (
 
 // RetryableCodes — APIError.Retryable-ийн танидаг түр алдааны кодууд.
 var RetryableCodes = []string{
-	CodeTSAUnavailable, CodeLTVUnavailable,
 	CodeRateLimited, CodeStateUnavailable, CodeIssuancePending,
 }
 
@@ -228,7 +224,8 @@ const (
 	CodeSignerUnidentified = "SIGNER_UNIDENTIFIED"
 	// CodeOrgNotFound — 404: байгууллага олдсонгүй.
 	CodeOrgNotFound = "ORG_NOT_FOUND"
-	// CodeRepresentationRevoked — 403 (PDF баримт татахад): prepare-ээс хойш эрх хасагдсан, баримт үүсээгүй.
+	// CodeRepresentationRevoked — 403: POST /pdf/signatures (session-оос хойш төлөөлөл хасагдсан, бүртгэгдээгүй) ба
+	// токены гэрчилгээ олголт.
 	CodeRepresentationRevoked = "REPRESENTATION_REVOKED"
 )
 

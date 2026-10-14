@@ -1,0 +1,14 @@
+# Tag v<version> → CHANGELOG.md нэгтгэгдсэн эсэх (changelog.d/README.md). Go module тул publish алхам үгүй —
+# энэ шалгалт улаан бол tag-ийг устгаж, нэгтгэлийн commit-ийн дараа дахин tag тавина.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/changelog.sh check-release "${GITHUB_REF_NAME}"

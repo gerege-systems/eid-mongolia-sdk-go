@@ -49,13 +49,13 @@ var rpRoutes = []rpRoute{
 	routeSession,
 	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,
 	routeTokenCertificate, routeTokenCertificateResult,
-}
-
-// rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs/TOKEN_AUTH.md) байгаа ч live /.well-known/eid-д хараахан
-// жагсаагдаагүй замууд. Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ.
-var rpRoutesUndiscovered = []rpRoute{
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 }
+
+// rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
+// Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ. Одоогоор хоосон —
+// /token/auth/* discovery-ийн endpoints.token.auth_challenge / auth_verify-д орсон тул rpRoutes-д.
+var rpRoutesUndiscovered = []rpRoute{}
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.
 func (r rpRoute) expand(args ...string) string {
