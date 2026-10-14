@@ -2,7 +2,6 @@ package eid
 
 import (
 	"context"
-	"net/url"
 )
 
 // OrganizationService — иргэний төлөөлж чадах (ACTIVE, хугацаа хүчинтэй) байгууллагууд; OnBehalfOf-оос өмнө иргэнд
@@ -15,7 +14,7 @@ type OrganizationService struct {
 // session эхлэхэд дахин шалгана.
 func (o *OrganizationService) GetRepresentations(ctx context.Context, personEtsi string) (*RepresentationsResponse, error) {
 	var r RepresentationsResponse
-	if err := o.h.getJSON(ctx, "/organization/representations/etsi/"+url.PathEscape(personEtsi), 0, &r); err != nil {
+	if err := o.h.getJSON(ctx, routeOrgRepresentations.expand(personEtsi), 0, &r); err != nil {
 		return nil, err
 	}
 	if r.PersonEtsi == "" {

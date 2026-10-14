@@ -35,6 +35,14 @@ import (
 // Issuer — eID-ийн OIDC issuer (төгсгөлд "/" байхгүй).
 const Issuer = "https://login.eidmongolia.mn"
 
+// SDK-ийн OIDC-д хүлээдэг утгууд — гэрээний тест (contract_test.go, `go test -tags contract`) discovery-тэй тулгана.
+const (
+	defaultScope            = "openid"
+	pkceMethod              = "S256"
+	idTokenAlg              = "ES256"
+	tokenEndpointAuthMethod = "client_secret_basic" // Authorization: Basic (RFC 6749 §2.3.1)
+)
+
 // acr утгууд — иргэний гэрчилгээний бодит түвшин.
 const (
 	ACRQualified = "urn:eidmongolia:loa:qualified"
@@ -245,7 +253,7 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 	scope := cfg.Scope
 	if scope == "" {
-		scope = "openid"
+		scope = defaultScope
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = defaultTimeout
@@ -317,7 +325,7 @@ func (c *Client) CreateAuthorization(ctx context.Context, o *AuthorizationOption
 		"state":                 {state},
 		"nonce":                 {nonce},
 		"code_challenge":        {PKCEChallenge(verifier)},
-		"code_challenge_method": {"S256"},
+		"code_challenge_method": {pkceMethod},
 	}
 	if o.Display != "" {
 		q.Set("display", o.Display)
@@ -427,7 +435,7 @@ func (c *Client) VerifyIDToken(ctx context.Context, idToken, nonce string) (*Cla
 	if json.Unmarshal(pb, &present) != nil || present == nil {
 		return nil, badToken("хэлбэр буруу")
 	}
-	if header.Alg != "ES256" {
+	if header.Alg != idTokenAlg {
 		return nil, badToken("alg ES256 биш")
 	}
 	if header.Kid == "" {

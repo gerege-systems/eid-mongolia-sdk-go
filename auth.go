@@ -2,7 +2,6 @@ package eid
 
 import (
 	"context"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -140,22 +139,22 @@ func (a *AuthService) deviceLink(ctx context.Context, path string, interactions 
 // NotificationByEtsi — push: РД / иргэний дугаар / ETSI (PNOMN-…)-ээр (сервер төрлийг танина). Иргэний утас руу
 // мэдэгдэл очно. Validator.ValidateAuth-д ExpectedFlowType = FlowNotification.
 func (a *AuthService) NotificationByEtsi(ctx context.Context, id string, interactions []Interaction, o *AuthOptions) (*NotificationSession, error) {
-	return a.notification(ctx, "/authentication/notification/etsi/"+url.PathEscape(id), interactions, o)
+	return a.notification(ctx, routeAuthNotificationEtsi.expand(id), interactions, o)
 }
 
 // NotificationByDocument — push: баримтын дугаараар (тодорхой төхөөрөмж рүү).
 func (a *AuthService) NotificationByDocument(ctx context.Context, documentNumber string, interactions []Interaction, o *AuthOptions) (*NotificationSession, error) {
-	return a.notification(ctx, "/authentication/notification/document/"+url.PathEscape(documentNumber), interactions, o)
+	return a.notification(ctx, routeAuthNotificationDocument.expand(documentNumber), interactions, o)
 }
 
 // DeviceLinkAnonymous — QR / Web2App / App2App: иргэн хэн болохыг урьдчилж мэдэхгүй. Холбоосыг BuildDeviceLink-ээр.
 func (a *AuthService) DeviceLinkAnonymous(ctx context.Context, interactions []Interaction, o *AuthOptions) (*DeviceLinkSession, error) {
-	return a.deviceLink(ctx, "/authentication/device-link/anonymous", interactions, o)
+	return a.deviceLink(ctx, routeAuthDeviceLinkAnonymous.expand(), interactions, o)
 }
 
 // DeviceLinkByEtsi — QR / Web2App / App2App: тодорхой иргэн (РД / civil_id / ETSI).
 func (a *AuthService) DeviceLinkByEtsi(ctx context.Context, id string, interactions []Interaction, o *AuthOptions) (*DeviceLinkSession, error) {
-	return a.deviceLink(ctx, "/authentication/device-link/etsi/"+url.PathEscape(id), interactions, o)
+	return a.deviceLink(ctx, routeAuthDeviceLinkEtsi.expand(id), interactions, o)
 }
 
 func orDefault[T ~string](v, def T) T {

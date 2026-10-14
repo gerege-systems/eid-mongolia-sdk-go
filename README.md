@@ -325,6 +325,19 @@ go vet ./... && go test -race ./...
 Тест: CA серверийн device link golden векторууд (`testdata/devicelink_golden.json`, TS SDK-тэй ижил файл), Smart-ID
 ACSP_V2 вектор, RFC 7636 PKCE вектор, бодит нийтийн CA гэрчилгээнүүд.
 
+### Гэрээний шалгалт
+
+SDK-ийн дууддаг RP-API зам бүр (`routes.go`) live [`/.well-known/eid`](https://rp.eidmongolia.mn/.well-known/eid)-ийн
+`endpoints`-д байх ёстой; OIDC-ийн хүлээдэг утгууд (issuer, `ES256`, PKCE `S256`, `client_secret_basic`, `Claims`-ийн
+талбарууд) [discovery](https://login.eidmongolia.mn/.well-known/openid-configuration)-тэй таарах ёстой. Discovery-д
+байгаа ч SDK хамраагүй замууд WARN (fail биш). Сүлжээ шаарддаг тул энгийн `go test`-д ордоггүй:
+
+```bash
+go test -count=1 -v -tags contract -run Contract ./...
+```
+
+CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 UTC, гараар.
+
 ---
 
 ## English

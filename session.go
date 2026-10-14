@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 )
 
@@ -106,7 +105,7 @@ func (s *SessionService) Poll(ctx context.Context, sessionID string, serverPoll 
 	if serverPoll <= 0 {
 		serverPoll = DefaultServerPoll
 	}
-	path := fmt.Sprintf("/session/%s?timeoutMs=%d", url.PathEscape(sessionID), serverPoll.Milliseconds())
+	path := fmt.Sprintf("%s?timeoutMs=%d", routeSession.expand(sessionID), serverPoll.Milliseconds())
 	var r rawSession
 	if err := s.h.getJSON(ctx, path, serverPoll+10*time.Second, &r); err != nil {
 		return nil, err
