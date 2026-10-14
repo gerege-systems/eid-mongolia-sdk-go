@@ -45,6 +45,25 @@ eID сервер өөрөө харуулж, гарын үсэг ба гэрчи�
 `Scope: "openid pnomn"`. eID-ийн OIDC нь зөвхөн confidential client (`client_secret_basic`) — native апп ч `code`-ийг
 өөрийн backend-ээр солино.
 
+**mTLS-тэй RP (`require_mtls`).** `login.` хост mTLS хийдэггүй тул ийм RP-ийн code солих хүсэлт
+`login.eidmongolia.mn/oauth2/token` дээр `401 invalid_client` авна. Discovery-ийн `mtls_endpoint_aliases["token_endpoint"]`
+(RFC 8705 §5, `https://rp.eidmongolia.mn/oauth2/token`) руу RP-API-д хэрэглэдэг **ижил client cert**-ээр явуулна:
+`UseMTLSEndpointAliases: true` + client cert-тэй `HTTPClient` (§6). Discovery-д alias байхгүй бол `TokenEndpoint` руу
+буцна; alias https биш бол `ErrDiscoveryFailed`. mTLS-гүй RP флаг тавихгүй.
+
+```go
+cert, err := tls.LoadX509KeyPair("rp.crt", "rp.key") // RP-API-ийн cert
+oc, err := oidc.NewClient(oidc.Config{
+	ClientID:     os.Getenv("EID_RP_UUID"),
+	ClientSecret: os.Getenv("EID_SECRET"),
+	RedirectURI:  "https://bank.example.mn/auth/eid/callback",
+	HTTPClient: &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+	}},
+	UseMTLSEndpointAliases: true, // token → https://rp.eidmongolia.mn/oauth2/token
+})
+```
+
 ```go
 oc, err := oidc.NewClient(oidc.Config{
 	ClientID:     os.Getenv("EID_RP_UUID"),
@@ -433,6 +452,8 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
 - `oidc.NewClient` — "Sign in with eID" (OpenID Connect, code + PKCE S256, `client_secret_basic`), ES256 `id_token`
   verification with JWKS caching (`iss`, `aud`/`azp`, `exp`/`iat` ±60 s, `nonce`).
+  mTLS RPs: `Config.UseMTLSEndpointAliases` + client-cert `HTTPClient` → token request to discovery's
+  `mtls_endpoint_aliases.token_endpoint` (RFC 8705 §5); falls back to `token_endpoint` when absent.
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
 
 License: MIT.

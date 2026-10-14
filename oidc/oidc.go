@@ -126,8 +126,13 @@ type Config struct {
 	Scope string
 	// Timeout — HTTP дуудлага бүрийн хугацаа (0 = 10s).
 	Timeout time.Duration
-	// HTTPClient — nil = шинэ http.Client. Redirect дагахгүй (SDK CheckRedirect-ийг дарна).
+	// HTTPClient — nil = шинэ http.Client. Redirect дагахгүй (SDK CheckRedirect-ийг дарна). mTLS-тэй RP:
+	// RP-API-д хэрэглэдэг client cert-тэй Transport (README §6).
 	HTTPClient *http.Client
+	// UseMTLSEndpointAliases — RFC 8705 §5: true бол code солих хүсэлт discovery-ийн
+	// mtls_endpoint_aliases["token_endpoint"] руу явна (require_mtls-тэй RP; HTTPClient-д client cert заавал).
+	// Discovery-д alias байхгүй бол TokenEndpoint руу буцна; alias https биш бол ErrDiscoveryFailed. Анхдагч false.
+	UseMTLSEndpointAliases bool
 }
 
 // Discovery — /.well-known/openid-configuration-ийн хэрэгтэй талбарууд.
@@ -136,6 +141,8 @@ type Discovery struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	JWKSURI               string `json:"jwks_uri"`
+	// MTLSEndpointAliases — RFC 8705 §5 (ж: "token_endpoint" → https://rp.eidmongolia.mn/oauth2/token).
+	MTLSEndpointAliases map[string]string `json:"mtls_endpoint_aliases,omitempty"`
 }
 
 // AuthorizationOptions — CreateAuthorization-ийн нэмэлт тохиргоо.
@@ -376,9 +383,13 @@ func (c *Client) exchangeCode(ctx context.Context, code, verifier string) (strin
 		"redirect_uri":  {c.cfg.RedirectURI},
 		"code_verifier": {verifier},
 	}
+	endpoint, err := c.tokenEndpoint(d)
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.TokenEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("eid/oidc: token request: %w", err)
 	}
@@ -388,12 +399,12 @@ func (c *Client) exchangeCode(ctx context.Context, code, verifier string) (strin
 	req.Header.Set("Accept", "application/json")
 	res, err := c.hc.Do(req)
 	if err != nil {
-		return "", netErr(d.TokenEndpoint, err)
+		return "", netErr(endpoint, err)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, maxBody))
 	if err != nil {
-		return "", netErr(d.TokenEndpoint, err)
+		return "", netErr(endpoint, err)
 	}
 	var j struct {
 		IDToken          any `json:"id_token"`
@@ -412,6 +423,21 @@ func (c *Client) exchangeCode(ctx context.Context, code, verifier string) (strin
 		return "", &Error{Code: ErrServerError, Message: "token хариунд id_token алга"}
 	}
 	return tok, nil
+}
+
+// tokenEndpoint — UseMTLSEndpointAliases + alias байвал alias (RFC 8705 §5), эс бөгөөс TokenEndpoint.
+func (c *Client) tokenEndpoint(d *Discovery) (string, error) {
+	if !c.cfg.UseMTLSEndpointAliases {
+		return d.TokenEndpoint, nil
+	}
+	alias, ok := d.MTLSEndpointAliases["token_endpoint"]
+	if !ok {
+		return d.TokenEndpoint, nil
+	}
+	if !strings.HasPrefix(alias, "https://") {
+		return "", &Error{Code: ErrDiscoveryFailed, Message: "discovery: mtls_endpoint_aliases.token_endpoint буруу"}
+	}
+	return alias, nil
 }
 
 // VerifyIDToken — id_token шалгана: JWKS (kid, 1 цаг cache; танихгүй kid → нэг удаа дахин татна) ES256 гарын үсэг,
