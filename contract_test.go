@@ -167,7 +167,9 @@ func TestContractPDFSignaturesBody(t *testing.T) {
 	var got []string
 	rt := reflect.TypeOf(PDFSignatureRegistration{})
 	for k := range rt.NumField() {
-		got = append(got, strings.Split(rt.Field(k).Tag.Get("json"), ",")[0])
+		if name := strings.Split(rt.Field(k).Tag.Get("json"), ",")[0]; name != "-" { // SDK-ийн дотоод (PriorSignatures)
+			got = append(got, name)
+		}
 	}
 	sort.Strings(want)
 	sort.Strings(got)
