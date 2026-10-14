@@ -98,7 +98,7 @@ func (s *SignService) notification(ctx context.Context, path string, req *signRe
 		return nil, err
 	}
 	// Sign урсгалд rpChallenge байхгүй — гарын үсэг digest-ийн эсрэг баталгаажна.
-	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), Sign: sc, ExpiresAt: SessionExpiry(sent, s.ttl)}, nil
+	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), Sign: sc, ExpiresAt: r.expiresAt(sent, s.ttl)}, nil
 }
 
 func (s *SignService) deviceLink(ctx context.Context, path string, req *signRequest, sc *SignContext) (*DeviceLinkSession, error) {
@@ -116,7 +116,7 @@ func (s *SignService) deviceLink(ctx context.Context, path string, req *signRequ
 		ReceivedAt:     time.Now(),
 		SessionType:    SessionSign,
 		Sign:           sc,
-		ExpiresAt:      SessionExpiry(sent, s.ttl),
+		ExpiresAt:      r.expiresAt(sent, s.ttl),
 	}, nil
 }
 

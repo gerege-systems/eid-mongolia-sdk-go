@@ -58,6 +58,25 @@ type sessionStartResponse struct {
 	SessionSecret  string  `json:"sessionSecret"`
 	DeviceLinkBase string  `json:"deviceLinkBase"`
 	VC             vcValue `json:"vc"`
+	// ExpiresAt — CA-ийн session дуусах мөч (RFC 3339; CA 2026-10-14-өөс). Хуучин CA-д "".
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// caExpiresAt — CA-ийн expiresAt; байхгүй / задрахгүй бол тэг.
+func (r *sessionStartResponse) caExpiresAt() time.Time {
+	t, err := time.Parse(time.RFC3339, r.ExpiresAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// expiresAt — sign / certificate-choice: CA-ийн expiresAt, байхгүй бол SessionExpiry(sent, ttl) (тооцоолол).
+func (r *sessionStartResponse) expiresAt(sent time.Time, ttl time.Duration) time.Time {
+	if t := r.caExpiresAt(); !t.IsZero() {
+		return t
+	}
+	return SessionExpiry(sent, ttl)
 }
 
 // body — v3 nested body + validator-т хэрэгтэй контекст (ижил утгуудаас — байт зөрөхгүй).
@@ -112,7 +131,7 @@ func (a *AuthService) notification(ctx context.Context, path string, interaction
 	if err := a.h.postJSON(ctx, path, req, &r); err != nil {
 		return nil, err
 	}
-	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), RPChallenge: acsp.RPChallenge, ACSP: acsp}, nil
+	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), RPChallenge: acsp.RPChallenge, ACSP: acsp, ExpiresAt: r.caExpiresAt()}, nil
 }
 
 func (a *AuthService) deviceLink(ctx context.Context, path string, interactions []Interaction, o *AuthOptions) (*DeviceLinkSession, error) {
@@ -134,6 +153,7 @@ func (a *AuthService) deviceLink(ctx context.Context, path string, interactions 
 		ACSP:           acsp,
 		ReceivedAt:     time.Now(),
 		SessionType:    SessionAuth,
+		ExpiresAt:      r.caExpiresAt(),
 	}, nil
 }
 

@@ -271,10 +271,15 @@ RAW_DIGEST_SIGNATURE-д `flowType` гарын үсэгт ордоггүй (зө�
 Web2App/App2App); холбоосыг `eid.BuildDeviceLink(s.LinkInput(eid.LinkQR, "mon"))` (auth/cert session-д ч мөн).
 `s.Sign` (`SignContext`: digest, hash, алгоритм, interactions, callback)-ийг session-тэй хамт серверт хадгал.
 
-**`ExpiresAt`** — sign / certificate-choice session-ий *тооцоолсон* дуусах мөч: CA session start хариунд хугацаа буцаадаггүй
-(зөвхөн `sessionID`), CA-ийн анхдагч 600с (`eid.DefaultSignSessionTTL`; CA админ 60–1800с болгож болно →
-`Config.SignSessionTTL`). Хүсэлт илгээхээс өмнөх цагаас тооцдог тул CA-ийнхаас хойно хэзээ ч биш; эцсийн үнэн нь
-`GET /session` (`TIMEOUT`).
+**`ExpiresAt`** — session дуусах мөч: CA-ийн session start хариуны `expiresAt` (RFC 3339; auth / sign / certificate-choice
+бүгдэд, 2026-10-14-өөс). Хуучин CA (талбаргүй) үед sign / certificate-choice-д SDK тооцоолно — CA-ийн анхдагч 600с
+(`eid.DefaultSignSessionTTL`; CA админ 60–1800с → `Config.SignSessionTTL`), auth-д тэг. Эцсийн үнэн нь `GET /session`
+(`TIMEOUT`).
+
+**Session эхлэх алдаа** (`*eid.APIError`, `errors.Is`-ээр): `eid.ErrNoSigningCertificate` — 409 `NO_SIGNING_CERTIFICATE`
+(sign / certificate-choice start, `/pdf/sign/prepare`: иргэнд идэвхтэй төхөөрөмж / хүчинтэй гарын үсгийн гэрчилгээ алга,
+session үүсээгүй); `eid.ErrCertChoiceInvalid` — 409 `CERT_CHOICE_INVALID` (linked sign-ийн certificate-choice хүчингүй /
+хуучирсан / ашиглагдсан → дахин эхлүүл); `eid.ErrRequestInvalid` — 400 `REQUEST_INVALID` (ж: linked-д `linkedSessionID` дутуу).
 
 **Гэрчилгээг урьдчилж мэдэх (client-side PAdES / CMS)** — гэрчилгээ DTBS-д (`signingCertificateV2`) ордог тул эхлээд
 certificate-choice, дараа нь digest-ийг **яг тэр төхөөрөмж рүү (`documentNumber`)** зуруулна. Олон утастай иргэнд
@@ -426,6 +431,7 @@ if !eid.DocumentVerified(signed, blk) { /* итгэхгүй */ }
 |---|---|
 | `*eid.AuthenticationError` | 401 — API secret буруу/байхгүй; CA-ийн JSON бол `.Code`/`.Message`, proxy-ийнх бол хоосон (`.Body`, `.Header`) |
 | `*eid.ForbiddenError` | 403 — IP allowlist / mTLS / RP-ийн эрх; `OnBehalfOf` татгалзвал `.Code` |
+| `eid.ErrNoSigningCertificate` / `ErrCertChoiceInvalid` / `ErrRequestInvalid` | `errors.Is` — `*eid.APIError`-ийн `Code` (409 `NO_SIGNING_CERTIFICATE`, 409 `CERT_CHOICE_INVALID`, 400 `REQUEST_INVALID`) |
 | `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code`, `.RetryAfter`, `.Header`, `.Retryable()` — ж: 404 `ORG_NOT_FOUND`) |
 | `*eid.ResponseTooLargeError` | хариу SDK-ийн хязгаараас их (JSON 4 MiB, PDF `Config.PDFMaxBytes`) — `.Op`, `.Limit` |
 | `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.); `.Op`-д иргэний дугаар `…` болно |
@@ -477,8 +483,9 @@ Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
-  `sha256WithRSAEncryption`), `ValidateSignOptions.ExpectedAlgorithm` / `ExpectedCertificate`, estimated `ExpiresAt`
-  (`Config.SignSessionTTL`, default 600 s — the CA does not return a session expiry).
+  `sha256WithRSAEncryption`), `ValidateSignOptions.ExpectedAlgorithm` / `ExpectedCertificate`, `ExpiresAt`
+  from the CA's start response (`expiresAt`, RFC 3339; estimated via `Config.SignSessionTTL` on older CAs), and
+  `errors.Is` sentinels `ErrNoSigningCertificate` / `ErrCertChoiceInvalid` / `ErrRequestInvalid`.
 - `eid.BuildDeviceLink` — device link v3 (QR / Web2App / App2App) with HMAC `authCode`, byte-identical to the server
   golden vectors. Prefer **Web2App** for same-device sign-in; the legacy `/dl?sessionId&vc` link is gone.
 - `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
