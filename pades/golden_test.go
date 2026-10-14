@@ -365,7 +365,6 @@ func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, in
 	o := c.Prep
 	o.SignerCert = p.citizen.cert.Raw
 	o.Chain = [][]byte{p.ca04.cert.Raw, p.ca03.cert.Raw, p.ca02.cert.Raw}
-	o.Roots = [][]byte{p.root.cert.Raw}
 	o.SigningTime = goldenTime
 	prep, err := Prepare(input, o)
 	if err != nil {

@@ -12,10 +12,10 @@
     "POST http://ocsp.pki.test/03 368c2ac3ced09cd6": "http/04-b1017f0fc873.der",
     "POST http://ocsp.pki.test/04 3d432940c5514c0a": "http/05-f4fae8087a68.der",
     "POST http://ocsp.pki.test/04 5167f83c7d8126d9": "http/06-b4ccb5877c32.der",
-    "POST http://tsa.pki.test/ 4b0f0fe87765b8c5": "http/07-8626eeebb98c.der",
-    "POST http://tsa.pki.test/ 909f41c5c4495b41": "http/08-fa69c9e8fc4b.der",
+    "POST http://tsa.pki.test/ 0d8e7fec0c140a4f": "http/07-ff978f6fd3df.der",
+    "POST http://tsa.pki.test/ 466c567599f24e6e": "http/08-1369ee615430.der",
     "POST http://tsa.pki.test/ acece705e5e495cf": "http/09-02607395da85.der",
-    "POST http://tsa.pki.test/ cd566bf8e8d2382a": "http/10-41362fe2f5f9.der",
+    "POST http://tsa.pki.test/ c97804530ed2169a": "http/10-9530370b925b.der",
     "POST http://tsa.pki.test/ f8f4a6fc00e36cf9": "http/11-a37cd73a7c96.der"
   },
   "cases": [
@@ -42,12 +42,12 @@
           97819,
           708
         ],
-        "outSha256": "6d01e49e3829ab662639fcfb5a13b9acdbb24b6ec64f9561d359cbf2fb5ee603",
+        "outSha256": "1a061762857f2fb7177c20e3c826069ba42dfdc909e0ac9ee79d336d8db5ffd6",
         "revIndex": 1,
         "hasPage": true,
         "pageSha256": "9f8d12393019bf7a7fac5789f6efa54a4a43cdccf3a6587e0c1aec37fdbdc69d",
-        "sigRevSha256": "3be697782d1f1a45972e1ed6108971dd0b2d125befef6cf2653a436cddb61866",
-        "cmsSha256": "125cbbd221b8d683763d3f41ac0e3b7bc58ef40ae7fe16b60d3a9c8841b88b93"
+        "sigRevSha256": "a4f9c89e59b1927f52d72028f8dd1da1d04881fb4a9a98d6c59b09b95d658627",
+        "cmsSha256": "549b84d0392066a9fc89ed5838ac3572fe89e2535ccb34777b55aedb0bfc8476"
       }
     },
     {
@@ -64,21 +64,21 @@
       "expect": {
         "inputSha256": "03f7730295cb41d0df549209b2da246f4190b3a776efba0f48817023dae4a789",
         "docId": "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b",
-        "digest": "06a7c874f8abe26505fc35d3a60d8a6ef418a132d15687ef0be5c7ec62ef32ec",
-        "dtbs": "17fc4d0059a4b94c674db14193a9f35cc41f8f75508b3e4096458d6dc6481b24",
-        "preparedSha256": "1f5ac67f5a530e0d4cea515d648868b68db10d0e57d2d4223f68345aefed7e7e",
+        "digest": "75f3ba43c21fcc31c0025ec5fe8540e9474df49ab4d0984ef8c23110ccbc27f0",
+        "dtbs": "2fd67cb6b60bcd73f94194c1011161b1356e5175f0001e9f15eb5625490d3398",
+        "preparedSha256": "7d79336f9f94a49c45b5302cce36d6266b54ab62e13c9bb70e49a78b6fe0224f",
         "byteRange": [
           0,
-          38800,
-          96146,
-          735
+          38821,
+          96167,
+          706
         ],
-        "outSha256": "2b60a2a3fa84623b1ad289190a4457dc170d4e43e0661d6d371d330e2149d971",
+        "outSha256": "b18618b78567385b9cd2caf4261a8c5143c9ea491a74e690b52574505d6165d5",
         "revIndex": 1,
         "hasPage": true,
-        "pageSha256": "e7d712eeeba49053f31e84b506574b0c7c4fffd22f64751bc975c0b5372ed6b8",
-        "sigRevSha256": "83e7dada27bfd090d852928810bd0f098acf467907fc5c66460ef37dc8315cc6",
-        "cmsSha256": "92e538d26ece5972b4713b666c6444c92302a6d94f276573d3ffe2d989891864"
+        "pageSha256": "5da42387d563fd23f39fc036090b7e456c79c09d008eb7bba94e90ef127b0d93",
+        "sigRevSha256": "5da8176ce0e476a4346a3bc51a07679152b6c8b55e789805f900a51389306016",
+        "cmsSha256": "a483070e0ba4e1bb47147767b3ba2227838640c9fe664dc8cffe98035344eb47"
       }
     },
     {
@@ -104,12 +104,12 @@
           97566,
           707
         ],
-        "outSha256": "4f3f637276bbc059e4c11e1d17906c87ed9fe0756a05fff8f10de06022fb58dd",
+        "outSha256": "4f9374cecd613017901e39c8ea195d2b88984cf2c7d1a9f8fb6b34fe322a10b2",
         "revIndex": 1,
         "hasPage": true,
         "pageSha256": "478ee77595a3ad99b7181c8b405a3564907e6d2aa0f6cad84071f08b0da703c1",
-        "sigRevSha256": "82913c78244065a43e27ea06a7783037759c5b9eed4d33979e3803f4ef336989",
-        "cmsSha256": "f283c036e2dd3c3617b2f42dd6a19767287797ea41823cb74bd526a9fd70b38e"
+        "sigRevSha256": "4af048633e796a5da7b2b0ca8d07aee03a51ee37bc5ab0876418cee18cca5d38",
+        "cmsSha256": "4bd9f8254db84123fc77037eec119c8242b06b64807e089acb8625c0245ffa11"
       }
     },
     {
@@ -123,19 +123,19 @@
       "expect": {
         "inputSha256": "b51d7fb27f042935862dd1d0816790ecec9f502ffb98eac4b1f7945296e9d894",
         "docId": "3d4e5f60-7182-493a-acbd-2e3f4a5b6c7d",
-        "digest": "3e93316099ae51bf2620c1cd3e209fb2f1b7813351083dee7a528a76f8a3d243",
-        "dtbs": "cf4f068e96688f4b95d45f6d3caa9b527d0d9f0eb09c9617db18ef33886d4735",
-        "preparedSha256": "35811f22e15e6d85d09d0c2e9c7df2a5ca92b700a3e42d22d23529576011354b",
+        "digest": "b02206c937f790be196e4f4bad5eb234c2be5f2336e294be9b669de32aab6681",
+        "dtbs": "2c1baf1405c4e3430c83b8da01802f8ff192ffddbf936cd748fa9f6f6537f872",
+        "preparedSha256": "d837c6d90851b9a46a1cdf4793a991dd5c972869bd9037236a360065eb004fd7",
         "byteRange": [
           0,
           8042,
           65388,
-          709
+          682
         ],
-        "outSha256": "6951e3b6deeaab055f35c616efc378a554cc7db8d5e9c96484348401ec3e9c7f",
+        "outSha256": "50c48dfda4c22caeb86857cadbe7babfc8def68a6e66e95047fccfd9dda16c0b",
         "revIndex": 1,
-        "sigRevSha256": "1c7e26ae8aa14ec6fc9085e0c11297e0474a90f78dbbbbcd55f7c6429adca174",
-        "cmsSha256": "8262659bdc98f8aa97059958fc763a83bf5f0983cd9d5131cfc863551910b668"
+        "sigRevSha256": "1b1937d7d3ce1d5900ac19c52826edac15d1465ac2bc3d7c5e4cf3a0fc0be183",
+        "cmsSha256": "2d58c6e99b06cb00b54bb6926b1817c7d1bb6a461349a553d86560684ec7acb6"
       }
     },
     {
@@ -150,23 +150,23 @@
         "fileName": "ignored.pdf"
       },
       "expect": {
-        "inputSha256": "6d01e49e3829ab662639fcfb5a13b9acdbb24b6ec64f9561d359cbf2fb5ee603",
+        "inputSha256": "1a061762857f2fb7177c20e3c826069ba42dfdc909e0ac9ee79d336d8db5ffd6",
         "docId": "6f0c2b9e-3a1d-4c55-9b7e-0a1b2c3d4e5f",
-        "digest": "fd89f6efa36f6a96ca2869dd45fd03a65a2a9c7036080eab2bb8b926d166921e",
-        "dtbs": "ff33e1c9b8b0475ae19d9df7d73aa2fed49053e7d8f94491b891e5d0342ed1d6",
-        "preparedSha256": "1340acf7f4f1c9d787fe6392c0b9f3949f267ea91b9a3333bbc3d7d6cbee64c3",
+        "digest": "3fbc2f2d761295b7f3d5107604f8a904390bfeda6c4c60c3dd3f3dd0c34d9657",
+        "dtbs": "1a3c8fd3681833a300de60071918e90a8bbe9d87c33bd6cf560f7ac63504b95a",
+        "preparedSha256": "3188154ba413e5af968510cd6f2d37c3c7c97450e33c57f9ac8cae48d6ffd458",
         "byteRange": [
           0,
           108092,
           165438,
           834
         ],
-        "outSha256": "a0597e486a4bc46f99d64c83fb54aa014c90db30ba365dd5749a9596323294a2",
+        "outSha256": "f6653c439a2dab0458d3d6365bf5730c9f949026b55bf6fc43cdd0be673dc569",
         "revIndex": 2,
-        "sigRevSha256": "29772489135588e1b8552e75b9aaf84d90132f876d3c99a7d0f203ad99332754",
-        "cmsSha256": "320210f63b78149d7f19cf365133cb534d0d0f3db4b223964e0097ffad37a25c",
+        "sigRevSha256": "ee2ce96392bc470e20ce9f8d296c1bbe71b57fc968c231d1a12aedf7af9b033a",
+        "cmsSha256": "6be631570a4ba96c9a84ddcf2d8b98bdf4364d8d489fb3cc8b4a5567feb80cba",
         "priorCmsSha256": [
-          "125cbbd221b8d683763d3f41ac0e3b7bc58ef40ae7fe16b60d3a9c8841b88b93"
+          "549b84d0392066a9fc89ed5838ac3572fe89e2535ccb34777b55aedb0bfc8476"
         ]
       }
     },

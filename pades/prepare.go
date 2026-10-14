@@ -2,12 +2,10 @@ package pades
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -19,6 +17,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
+	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/vpage"
 )
@@ -69,8 +68,6 @@ type PrepareOptions struct {
 	FileName string `json:"fileName,omitempty"`
 	// Lang — хуудасны хэл (mn|en). Одоогоор CA-ийн хуудастай байт-ижил байхын тулд зөвхөн англи бичвэр.
 	Lang string `json:"lang,omitempty"`
-	// Roots — итгэлийн тулгуур DER (өмнөх гарын үсгийг шалгахад); хоосон бол Mongolian National Root CA.
-	Roots [][]byte `json:"roots,omitempty"`
 }
 
 // Prepared — Prepare-ийн үр дүн.
@@ -107,10 +104,6 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if err != nil {
 		return nil, newErr(CodeSignerInvalid, "олгогч гинж", err)
 	}
-	roots, err := parseRoots(o.Roots)
-	if err != nil {
-		return nil, newErr(CodeRequestInvalid, "roots", err)
-	}
 	if o.DocID != "" && !uuidRe.MatchString(o.DocID) {
 		return nil, newErr(CodeRequestInvalid, "docId нь жижиг үсгийн UUID байх ёстой", nil)
 	}
@@ -127,7 +120,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 
 	inSum := sha256.Sum256(doc)
 	inHex := hex.EncodeToString(inSum[:])
-	newDoc, revIndex, err := inspect(doc, roots, chain[:1])
+	newDoc, revIndex, err := precheck(doc, append(eidcrypto.Issuers(), chain[0]))
 	if err != nil {
 		return nil, err
 	}
@@ -191,53 +184,6 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	return &Prepared{DTBS: core.DTBS(attrs), Digest: prep.Digest, DocID: docID, State: state}, nil
 }
 
-// inspect — CA-ийн padesInspect-ийн клиент хувилбар: гарын үсэггүй → шинэ баримт (revIndex 1); гарын үсэгтэй бол
-// бүгд бүрэн бүтэн, зөвхөн гарын үсэг/LTV-ээр өргөтгөгдсөн, DocMDP P=1 биш, БҮГД eID-ийн хүчинтэй PAdES-BASELINE-LT
-// (CA бүртгэлээр шалгадаг «манай гарын үсэг»-ийн оронд — клиент бүртгэл уншихгүй).
-func inspect(doc []byte, roots, issuers []*x509.Certificate) (newDoc bool, revIndex int, err error) {
-	hasSigs, herr := vpage.HasSignatureObjects(doc)
-	if encrypted(doc) {
-		return false, 0, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
-	}
-	if herr != nil {
-		return false, 0, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", herr)
-	}
-	if !hasSigs {
-		return true, 1, nil
-	}
-	sigs, err := validate.Extract(doc)
-	switch {
-	case errors.Is(err, validate.ErrTooMany):
-		return false, 0, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
-	case errors.Is(err, validate.ErrNoSignature), errors.Is(err, validate.ErrNotPDF):
-		return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
-	case err != nil:
-		return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсгийг шалгаж чадсангүй", err)
-	}
-	if len(sigs) >= MaxSignatures {
-		return false, 0, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
-	}
-	for _, s := range sigs {
-		if s.Malformed || !s.Integrity || s.WeakDigest || !(s.CoversWhole || s.LaterSignaturesOnly) || s.SignedEnd <= 0 || s.SignedEnd > int64(len(doc)) {
-			return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", nil)
-		}
-	}
-	if docMDPLocked(doc) {
-		return false, 0, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
-	}
-	v := newValidator(roots, nil, issuers, nil, sigs)
-	rep, err := v.ValidatePDF(context.Background(), doc)
-	if err != nil {
-		return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсгийг шалгаж чадсангүй", err)
-	}
-	for _, s := range rep.Signatures {
-		if s.Indication != validate.Valid || s.SignatureLevel != "PAdES-BASELINE-LT" {
-			return false, 0, newErr(CodePDFForeignSignature, "баримтад eID-ийн хүчинтэй (B-LT) биш гарын үсэг байна", nil)
-		}
-	}
-	return false, len(sigs) + 1, nil
-}
-
 // encrypted — trailer-д /Encrypt (digitorus panic-ийг recover).
 func encrypted(doc []byte) (enc bool) {
 	defer func() {
@@ -251,30 +197,6 @@ func encrypted(doc []byte) (enc bool) {
 		return encryptKey.Match(doc)
 	}
 	return !r.Trailer().Key("Encrypt").IsNull()
-}
-
-// docMDPLocked — Catalog /Perms /DocMDP нь P=1 (өөрчлөлт хориотой) certification гарын үсэг.
-func docMDPLocked(doc []byte) (locked bool) {
-	defer func() {
-		if recover() != nil {
-			locked = false
-		}
-	}()
-	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
-	if err != nil {
-		return false
-	}
-	mdp := r.Trailer().Key("Root").Key("Perms").Key("DocMDP")
-	if mdp.IsNull() {
-		return false
-	}
-	ref := mdp.Key("Reference")
-	for i := range ref.Len() {
-		if p := ref.Index(i).Key("TransformParams").Key("P"); p.Kind() == pdf.Integer && p.Int64() == 1 {
-			return true
-		}
-	}
-	return false
 }
 
 // cleanFileName — CA-тай ижил: Cc/Cf/Zl/Zp хасаж NFC, trim; ≤ 120 тэмдэгт.

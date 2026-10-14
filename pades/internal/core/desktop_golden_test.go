@@ -140,9 +140,10 @@ func sha1Upper(b []byte) string {
 
 var byteRangeTail = regexp.MustCompile(`(/ByteRange \[0 \d+ \d+ )\d+\]`)
 
-var xrefLen = regexp.MustCompile(`/Type /XRef /Length (\d+)`)
+var xrefLen = regexp.MustCompile(`/Type /XRef /Length (\d+)( /Filter /FlateDecode)?`)
 
-// normXref — xref stream бүрийн zlib өгөгдлийг задалж, /Length-ийг арилгана (бусад байт хэвээр).
+// normXref — xref stream бүрийн өгөгдлийг (FlateDecode бол задалж) түүхийгээр, /Length ба /Filter-ийг арилгана.
+// Профайл pades-client/1-д xref stream шахалтгүй, desktop-ийн хуучин гаралт FlateDecode-той.
 func normXref(t *testing.T, doc []byte) []byte {
 	t.Helper()
 	var out bytes.Buffer
@@ -154,21 +155,24 @@ func normXref(t *testing.T, doc []byte) []byte {
 			return out.Bytes()
 		}
 		n, _ := strconv.Atoi(string(rest[m[2]:m[3]]))
+		flate := m[4] >= 0
 		out.Write(rest[:m[2]])
 		out.WriteString("*")
-		rest = rest[m[3]:]
+		rest = rest[m[1]:]
 		i := bytes.Index(rest, []byte(">>\nstream\n"))
 		if i < 0 || i+10+n > len(rest) {
 			t.Fatal("xref stream задарсангүй")
 		}
 		out.Write(rest[:i+10])
-		zr, err := zlib.NewReader(bytes.NewReader(rest[i+10 : i+10+n]))
-		if err != nil {
-			t.Fatal(err)
-		}
-		raw, err := io.ReadAll(zr)
-		if err != nil {
-			t.Fatal(err)
+		raw := rest[i+10 : i+10+n]
+		if flate {
+			zr, err := zlib.NewReader(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if raw, err = io.ReadAll(zr); err != nil {
+				t.Fatal(err)
+			}
 		}
 		out.Write(raw)
 		rest = rest[i+10+n:]

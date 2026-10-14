@@ -45,7 +45,7 @@ func readInput(t *testing.T, name string) []byte {
 
 func testOpts(p *goldenPKI, leaf *x509.Certificate) PrepareOptions {
 	return PrepareOptions{SignerCert: leaf.Raw, Chain: [][]byte{p.ca04.cert.Raw, p.ca03.cert.Raw, p.ca02.cert.Raw},
-		Roots: [][]byte{p.root.cert.Raw}, SigningTime: goldenTime, VerifyPage: true, FileName: "test.pdf"}
+		SigningTime: goldenTime, VerifyPage: true, FileName: "test.pdf"}
 }
 
 func completeOpts(p *goldenPKI) CompleteOptions {
@@ -234,19 +234,22 @@ func rawPDF(objs ...string) []byte {
 	return b.Bytes()
 }
 
-// TestDocMDPLocked — Catalog /Perms /DocMDP-ийн /Reference /TransformParams /P 1 (CA docMDPLocked-тэй ижил). Тэмдэглэл:
-// digitorus/pdfsign-ийн certification гарын үсэг /Perms бичдэггүй тул (ISO 32000-1 §12.8.4-д нийцэхгүй) түгжээгүй гэж үзнэ.
+// TestDocMDPLocked — Catalog /Perms /DocMDP эсвэл Sig-ийн /Reference /TransformParams /P 1 → PDF_LOCKED.
 func TestDocMDPLocked(t *testing.T) {
 	sig := "<< /Type /Sig /Reference [<< /Type /SigRef /TransformMethod /DocMDP /TransformParams << /P %d /V /1.2 >> >>] >>"
 	doc := func(perm int) []byte {
 		return rawPDF("<< /Type /Catalog /Pages 2 0 R /Perms << /DocMDP 4 0 R >> >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] >>", fmt.Sprintf(sig, perm))
 	}
-	if !docMDPLocked(doc(1)) || docMDPLocked(doc(2)) {
-		t.Fatal("docMDPLocked")
+	for perm, want := range map[int]bool{1: true, 2: false} {
+		if _, locked, err := scanSignatures(doc(perm)); err != nil || locked != want {
+			t.Fatalf("P=%d: locked=%v %v", perm, locked, err)
+		}
 	}
-	if docMDPLocked(certified(t, loadOrCreatePKI(t), readInput(t, "quartz-pdf13.pdf"))) {
-		t.Fatal("pdfsign /Perms бичдэггүй — CA-ийн дүрмээр түгжээгүй")
+	// digitorus/pdfsign /Perms бичдэггүй — Sig-ийн /Reference-ээр (PRECHECKS.md).
+	p := loadOrCreatePKI(t)
+	if _, err := Prepare(certified(t, p, readInput(t, "quartz-pdf13.pdf")), testOpts(p, p.citizen.cert)); ErrorCode(err) != CodePDFLocked {
+		t.Fatal(err)
 	}
 }
 

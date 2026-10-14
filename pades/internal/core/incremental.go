@@ -13,7 +13,6 @@ package core
 import (
 	"bytes"
 	"cmp"
-	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -197,14 +196,6 @@ func (inc *incremental) finish(root uint32) ([]byte, error) {
 		}
 		rows.WriteByte(byte(e.gen))
 	}
-	var z bytes.Buffer
-	zw := zlib.NewWriter(&z)
-	if _, err := zw.Write(rows.Bytes()); err != nil {
-		return nil, err
-	}
-	if err := zw.Close(); err != nil {
-		return nil, err
-	}
 	var index strings.Builder
 	for i, r := range runs {
 		if i > 0 {
@@ -213,9 +204,11 @@ func (inc *incremental) finish(root uint32) ([]byte, error) {
 		fmt.Fprintf(&index, "%d %d", inc.entries[r[0]].id, r[1])
 	}
 	// Объектыг шууд бичнэ (мөрийг нь дээр бүртгэсэн) — эхлэл нь xrefStart.
-	fmt.Fprintf(&inc.out, "%d 0 obj\n<< /Type /XRef /Length %d /Filter /FlateDecode /W [1 4 1] /Prev %d /Size %d /Index [%s] /Root %d 0 R%s >>\nstream\n",
-		xid, z.Len(), prev, inc.nextID, index.String(), root, trailerExtra.String())
-	inc.out.Write(z.Bytes())
+	// Шахалтгүй (/Filter-гүй) — zlib-ийн гаралт хэл/хувилбар бүрд өөр тул SDK-уудын байт-ижил байдалд (PROFILE.md;
+	// CA-ийн бичигч FlateDecode хэрэглэдэг байв).
+	fmt.Fprintf(&inc.out, "%d 0 obj\n<< /Type /XRef /Length %d /W [1 4 1] /Prev %d /Size %d /Index [%s] /Root %d 0 R%s >>\nstream\n",
+		xid, rows.Len(), prev, inc.nextID, index.String(), root, trailerExtra.String())
+	inc.out.Write(rows.Bytes())
 	fmt.Fprintf(&inc.out, "\nendstream\nendobj\nstartxref\n%d\n%%%%EOF\n", xrefStart)
 	return inc.out.Bytes(), nil
 }
