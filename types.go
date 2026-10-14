@@ -225,6 +225,9 @@ type OrgResult struct {
 	// хураагдсан эсвэл хуучин CA бол хоосон.
 	RoleLabel string `json:"roleLabel,omitempty"`
 	RightType string `json:"rightType"`
+	// RightTypeLabel — эрхийн төрлийн хүнд харуулах нэр (Representation.RightTypeLabel). Эрх хураагдсан эсвэл
+	// хуучин CA бол хоосон.
+	RightTypeLabel string `json:"rightTypeLabel,omitempty"`
 }
 
 // PDF баримтын төлөв.
@@ -282,8 +285,14 @@ type Representation struct {
 	RoleLabel string `json:"roleLabel,omitempty"`
 	// RightType — ADMIN | MANAGER.
 	RightType string `json:"rightType"`
+	// RightTypeLabel — эрхийн төрлийн хүнд харуулах нэр (ADMIN → «Админ», MANAGER → «Гарын үсэг зурагч»; хэл нь
+	// RoleLabel-тэй ижил). Хуучин CA-д хоосон.
+	RightTypeLabel string `json:"rightTypeLabel,omitempty"`
 	// Source — REGISTRY | MANUAL.
 	Source string `json:"source"`
+	// SourceLabel — эх үүсвэрийн хүнд харуулах нэр (REGISTRY → «Улсын бүртгэл», MANUAL → «Захирал нэмсэн»; хэл нь
+	// RoleLabel-тэй ижил). Хуучин CA-д хоосон.
+	SourceLabel string `json:"sourceLabel,omitempty"`
 	// ValidFrom, ValidTo — ISO 8601; ValidTo "" = хугацаагүй.
 	ValidFrom string `json:"validFrom"`
 	ValidTo   string `json:"validTo,omitempty"`

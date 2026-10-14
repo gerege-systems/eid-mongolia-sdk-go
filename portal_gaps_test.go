@@ -621,3 +621,35 @@ func TestLanguageHeader(t *testing.T) {
 		}
 	}
 }
+
+// ── 0.1.5: rightTypeLabel / sourceLabel (CA !344) ──
+
+func TestRightTypeSourceLabel(t *testing.T) {
+	c, _ := server(t, jsonReply(200, `{"personEtsi":"PNOMN-1","representations":[
+		{"orgEtsi":"NTRMN-1","role":"ceo","rightType":"ADMIN","rightTypeLabel":"Админ","source":"REGISTRY","sourceLabel":"Улсын бүртгэл","validFrom":"2026-10-01T00:00:00Z"},
+		{"orgEtsi":"NTRMN-2","role":"Нягтлан","rightType":"MANAGER","source":"MANUAL","validFrom":"2026-10-01T00:00:00Z"}]}`))
+	r, err := c.Organization.GetRepresentations(context.Background(), "PNOMN-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r0, r1 := r.Representations[0], r.Representations[1]
+	if r0.RightTypeLabel != "Админ" || r0.SourceLabel != "Улсын бүртгэл" || r1.RightTypeLabel != "" || r1.SourceLabel != "" {
+		t.Fatalf("representations labels: %+v", r.Representations)
+	}
+
+	s, err := ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},
+		"onBehalfOf":{"orgEtsi":"NTRMN-1","orgName":"Х ХХК","role":"ceo","rightType":"MANAGER","rightTypeLabel":"Signatory"}}`))
+	if err != nil || s.OnBehalfOf == nil || s.OnBehalfOf.RightTypeLabel != "Signatory" || s.OnBehalfOf.RightType != "MANAGER" {
+		t.Fatalf("session onBehalfOf: %+v, %v", s.OnBehalfOf, err)
+	}
+	old, err := ParseSessionResult([]byte(`{"state":"COMPLETE","onBehalfOf":{"orgEtsi":"NTRMN-1","role":"ceo","rightType":"ADMIN"}}`))
+	if err != nil || old.OnBehalfOf == nil || old.OnBehalfOf.RightTypeLabel != "" {
+		t.Fatalf("хуучин CA: %+v, %v", old.OnBehalfOf, err)
+	}
+	if b, _ := json.Marshal(OrgResult{OrgEtsi: "NTRMN-1"}); strings.Contains(string(b), "rightTypeLabel") {
+		t.Fatalf("хоосон rightTypeLabel omitempty биш: %s", b)
+	}
+	if b, _ := json.Marshal(Representation{OrgEtsi: "NTRMN-1"}); strings.Contains(string(b), "rightTypeLabel") || strings.Contains(string(b), "sourceLabel") {
+		t.Fatalf("хоосон label omitempty биш: %s", b)
+	}
+}
