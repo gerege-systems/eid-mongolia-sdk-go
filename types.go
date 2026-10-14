@@ -99,6 +99,42 @@ type NotificationSession struct {
 	RPChallenge string `json:"rpChallenge"`
 	// ACSP — auth session-д validator-т өгөх контекст; sign session-д nil.
 	ACSP *ACSPContext `json:"acsp,omitempty"`
+	// Sign — sign session-ий хүсэлтэд илгээсэн утгууд (ValidateSign-д Digest, HashAlgorithm, SignatureAlgorithm);
+	// auth / certificate-choice session-д nil.
+	Sign *SignContext `json:"sign,omitempty"`
+	// ExpiresAt — session дуусах мөч: CA-ийн start хариуны expiresAt; хуучин CA-д sign / certificate-choice-д
+	// тооцоолсон (SessionExpiry), auth-д тэг.
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// SignContext — sign session-ий хүсэлтэд илгээсэн утгууд ЯГ ХЭВЭЭР: ValidateSign (Digest, HashAlgorithm,
+// SignatureAlgorithm) ба device link (BuildDeviceLink: Digest, RelyingPartyName, Interactions, InitialCallbackURL)-д.
+// RP session-тэй хамт серверт хадгална (JSON-оор хадгалж болно).
+type SignContext struct {
+	// Digest — илгээсэн digest (стандарт base64, ЯГ ХЭВЭЭР — device link-ийн authCode-д ордог).
+	Digest             string             `json:"digest"`
+	HashAlgorithm      HashAlgorithm      `json:"hashAlgorithm"`
+	SignatureAlgorithm SignatureAlgorithm `json:"signatureAlgorithm"`
+	RelyingPartyName   string             `json:"relyingPartyName"`
+	// Interactions — илгээсэн base64 МӨР.
+	Interactions       string `json:"interactions"`
+	InitialCallbackURL string `json:"initialCallbackUrl"`
+}
+
+// DefaultSignSessionTTL — CA-ийн SIGNATURE ба CERTIFICATE_CHOICE session-ий анхдагч хүчинтэй хугацаа
+// (EID_SIGN_SESSION_TTL_SECONDS = 600). CA-ийн админ «Системийн тохиргоо»-нд 60–1800 секундэд өөрчилж болно. CA
+// 2026-10-14-өөс session start хариунд expiresAt буцаадаг — SDK түүнийг ашиглана; хуучин CA (талбаргүй) үед л
+// Config.SignSessionTTL-ээр тооцоолно.
+const DefaultSignSessionTTL = 600 * time.Second
+
+// SessionExpiry — session start-ын хариунаас тооцоолох дуусах мөч: хүсэлт илгээхээс ӨМНӨХ цаг + ttl. CA session-ий
+// ExpiresAt-ийг өөрийн хүлээн авсан мөчөөс тооцдог тул энэ утга CA-ийнхаас ХЭЗЭЭ Ч хойно биш (консерватив). Энэ нь
+// RP UI-ийн тоолуур/«дахин эхлүүлэх» шийдвэрт л — эцсийн үнэн нь GET /session (TIMEOUT).
+func SessionExpiry(sentAt time.Time, ttl time.Duration) time.Time {
+	if ttl <= 0 {
+		ttl = DefaultSignSessionTTL
+	}
+	return sentAt.Add(ttl)
 }
 
 // DeviceLinkSession — device-link (QR/Web2App/App2App) session. SessionToken, SessionSecret-ийг ЗӨВХӨН
@@ -115,6 +151,15 @@ type DeviceLinkSession struct {
 	ACSP        *ACSPContext `json:"acsp,omitempty"`
 	// ReceivedAt — RP backend хариуг хүлээн авсан мөч (QR-ийн elapsedSeconds-ийн эх).
 	ReceivedAt time.Time `json:"receivedAt"`
+	// SessionType — auth | sign | cert (LinkInput-д). Хуучин хадгалсан session-д "" = auth.
+	SessionType DeviceLinkSessionType `json:"sessionType,omitempty"`
+	// Sign — sign session-д (LinkInput, ValidateSign); бусад үед nil.
+	Sign *SignContext `json:"sign,omitempty"`
+	// RelyingPartyName — certificate-choice session-ий хүсэлтэд илгээсэн нэр (cert холбоосын authCode-д).
+	RelyingPartyName string `json:"relyingPartyName,omitempty"`
+	// ExpiresAt — session дуусах мөч: CA-ийн start хариуны expiresAt; хуучин CA-д sign / certificate-choice-д
+	// тооцоолсон (SessionExpiry), auth-д тэг.
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // SignatureAlgorithmParameters — rsassa-pss хариуны параметр (signature.signatureAlgorithmParameters).

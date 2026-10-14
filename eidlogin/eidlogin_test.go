@@ -234,7 +234,8 @@ func TestQRFlow(t *testing.T) {
 		t.Fatalf("ok: %v", ok.body)
 	}
 	if len(e.ids) != 1 || e.ids[0].CivilID != "111949212017" || e.ids[0].FlowType != eid.FlowQR || e.ids[0].GivenName != "BAT" ||
-		e.ids[0].Person == nil || e.ids[0].Person.FirstName != "Бат" {
+		e.ids[0].Person == nil || e.ids[0].Person.FirstName != "Бат" ||
+		e.ids[0].SessionID != sid || e.ids[0].DocumentNumber == "" || e.ids[0].Certificate == nil {
 		t.Fatalf("identity: %+v", e.ids)
 	}
 	if sc := strings.Join(ok.header.Values("Set-Cookie"), "\n"); !strings.Contains(sc, "app_session=s1") || !strings.Contains(sc, "eid_login=;") {
@@ -292,6 +293,46 @@ func TestRateLimitHookIP(t *testing.T) {
 		t.Fatalf("%d", r.code)
 	}
 	if len(keys) != 1 || keys[0] != "start:203.0.113.5" {
+		t.Fatalf("keys %v", keys)
+	}
+}
+
+func TestForwardedClientIP(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "10.0.0.1:5555"
+	r.Header.Add("X-Forwarded-For", "198.51.100.7, 10.0.0.3")
+	r.Header.Add("X-Forwarded-For", "10.0.0.2")
+	r.Header.Set("X-Real-IP", "10.0.0.9")
+	for hops, want := range map[int]string{1: "10.0.0.2", 2: "10.0.0.3", 3: "198.51.100.7", 4: ""} {
+		if got := ForwardedClientIP(hops)(r); got != want {
+			t.Errorf("hops=%d: %q, хүлээсэн %q", hops, got, want)
+		}
+	}
+	r.Header.Del("X-Forwarded-For")
+	if got := ForwardedClientIP(1)(r); got != "10.0.0.9" {
+		t.Errorf("X-Real-IP: %q", got)
+	}
+	if got := RemoteAddrIP(r); got != "10.0.0.1" {
+		t.Errorf("RemoteAddrIP: %q", got)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("hops=0 panic хийх ёстой")
+		}
+	}()
+	ForwardedClientIP(0)
+}
+
+func TestForwardedClientIPRateLimit(t *testing.T) {
+	var keys []string
+	e := setup(t, func(c *Config) {
+		c.RateLimit = func(_ context.Context, k string) bool { keys = append(keys, k); return true }
+		c.ClientIP = ForwardedClientIP(1)
+	})
+	if r := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, map[string]string{"X-Forwarded-For": "1.2.3.4, 198.51.100.7"}); r.code != 200 {
+		t.Fatalf("%d", r.code)
+	}
+	if len(keys) != 1 || keys[0] != "start:198.51.100.7" {
 		t.Fatalf("keys %v", keys)
 	}
 }

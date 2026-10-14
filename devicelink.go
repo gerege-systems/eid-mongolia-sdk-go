@@ -176,6 +176,28 @@ func BuildDeviceLink(p DeviceLinkInput) (string, error) {
 	return unprotected + "&authCode=" + base64.RawURLEncoding.EncodeToString(m.Sum(nil)), nil
 }
 
+// LinkInput — session start-ын хариу + хүсэлтийн утгуудаас BuildDeviceLink / TickQRDeviceLink-ийн оролт (auth: ACSP,
+// sign: Sign, cert: RelyingPartyName). lang — ISO 639-2 (mon, eng). Web2App/App2App-д session нь CallbackURL-тай
+// эхэлсэн байх ёстой (эс бөгөөс BuildDeviceLink *DeviceLinkError).
+func (s *DeviceLinkSession) LinkInput(t DeviceLinkType, lang string) DeviceLinkInput {
+	in := DeviceLinkInput{
+		DeviceLinkBase: s.DeviceLinkBase, DeviceLinkType: t, SessionToken: s.SessionToken, SessionSecret: s.SessionSecret,
+		SessionType: s.SessionType, Lang: lang, ReceivedAt: s.ReceivedAt,
+	}
+	switch {
+	case s.SessionType == SessionSign && s.Sign != nil:
+		in.Digest, in.RelyingPartyName = s.Sign.Digest, s.Sign.RelyingPartyName
+		in.Interactions, in.InitialCallbackURL = s.Sign.Interactions, s.Sign.InitialCallbackURL
+	case s.SessionType == SessionCert:
+		in.RelyingPartyName = s.RelyingPartyName
+	case s.ACSP != nil: // auth (хуучин хадгалсан session-д SessionType "")
+		in.SessionType = SessionAuth
+		in.RPChallenge, in.RelyingPartyName = s.ACSP.RPChallenge, s.ACSP.RelyingPartyName
+		in.Interactions, in.InitialCallbackURL = s.ACSP.Interactions, s.ACSP.InitialCallbackURL
+	}
+	return in
+}
+
 // TickQRDeviceLink — SSE/WebSocket-д: QR холбоосыг шууд нэг удаа, дараа нь interval (≤ 0 бол 1s) тутам onLink-ээр
 // гаргана; ctx цуцлагдах хүртэл блоклоно (session дуусах / клиент салахад ctx-ийг цуцал). Оролт буруу бол эхний
 // tick-д шууд *DeviceLinkError буцаана. HTTP poll ашиглавал хэрэггүй — хүсэлт бүрд BuildDeviceLink дууд.

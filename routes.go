@@ -19,6 +19,11 @@ var (
 	routeAuthDeviceLinkEtsi       = rpRoute{"POST", "/authentication/device-link/etsi/{semanticsIdentifier}"}
 	routeSignNotificationEtsi     = rpRoute{"POST", "/signature/notification/etsi/{semanticsIdentifier}"}
 	routeSignNotificationDocument = rpRoute{"POST", "/signature/notification/document/{documentNumber}"}
+	routeSignNotificationLinked   = rpRoute{"POST", "/signature/notification/linked/{documentNumber}"}
+	routeSignDeviceLinkEtsi       = rpRoute{"POST", "/signature/device-link/etsi/{semanticsIdentifier}"}
+	routeSignDeviceLinkDocument   = rpRoute{"POST", "/signature/device-link/document/{documentNumber}"}
+	routeCertChoiceDeviceLink     = rpRoute{"POST", "/signature/certificate-choice/device-link/anonymous"}
+	routeCertChoiceEtsi           = rpRoute{"POST", "/signature/certificate-choice/notification/etsi/{semanticsIdentifier}"}
 	routePDFPrepare               = rpRoute{"POST", "/pdf/sign/prepare"}
 	routePDFDocument              = rpRoute{"GET", "/pdf/sign/{sessionID}/document"}
 	routeOrgRepresentations       = rpRoute{"GET", "/organization/representations/etsi/{personEtsi}"}
@@ -40,7 +45,9 @@ var (
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
 var rpRoutes = []rpRoute{
 	routeAuthNotificationEtsi, routeAuthNotificationDocument, routeAuthDeviceLinkAnonymous, routeAuthDeviceLinkEtsi,
-	routeSignNotificationEtsi, routeSignNotificationDocument,
+	routeSignNotificationEtsi, routeSignNotificationDocument, routeSignNotificationLinked,
+	routeSignDeviceLinkEtsi, routeSignDeviceLinkDocument,
+	routeCertChoiceDeviceLink, routeCertChoiceEtsi,
 	routePDFPrepare, routePDFDocument,
 	routeOrgRepresentations,
 	routeSession,
