@@ -532,7 +532,8 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
    `errors.Is(err, eid.ErrOCSPNoAnswer)`) буцаана; `CheckRevocationWith` үүнийг unknown гэж горимоор шийднэ — soft →
    `unchecked`, nil (шалтгааныг `Observe`-оос); hard → `*ValidationError` (`Cause` = `*OCSPError`). Олгогчийн гаргасан,
    хариунд шигтгэсэн `id-kp-OCSPSigning` responder (RFC 6960 §4.2.2.2, ocsp.eidmongolia.mn-ийн «eID OCSP Responder»)-ийг
-   хүлээн авна (бодит хариугаар тест: `testdata/ocsp-eid-delegated.der`).
+   хүлээн авна (бодит хариугаар тест: `testdata/ocsp-eid-delegated.der`); олгогч өөрөө зурж, өөрийн гэрчилгээг
+   шигтгэсэн хариуг ч (v0.6.0-аас; RFC 6960 §4.2.2.2) issuer-ийн түлхүүрээр шалгаж хүлээн авна.
 6. **Issuer ба зориулалт (v0.6.0-аас анхдагч):** `AllowedIssuerSKIs` хоосон бол `[]string{eid.CitizenIssuingCASKI}`
    (TrustAnchorsPEM тохируулсан үед) — зөвхөн иргэний Issuing CA (04)-ийн гэрчилгээ (ижил root-ийн доорх байгууллагын
    05 г.м. хаагдана; унтраах: `AllowAnyIssuer: true`); зориулалт анхдагчаар шалгагдана — auth → KU digitalSignature +

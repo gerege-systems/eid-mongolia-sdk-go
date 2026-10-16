@@ -305,13 +305,28 @@ func ocspParseKind(err error) OCSPErrorKind {
 	return OCSPParse
 }
 
+// sameCertKey — a, b нь ижил гэрчилгээ (байт-ижил) эсвэл ижил subject + түлхүүр (дахин олгосон ижил CA).
+func sameCertKey(a, b *x509.Certificate) bool {
+	return bytes.Equal(a.Raw, b.Raw) ||
+		(bytes.Equal(a.RawSubject, b.RawSubject) && bytes.Equal(a.RawSubjectPublicKeyInfo, b.RawSubjectPublicKeyInfo))
+}
+
 func (o *ocspChecker) verify(der []byte, leaf, issuer *x509.Certificate) (*ocsp.Response, *OCSPError) {
 	resp, err := ocsp.ParseResponseForCert(der, leaf, issuer)
+	if err != nil {
+		// RFC 6960 §4.2.2.2: олгогч өөрөө зурсан хариу хүчинтэй. Хариунд олгогчийн ӨӨРИЙН гэрчилгээг шигтгэсэн бол
+		// x/crypto/ocsp шигтгэсэн cert-ийг issuer-ээр зурагдсан эсэхийг шаардаж «bad signature» гэж татгалздаг —
+		// шигтгэсэн cert нь issuer мөн (raw эсвэл subject+SPKI) бол хариуг issuer-ийн түлхүүрээр шалгана.
+		if alt, aerr := ocsp.ParseResponseForCert(der, leaf, nil); aerr == nil && alt.Certificate != nil &&
+			sameCertKey(alt.Certificate, issuer) && alt.CheckSignatureFrom(issuer) == nil {
+			resp, err = alt, nil
+		}
+	}
 	if err != nil {
 		return nil, &OCSPError{Kind: ocspParseKind(err), Err: err}
 	}
 	now := o.now()
-	if rc := resp.Certificate; rc != nil && !bytes.Equal(rc.Raw, issuer.Raw) {
+	if rc := resp.Certificate; rc != nil && !sameCertKey(rc, issuer) {
 		ekuOK := false
 		for _, u := range rc.ExtKeyUsage {
 			ekuOK = ekuOK || u == x509.ExtKeyUsageOCSPSigning

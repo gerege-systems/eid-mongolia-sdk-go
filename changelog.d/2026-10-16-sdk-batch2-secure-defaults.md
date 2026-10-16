@@ -33,6 +33,12 @@
   timestamp-аар өөрөө дахин оролдоно: `CompleteOptions.LTVRetries` (`*int`; nil = `DefaultLTVRetries` 2, нийт 3, хүлээлт
   ~1 с, ~3 с + 0–25% jitter; 0 — унтраах; 0–10-аас гадуур → `REQUEST_INVALID`); бүгд унавал `LTV_UNAVAILABLE`; ctx
   цуцлалт хүлээлтийг тасална. PIN дахин асуухгүй. Портал (eidmongolia) өөрийн retry-г (!161) устгахаар төлөвлөж байна.
+- **`NewOCSPChecker`: олгогч өөрөө зурж, хариундаа ӨӨРИЙН гэрчилгээг шигтгэсэн OCSP хариу** (RFC 6960 §4.2.2.2-оор
+  хүчинтэй) `x/crypto/ocsp`-д «bad OCSP signature» гэж татгалзагддаг байв (шигтгэсэн cert-ийг issuer-ээр зурагдсан байхыг
+  шаарддаг). Шигтгэсэн cert нь issuer мөн (байт-ижил эсвэл subject+SPKI — дахин олгосон хуулбар) бол хариуг issuer-ийн
+  түлхүүрээр шалгана; delegated responder (EKU OCSPSigning) зам хэвээр, өөр түлхүүрээр зурсан бол signature алдаа.
+  Хаана: `ocsp.go`; тест `TestOCSPIssuerSignedEmbeddedIssuer` (засваргүйгээр унадгийг шалгасан). Портал түр
+  `ocsp_issuer_signed.go` transport-оор тойрч байгаа — **v0.6.0-аас тойрох шаардлагагүй**.
 - Contract тест: discovery-ийн `pdfSigning.registerErrorCodes` == `PDFRegisterErrorCodes` (олонлогоор); CA-д талбар
   гарахаас өмнө skip + WARN.
 - `PDF.RegisterSignature`-ийн 80 с (`DefaultPDFTimeout`) хэвээр; TS 0.19.0 ижил болсон (өмнө TS 15 с).
