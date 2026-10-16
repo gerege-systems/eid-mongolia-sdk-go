@@ -460,6 +460,7 @@ st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CS
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
 err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
+// 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
 
 // токеноор нэвтрэх (AUTH эрх)
 ch, err := c.Token.AuthChallenge(ctx)
@@ -468,6 +469,14 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 
 // токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
 ```
+
+**Сунгалт scope-ийг хадгална** (CA 2026-10-16, discovery `tokenCertificate.scopeLockedOnRenewal: true` —
+`c.Token.CertificateInfo(ctx)`): ижил `TokenSerial` дээр иргэний ACTIVE бүртгэл байвал олголт = сунгалт; байгууллагын
+токен зөвхөн тэр байгууллагаар (`OnBehalfOf` ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол `IssueCertificate`
+(эсвэл батлалтын дараа `CertificateResult`) 409 `eid.CodeTokenScopeChange` (`TOKEN_SCOPE_CHANGE`), session-ий
+`TokenCertificate.ErrorCode` мөн ийм — override байхгүй. Scope солих = иргэн eID апп-аас токеноо цуцлаад
+(`/v3/mobile/tokens/{tokenSerial}/revoke`) шинээр олгуулна; хэрэглэгчид: «Токены төрлийг (хувийн/байгууллага)
+солихын тулд eID апп-аас токеныг цуцлаад шинээр олгуулна уу».
 
 `/token/auth/*` нь `/.well-known/eid`-ийн `endpoints.token.auth_challenge` / `auth_verify`-д жагсаагдсан (AUTH эрх) —
 гэрээний тест бусад route-ийн адил шалгана.
