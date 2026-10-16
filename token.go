@@ -23,7 +23,8 @@ import (
 //   - токеноор нэвтрэлт (docs/TOKEN_AUTH.md, AUTH эрх): AuthChallenge → токен TokenAuthDigest-ийг CKM_ECDSA-аар зурна
 //     (түүхий r||s) → AuthVerify.
 //
-// Алдаа: {"error","code"} — *APIError.Code (ж: TOKEN_LIMIT_REACHED → TokenLimitOf, CHALLENGE_EXPIRED, CERT_INVALID);
+// Алдаа: {"error","code"} — *APIError.Code (ж: TOKEN_LIMIT_REACHED → TokenLimitOf, TOKEN_IN_USE, TOKEN_SCOPE_CHANGE,
+// CHALLENGE_EXPIRED, CERT_INVALID);
 // түр алдаа (RATE_LIMITED, STATE_UNAVAILABLE, ISSUANCE_PENDING) — APIError.Retryable + RetryAfter.
 type TokenService struct {
 	h     *httpDoer
@@ -127,6 +128,11 @@ type tokenCertRequest struct {
 
 // IssueCertificate — POST /token/certificate: токены AUTH + SIGN гэрчилгээ олголт эхлүүлнэ (иргэн утсаараа батална).
 // CA-ийн буцаасан CSR hash-ууд илгээсэнтэй таарахгүй бол *ValidationError.
+//
+// Сунгалт: ижил TokenSerial дээр энэ иргэний ACTIVE бүртгэл байвал олголт = сунгалт, scope-ийг хадгална — байгууллагын
+// токен зөвхөн тэр байгууллагаар (OnBehalfOf ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол 409
+// CodeTokenScopeChange (override үгүй); scope солих = иргэн eID апп-аас токеноо цуцлаад шинээр олгуулна. Бусад 409:
+// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse.
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
 	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
 		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
@@ -166,7 +172,8 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 const tokenResultTimeout = 30 * time.Second
 
 // CertificateResult — GET /token/certificate/{sessionID}: олгосон AUTH + SIGN гэрчилгээ + гинж. Токенд бичихээс өмнө
-// VerifyTokenCertificates-аар CSR-ийн түлхүүртэй тулга.
+// VerifyTokenCertificates-аар CSR-ийн түлхүүртэй тулга. Эхлэл ба батлалтын хооронд нөхцөл өөрчлөгдсөн бол 409
+// (CodeTokenLimitReached / CodeTokenInUse / CodeTokenScopeChange) — гэрчилгээ гараагүй.
 func (t *TokenService) CertificateResult(ctx context.Context, sessionID string) (*TokenCertResult, error) {
 	var r TokenCertResult
 	path := routeTokenCertificateResult.expand(sessionID)
@@ -295,8 +302,52 @@ const (
 	TokenKindOrganization = "ORGANIZATION"
 )
 
-// CodeTokenLimitReached — 409: иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
-const CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
+// Токены олголтын 409 кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
+const (
+	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
+	CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
+	// CodeTokenInUse — TokenSerial өөр иргэнд хүчинтэй гэрчилгээтэй бүртгэлтэй.
+	CodeTokenInUse = "TOKEN_IN_USE"
+	// CodeTokenScopeChange — сунгалт scope-ийг солих гэсэн (хувийн ↔ байгууллага, эсвэл өөр OnBehalfOf). Override үгүй:
+	// иргэн eID апп-аас токеноо цуцалж (/v3/mobile/tokens/{tokenSerial}/revoke) байж шинэ scope-оор олгуулна.
+	CodeTokenScopeChange = "TOKEN_SCOPE_CHANGE"
+)
+
+// TokenCertInfo — discovery (/.well-known/eid)-ийн tokenCertificate блок.
+type TokenCertInfo struct {
+	Enabled bool `json:"enabled"`
+	// Issue — POST олголтын бүтэн URL; Result — GET үр дүнгийн URL template ({sessionID}).
+	Issue  string `json:"issue"`
+	Result string `json:"result"`
+	// Permission — шаардлагатай RP эрх (TOKEN_ISSUE).
+	Permission       string `json:"permission"`
+	CertificateLevel string `json:"certificateLevel"`
+	KeyAlgorithm     string `json:"keyAlgorithm"`
+	// OnBehalfOf — "optional": хоосон = хувийн токен.
+	OnBehalfOf string `json:"onBehalfOf"`
+	// ScopeLockedOnRenewal — true: сунгалт (ижил TokenSerial дээр ACTIVE бүртгэлтэй) scope-ийг хадгална; өөр scope бол
+	// 409 CodeTokenScopeChange. Хуучин CA-д талбар алга → false.
+	ScopeLockedOnRenewal bool            `json:"scopeLockedOnRenewal"`
+	Raw                  json.RawMessage `json:"-"`
+}
+
+// CertificateInfo — discovery-ийн tokenCertificate блок. Блок байхгүй (хуучин CA) бол Enabled false.
+func (t *TokenService) CertificateInfo(ctx context.Context) (*TokenCertInfo, error) {
+	var d struct {
+		TokenCertificate json.RawMessage `json:"tokenCertificate"`
+	}
+	if err := t.h.getJSON(ctx, discoveryPath, 0, &d); err != nil {
+		return nil, err
+	}
+	var out TokenCertInfo
+	if len(d.TokenCertificate) > 0 && string(d.TokenCertificate) != "null" {
+		if err := decodeJSON(d.TokenCertificate, discoveryPath, &out); err != nil {
+			return nil, err
+		}
+		out.Raw = d.TokenCertificate
+	}
+	return &out, nil
+}
 
 // TokenLimit — 409 TOKEN_LIMIT_REACHED-ийн дэлгэрэнгүй: иргэн Kind төрлийн Limit хүчинтэй токентой (Limit 0 = тухайн
 // төрлийн олголт хаалттай). Organization — зөвхөн ORGANIZATION-д (NTRMN-…).

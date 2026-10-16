@@ -219,3 +219,21 @@ func TestContractShare(t *testing.T) {
 	}
 	t.Logf("share.enabled=%v maxFileBytes=%d maxRecipients=%d quota=%+v", s.Enabled, s.MaxFileBytes, s.MaxRecipients, s.Quota)
 }
+
+// TestContractTokenCertificate — discovery-ийн tokenCertificate блок TokenCertInfo-д задарч, issue/result нь
+// routes.go-тэй таарна; scopeLockedOnRenewal (CA !373) true.
+func TestContractTokenCertificate(t *testing.T) {
+	var d struct {
+		RPAPIBase        string         `json:"rp_api_base"`
+		TokenCertificate *TokenCertInfo `json:"tokenCertificate"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	i := d.TokenCertificate
+	if i == nil {
+		t.Fatal("discovery-д tokenCertificate блок алга")
+	}
+	if i.Issue != d.RPAPIBase+routeTokenCertificate.path || i.Result != d.RPAPIBase+routeTokenCertificateResult.path ||
+		!i.ScopeLockedOnRenewal {
+		t.Fatalf("tokenCertificate блок: %+v", i)
+	}
+}

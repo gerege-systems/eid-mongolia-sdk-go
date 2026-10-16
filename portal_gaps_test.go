@@ -306,6 +306,34 @@ func TestTokenCertificate(t *testing.T) {
 	if l, ok := TokenLimitOf(&APIError{Status: 409, Code: CodeTokenLimitReached, Body: `{"kind":"PERSONAL","limit":0}`}); !ok || l.Limit != 0 {
 		t.Fatal(l)
 	}
+
+	c, _ = server(t, jsonReply(409, `{"error":"Токены төрлийг солихын тулд …","code":"TOKEN_SCOPE_CHANGE"}`))
+	_, err = c.Token.IssueCertificate(ctx, TokenCertInput{SignerEtsi: "PNOMN-1", CSRAuth: csrA, CSRSign: csrS, TokenSerial: "x", OnBehalfOf: "NTRMN-1"})
+	var api *APIError
+	if !errors.As(err, &api) || api.Status != 409 || api.Code != CodeTokenScopeChange || api.Retryable() {
+		t.Fatal(err)
+	}
+	if _, ok := TokenLimitOf(err); ok {
+		t.Fatal("scope change ≠ limit")
+	}
+}
+
+func TestTokenCertificateInfo(t *testing.T) {
+	c, rc := server(t, jsonReply(200, `{"version":"v3","tokenCertificate":{"certificateLevel":"ADVANCED","enabled":true,
+		"issue":"https://rp.eidmongolia.mn/token/certificate","keyAlgorithm":"EC P-256 (ecdsa-with-SHA256)","onBehalfOf":"optional",
+		"permission":"TOKEN_ISSUE","result":"https://rp.eidmongolia.mn/token/certificate/{sessionID}","scopeLockedOnRenewal":true}}`))
+	i, err := c.Token.CertificateInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" || !i.Enabled || !i.ScopeLockedOnRenewal || i.Permission != "TOKEN_ISSUE" || i.OnBehalfOf != "optional" || len(i.Raw) == 0 {
+		t.Fatalf("%+v", i)
+	}
+	old, _ := server(t, jsonReply(200, `{"version":"v3"}`))
+	i, err = old.Token.CertificateInfo(context.Background())
+	if err != nil || i.Enabled || i.ScopeLockedOnRenewal {
+		t.Fatalf("%+v %v", i, err)
+	}
 }
 
 func errorCode(body string) string { _, c := errorBody([]byte(body)); return c }

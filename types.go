@@ -252,7 +252,9 @@ const (
 // TokenCertSessionBlock — GET /session/{id}-ийн tokenCertificate (docs TOKEN_CERT §Төлөв).
 type TokenCertSessionBlock struct {
 	Status string `json:"status"`
-	// ErrorCode — FAILED үед: endResult (USER_REFUSED, TIMEOUT …) эсвэл CSR_DIGEST_MISMATCH, TOKEN_LIMIT_REACHED г.м.
+	// ErrorCode — FAILED үед: endResult (USER_REFUSED, TIMEOUT …) эсвэл CSR_DIGEST_MISMATCH, SIGNER_CERT_CHANGED,
+	// SIGNATURE_INVALID, SESSION_MISMATCH, REPRESENTATION_REVOKED, KYC_INCOMPLETE, TOKEN_LIMIT_REACHED, TOKEN_IN_USE,
+	// TOKEN_SCOPE_CHANGE (CodeTokenScopeChange), ISSUANCE_FAILED, REGISTRY_FAILED.
 	ErrorCode     string `json:"errorCode,omitempty"`
 	AuthSerialHex string `json:"authSerialHex,omitempty"`
 	SignSerialHex string `json:"signSerialHex,omitempty"`
