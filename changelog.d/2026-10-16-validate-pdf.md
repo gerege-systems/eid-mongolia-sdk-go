@@ -15,3 +15,6 @@
   tampered, modified-after-signing, untrusted, QUALIFIED/ADVANCED, онлайн good/revoked/revoked-after/CRL/хариугүй, хуучин
   stamp, гарын үсэггүй, PDF биш); TS SDK 0.20.0 ижил багцыг deep-equal давтана; differential corpus (Go тестийн 121 PDF)
   дээр TS extract 163/163, revisions 161/161, тайлан 121/121 ижил.
+- **DN формат бэхэлсэн:** тайлангийн `certificate.subject/issuer` нь Go ≤1.26-ийн `pkix.Name.String()` хэлбэр (CA прод
+  golang:1.26.9) — Go 1.27 танихгүй атрибутыг «#hex»-ийн оронд бичвэрээр гаргадаг болсон тул toolchain-аар өөрчлөгдөхгүй
+  (`internal/validate/dn.go`; Go 1.25 ба 1.27-д тест ногоон).
