@@ -120,7 +120,7 @@ func NewClient(cfg Config) (*Client, error) {
 		PDF:          &PDFService{h: h, timeout: pt},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
-		Token:        &TokenService{h: h, creds: cfg.Credentials},
+		Token:        &TokenService{h: h, creds: cfg.Credentials, v: v},
 		Session:      &SessionService{h: h},
 		Validator:    v,
 		rpName:       cfg.Credentials.RPName,

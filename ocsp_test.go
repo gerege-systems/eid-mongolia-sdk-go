@@ -299,3 +299,60 @@ func TestOCSPRealDelegatedResponder(t *testing.T) {
 		t.Fatalf("өөр олгогч: %s %v", s, err)
 	}
 }
+
+// TestOCSPIssuerSignedEmbeddedIssuer — завсрын олгогч (04 шиг: root-оор зурагдсан) өөрөө зурж, хариундаа ӨӨРИЙН
+// гэрчилгээг шигтгэсэн OCSP хариу (RFC 6960 §4.2.2.2-оор хүчинтэй). x/crypto/ocsp үүнийг «bad signature on embedded
+// certificate» гэж татгалздаг байв. Дахин олгосон (ижил subject+SPKI, өөр байт) хуулбарыг шигтгэсэн ч мөн; өөр түлхүүрээр
+// зурсан бол → signature алдаа; delegated responder зам хэвээр (TestOCSPChecker).
+func TestOCSPIssuerSignedEmbeddedIssuer(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	rootKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	rootT := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Root"}, NotBefore: now.Add(-time.Hour),
+		NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	root := ocspCert(t, rootT, rootT, &rootKey.PublicKey, rootKey)
+	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	caT := &x509.Certificate{SerialNumber: big.NewInt(4), Subject: pkix.Name{CommonName: "Issuing CA"}, NotBefore: now.Add(-time.Hour),
+		NotAfter: now.Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
+	ca := ocspCert(t, caT, root, &caKey.PublicKey, rootKey)
+	caT.SerialNumber = big.NewInt(5) // дахин олгосон хуулбар: ижил subject + түлхүүр, өөр байт
+	caCopy := ocspCert(t, caT, root, &caKey.PublicKey, rootKey)
+	otherKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	var embed *x509.Certificate
+	var signKey crypto.Signer = caKey
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		req, err := ocsp.ParseRequest(body)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		responder := embed
+		if responder == nil {
+			responder = ca
+		}
+		der, err := ocsp.CreateResponse(ca, responder, ocsp.Response{Status: ocsp.Good, SerialNumber: req.SerialNumber,
+			ThisUpdate: time.Now(), NextUpdate: time.Now().Add(time.Hour), Certificate: embed}, signKey)
+		if err != nil {
+			t.Error(err)
+		}
+		_, _ = w.Write(der)
+	}))
+	t.Cleanup(srv.Close)
+	lk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	leaf := ocspCert(t, &x509.Certificate{SerialNumber: big.NewInt(77), Subject: pkix.Name{CommonName: "BAT"}, NotBefore: now.Add(-time.Hour),
+		NotAfter: now.Add(time.Hour), OCSPServer: []string{srv.URL}}, ca, &lk.PublicKey, caKey)
+
+	for name, e := range map[string]*x509.Certificate{"issuer шигтгэсэн": ca, "дахин олгосон хуулбар": caCopy, "шигтгээгүй": nil} {
+		embed, signKey = e, caKey
+		if s, err := NewOCSPChecker(OCSPOptions{CacheTTL: -1})(ctx, leaf, ca); err != nil || s != RevocationGood {
+			t.Fatalf("%s: %s %v", name, s, err)
+		}
+	}
+	// Олгогчийг шигтгэсэн ч өөр түлхүүрээр зурсан → signature.
+	embed, signKey = ca, otherKey
+	if s, err := NewOCSPChecker(OCSPOptions{CacheTTL: -1})(ctx, leaf, ca); s != RevocationUnknown || ocspKind(err) != OCSPSignature {
+		t.Fatalf("өөр түлхүүр: %s %v", s, err)
+	}
+}

@@ -237,3 +237,33 @@ func TestContractTokenCertificate(t *testing.T) {
 		t.Fatalf("tokenCertificate блок: %+v", i)
 	}
 }
+
+// TestContractPDFRegisterErrorCodes — discovery-ийн pdfSigning.registerErrorCodes == PDFRegisterErrorCodes (олонлогоор).
+// CA-д талбар гарахаас өмнө skip + WARN (гарсны дараа тулгалт заавал). TS SDK-ийн contract тесттэй ижил.
+func TestContractPDFRegisterErrorCodes(t *testing.T) {
+	var d struct {
+		PDFSigning struct {
+			RegisterErrorCodes *[]string `json:"registerErrorCodes"`
+		} `json:"pdfSigning"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	if d.PDFSigning.RegisterErrorCodes == nil {
+		warn("pdfSigning.registerErrorCodes discovery-д алга", []string{"CA-д нэмэгдсэний дараа тулгалт идэвхжинэ"})
+		t.Skip("pdfSigning.registerErrorCodes алга")
+	}
+	set := func(xs []string) string {
+		m := map[string]bool{}
+		for _, x := range xs {
+			m[x] = true
+		}
+		var out []string
+		for x := range m {
+			out = append(out, x)
+		}
+		sort.Strings(out)
+		return strings.Join(out, ",")
+	}
+	if got, want := set(*d.PDFSigning.RegisterErrorCodes), set(PDFRegisterErrorCodes[:]); got != want {
+		t.Fatalf("CA ↔ SDK кодын олонлог зөрсөн:\nCA  %s\nSDK %s", got, want)
+	}
+}

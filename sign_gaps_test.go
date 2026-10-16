@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -193,9 +194,10 @@ func TestValidateCertificateChoice(t *testing.T) {
 	strict, _ := NewValidator(TrustConfig{})
 	_, err = strict.ValidateCertificateChoice(certChoiceResult(p.rsaLeaf), "cc-1")
 	wantInvalid(t, err, "trust anchor")
-	// CheckKeyUsage: гарын үсгийн гэрчилгээ (contentCommitment) шаардана.
-	ku := validatorWith(t, func(c *TrustConfig) { c.CheckKeyUsage = true })
-	_, err = ku.ValidateCertificateChoice(certChoiceResult(p.rsaLeaf), "cc-1")
+	// Зориулалт (v0.6.0-аас анхдагч): гарын үсгийн гэрчилгээ (contentCommitment) шаардана — нэвтрэлтийн профайл унана.
+	authOnly := purposeLeaf(t, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection})
+	_, err = V.ValidateCertificateChoice(certChoiceResult(authOnly), "cc-1")
 	wantInvalid(t, err, "contentCommitment")
 }
 

@@ -11,7 +11,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,7 +33,6 @@ import (
 var (
 	oidNationalPolicy = asn1.ObjectIdentifier{2, 16, 496, 1, 101, 1, 2, 8}
 	oidSDA            = asn1.ObjectIdentifier{2, 5, 29, 9}
-	oidQCStatements   = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 3}
 )
 
 type chainPKI struct {
@@ -94,8 +95,7 @@ func citizenLeaf(t *testing.T, issuer *testCA, sign bool, key crypto.Signer) *te
 	if sign {
 		tmpl.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageContentCommitment
 		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageEmailProtection}
-		qc, _ := asn1.Marshal([]asn1.ObjectIdentifier{{0, 4, 0, 1862, 1, 1}}) // бүтэц нь хамаагүй — non-critical
-		tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, pkix.Extension{Id: oidQCStatements, Value: qc})
+		tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, qcStatementsExt(false)) // QcCompliance → QUALIFIED
 	} else {
 		tmpl.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}
@@ -109,7 +109,7 @@ func chainValidator(t *testing.T, anchor *testCA, inter ...*testCA) *Validator {
 	for _, c := range inter {
 		pems = append(pems, c.pem)
 	}
-	v, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{anchor.pem}, IntermediatesPEM: pems})
+	v, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{anchor.pem}, IntermediatesPEM: pems, AllowAnyIssuer: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,30 +125,25 @@ func signResult(t *testing.T, leaf *testCA) (*SessionResult, string) {
 		CertificateDERB64: base64.StdEncoding.EncodeToString(leaf.cert.Raw)}, base64.StdEncoding.EncodeToString(digest[:])
 }
 
-// Бодит профайлтай гинж (01 → 02 → 03 → 04 → иргэн) x509.Verify-аар амжина: auth ба sign, CheckKeyUsage-тэй ч.
+// Бодит профайлтай гинж (01 → 02 → 03 → 04 → иргэн) x509.Verify-аар амжина: auth ба sign (v0.6.0: зориулалт анхдагчаар).
 func TestChain_RealProfile(t *testing.T) {
 	p := realProfilePKI(t)
 	v := chainValidator(t, p.root, p.mddc, p.gerege, p.issuing)
-	strict, err := NewValidator(TrustConfig{
-		TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.mddc.pem, p.gerege.pem, p.issuing.pem},
-		CheckKeyUsage: true,
-	})
+	inter := []string{p.mddc.pem, p.gerege.pem, p.issuing.pem}
+	loose, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: inter, AllowAnyIssuer: true,
+		SkipKeyUsageCheck: true, RequiredLevel: LevelAdvanced})
 	if err != nil {
 		t.Fatal(err)
 	}
 	auth := citizenLeaf(t, p.issuing, false, newKey(t))
 	r, acsp := signedAuth(t, "QR", authOpts{leaf: auth})
-	for _, vv := range []*Validator{v, strict} {
-		if _, err := vv.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil {
-			t.Fatal(err)
-		}
+	if id, err := v.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil || id.CertificateLevel != "QUALIFIED" {
+		t.Fatal(id, err)
 	}
 	sign := citizenLeaf(t, p.issuing, true, newKey(t))
 	sr, d := signResult(t, sign)
-	for _, vv := range []*Validator{v, strict} {
-		if _, err := vv.ValidateSign(sr, d, SHA256); err != nil {
-			t.Fatal(err)
-		}
+	if vs, err := v.ValidateSign(sr, d, SHA256); err != nil || vs.CertificateLevel != "QUALIFIED" {
+		t.Fatal(vs, err)
 	}
 	// Токены EC P-256 гэрчилгээ (P-CITIZEN-*-TOKEN) — ижил гинж.
 	ek, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -160,14 +155,138 @@ func TestChain_RealProfile(t *testing.T) {
 	// Гарын үсгийн гэрчилгээ (EKU emailProtection) нэвтрэлтэд — clientAuth алга → татгалзана.
 	r, acsp = signedAuth(t, "QR", authOpts{leaf: sign})
 	_, err = v.ValidateAuth(r, acsp, ValidateAuthOptions{})
-	wantInvalid(t, err, "ExtKeyUsage")
-	// Нэвтрэлтийн гэрчилгээ (clientAuth + emailProtection) нь sign-д EKU-гаар тэнцэнэ — KU-г CheckKeyUsage шалгана.
+	wantInvalid(t, err, "clientAuth")
+	// Нэвтрэлтийн (PIN1) гэрчилгээ (clientAuth + emailProtection) нь sign-д EKU-гаар тэнцэнэ — v0.6.0-аас KU
+	// (nonRepudiation) анхдагчаар шалгагдаж унана (v0.5.x-д CheckKeyUsage=false анхдагч тул тэнцдэг байв).
 	ar, ad := signResult(t, auth)
-	if _, err := v.ValidateSign(ar, ad, SHA256); err != nil {
+	ar.CertificateLevel = "ADVANCED"
+	_, err = v.ValidateSign(ar, ad, SHA256)
+	wantInvalid(t, err, "nonRepudiation")
+	if _, err := loose.ValidateSign(ar, ad, SHA256); err != nil { // SkipKeyUsageCheck — хуучин зан (зөвлөхгүй)
 		t.Fatal(err)
 	}
-	_, err = strict.ValidateSign(ar, ad, SHA256)
-	wantInvalid(t, err, "nonRepudiation")
+	// Анхдагч issuer allowlist (CitizenIssuingCASKI) — тестийн 04 биш тул татгалзана; өөрийн SKI-гаар амжина.
+	def, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: inter})
+	r, acsp = signedAuth(t, "QR", authOpts{leaf: auth})
+	_, err = def.ValidateAuth(r, acsp, ValidateAuthOptions{})
+	wantInvalid(t, err, "AllowedIssuerSKIs")
+	own, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: inter,
+		AllowedIssuerSKIs: []string{hex.EncodeToString(p.issuing.cert.SubjectKeyId)}})
+	if _, err := own.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Түвшин гэрчилгээнээс (v0.6.0): SIGN qcStatements → QUALIFIED/QSCD, qc-гүй → ADVANCED; AUTH KE → QUALIFIED, токен → ADVANCED.
+func TestCertificateLevelFromCertificate(t *testing.T) {
+	p := realProfilePKI(t)
+	v := chainValidator(t, p.root, p.mddc, p.gerege, p.issuing)
+	adv, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem},
+		IntermediatesPEM: []string{p.mddc.pem, p.gerege.pem, p.issuing.pem}, AllowAnyIssuer: true, RequiredLevel: LevelAdvanced})
+	level := func(c *testCA, proto string) CertificateLevel {
+		t.Helper()
+		l, err := CertificateLevelOf(c.cert, proto)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+	sign := citizenLeaf(t, p.issuing, true, newKey(t))
+	if level(sign, "RAW_DIGEST_SIGNATURE") != LevelQualified {
+		t.Fatal("SIGN qc")
+	}
+	sr, d := signResult(t, sign)
+	sr.CertificateLevel = "QSCD" // QcSSCD алга — худал
+	_, err := v.ValidateSign(sr, d, SHA256)
+	wantInvalid(t, err, "гэрчилгээнээс (QUALIFIED) өндөр")
+	sr.CertificateLevel = "ADVANCED" // доогуур — хариуных
+	_, err = v.ValidateSign(sr, d, SHA256)
+	wantInvalid(t, err, "хүрэлцэхгүй")
+	if vs, err := adv.ValidateSign(sr, d, SHA256); err != nil || vs.CertificateLevel != "ADVANCED" {
+		t.Fatal(vs, err)
+	}
+	sr.CertificateLevel = "" // алга — гэрчилгээнийх
+	if vs, err := v.ValidateSign(sr, d, SHA256); err != nil || vs.CertificateLevel != "QUALIFIED" {
+		t.Fatal(vs, err)
+	}
+	// Токены SIGN (qcStatements үгүй) → ADVANCED: QUALIFIED гэж зарласан хариу татгалзагдана.
+	tmpl := leafTmpl()
+	tmpl.KeyUsage, tmpl.ExtKeyUsage, tmpl.ExtraExtensions = x509.KeyUsageDigitalSignature|x509.KeyUsageContentCommitment,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageEmailProtection}, nil
+	k := newKey(t)
+	tokSign := mkCert(t, tmpl, p.issuing, &k.PublicKey, k)
+	if level(tokSign, "RAW_DIGEST_SIGNATURE") != LevelAdvanced {
+		t.Fatal("token SIGN")
+	}
+	tr, td := signResult(t, tokSign)
+	_, err = v.ValidateSign(tr, td, SHA256)
+	wantInvalid(t, err, "QUALIFIED гэрчилгээнээс (ADVANCED) өндөр")
+	// QcSSCD → QSCD
+	tmpl = leafTmpl()
+	tmpl.ExtraExtensions = []pkix.Extension{qcStatementsExt(true)}
+	qk := newKey(t)
+	if level(mkCert(t, tmpl, p.issuing, &qk.PublicKey, qk), "RAW_DIGEST_SIGNATURE") != LevelQSCD {
+		t.Fatal("QSCD")
+	}
+	// Утасны AUTH (KU keyEncipherment) → QUALIFIED; токены AUTH (KU DS) → ADVANCED.
+	if level(citizenLeaf(t, p.issuing, false, newKey(t)), "ACSP_V2") != LevelQualified {
+		t.Fatal("AUTH")
+	}
+	tmpl = leafTmpl()
+	tmpl.KeyUsage, tmpl.ExtKeyUsage, tmpl.ExtraExtensions = x509.KeyUsageDigitalSignature,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}, nil
+	ek, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tokAuth := mkCert(t, tmpl, p.issuing, &ek.PublicKey, ek)
+	if level(tokAuth, "ACSP_V2") != LevelAdvanced {
+		t.Fatal("token AUTH")
+	}
+	r, acsp := signedAuth(t, "QR", authOpts{leaf: tokAuth, alg: "ecdsa-with-SHA256"})
+	_, err = v.ValidateAuth(r, acsp, ValidateAuthOptions{})
+	wantInvalid(t, err, "өндөр")
+	r.CertificateLevel = "ADVANCED"
+	if id, err := adv.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil || id.CertificateLevel != "ADVANCED" {
+		t.Fatal(id, err)
+	}
+	// Гэмтсэн qcStatements → *ValidationError
+	tmpl = leafTmpl()
+	tmpl.ExtraExtensions = []pkix.Extension{{Id: oidQcStatementsExt, Value: []byte{0x30, 0x03, 0x06, 0x01, 0x00}}}
+	bk := newKey(t)
+	if _, err := CertificateLevelOf(mkCert(t, tmpl, p.issuing, &bk.PublicKey, bk).cert, "RAW_DIGEST_SIGNATURE"); err == nil {
+		t.Fatal("гэмтсэн qcStatements")
+	}
+}
+
+// CitizenIntermediatesPEM — pades/internal/eidcrypto/chain-ийн 02, 03, 04-тэй байт-ижил; 04-ийн SKI = CitizenIssuingCASKI;
+// NationalRootCAPEM хүртэл гинжлэгдэнэ; IntermediatesPEM nil бол анхдагч.
+func TestCitizenIntermediatesPEM(t *testing.T) {
+	for i, f := range []string{"02-mongolian-national-issuing-ca-mddc.pem", "03-gerege-issuing-ca.pem", "04-eid-mongolia-issuing-ca.pem"} {
+		b, err := os.ReadFile("pades/internal/eidcrypto/chain/" + f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(string(b)) != strings.TrimSpace(CitizenIntermediatesPEM[i]) {
+			t.Fatalf("%s зөрсөн", f)
+		}
+	}
+	certs, err := parseCerts(append([]string{NationalRootCAPEM}, CitizenIntermediatesPEM[:]...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(certs); i++ {
+		if err := certs[i].CheckSignatureFrom(certs[i-1]); err != nil {
+			t.Fatalf("%d: %v", i, err)
+		}
+	}
+	if hex.EncodeToString(certs[3].SubjectKeyId) != CitizenIssuingCASKI {
+		t.Fatal("04 SKI")
+	}
+	v, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{NationalRootCAPEM}})
+	if err != nil || len(v.intermediates) != 3 || len(v.allowedIssuers) != 1 || !v.allowedIssuers[CitizenIssuingCASKI] || !v.checkKeyUsage {
+		t.Fatal("анхдагч", err)
+	}
+	if v, _ := NewValidator(TrustConfig{AllowUntrusted: true}); len(v.allowedIssuers) != 0 {
+		t.Fatal("AllowUntrusted-д анхдагч allowlist үйлчлэхгүй")
+	}
 }
 
 // Хуучин гараар угсарсан гинж эдгээрийг (pathLen, завсрын EKU, name constraints, keyCertSign, critical extension)

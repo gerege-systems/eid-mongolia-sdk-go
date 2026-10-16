@@ -99,7 +99,7 @@ func (v *Validator) ValidateCertificateChoice(r *SessionResult, sessionID string
 	if err := sessionDone(r); err != nil {
 		return nil, err
 	}
-	leaf, err := v.leafOf(r, "RAW_DIGEST_SIGNATURE")
+	leaf, level, err := v.leafOf(r, "RAW_DIGEST_SIGNATURE")
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (v *Validator) ValidateCertificateChoice(r *SessionResult, sessionID string
 		DocumentNumber:      r.DocumentNumber,
 		Certificate:         leaf,
 		CertificateDERB64:   base64.StdEncoding.EncodeToString(leaf.Raw),
-		CertificateLevel:    r.CertificateLevel,
+		CertificateLevel:    string(level),
 		Subject:             ParseSubject(leaf),
 		CertChoiceSessionID: sessionID,
 	}, nil

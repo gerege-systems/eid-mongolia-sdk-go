@@ -364,11 +364,45 @@ func TestTokenAuth(t *testing.T) {
 		t.Fatalf("%s %s", req.URL.Path, body)
 	}
 
+	// v0.6.0: SDK CA руу илгээхээс өмнө гарын үсэг (r||s, TokenAuthDigest), rpUUID, гэрчилгээг (гинж/зориулалт/issuer) шалгана.
+	const rp = "2d87bd3a-1303-41bf-81bd-37d6b92fb7bc"
+	chal := &TokenAuthChallenge{ChallengeID: "c1", Challenge: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=", RPUUID: rp}
 	_, cert := tokenKeys(t, "PNOMN-55667788")
+	sigOf := func(k crypto.Signer, ch *TokenAuthChallenge) []byte {
+		dg, err := TokenAuthDigest(ch.RPUUID, ch.Challenge)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, s, err := ecdsa.Sign(rand.Reader, k.(*ecdsa.PrivateKey), dg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append(r.FillBytes(make([]byte, 32)), s.FillBytes(make([]byte, 32))...)
+	}
+	sig := sigOf(cert.key, chal)
+	p := testPKI(t)
+	okTrust := TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, AllowAnyIssuer: true}
+	tsrv := func(fn http.HandlerFunc, trust TrustConfig) (*Client, *rec) {
+		t.Helper()
+		rc := &rec{}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			rc.mu.Lock()
+			rc.reqs, rc.body = append(rc.reqs, r), append(rc.body, b)
+			rc.mu.Unlock()
+			fn(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		cl, err := NewClient(Config{BaseURL: srv.URL, Credentials: Credentials{RPUUID: rp, RPName: "x", APISecret: "s"}, Trust: trust})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cl, rc
+	}
 	ok := `{"result":{"endResult":"OK"},"identity":{"etsi":"PNOMN-55667788","givenName":"Бат","surname":"Болд"},
 		"cert":{"serialHex":"4f1c","notAfter":"2027-10-12T08:40:00Z"},"organization":{"etsi":"NTRMN-1","name":"X"}}`
-	c, rc = server(t, jsonReply(200, ok))
-	res, err := c.Token.AuthVerify(ctx, "c1", cert.cert.Raw, make([]byte, 64))
+	c, rc = tsrv(jsonReply(200, ok), okTrust)
+	res, err := c.Token.AuthVerify(ctx, chal, cert.cert.Raw, sig)
 	if err != nil || res.Identity.Surname != "Болд" || res.SerialHex != "4f1c" || res.Organization.Etsi != "NTRMN-1" || res.NotAfter.Year() != 2027 {
 		t.Fatal(err, res)
 	}
@@ -382,19 +416,55 @@ func TestTokenAuth(t *testing.T) {
 		strings.Replace(ok, "PNOMN-55667788", "PNOMN-99999999", 1), // өөр иргэн
 		strings.Replace(ok, `"OK"`, `"DENIED"`, 1),
 	} {
-		c, _ = server(t, jsonReply(200, reply))
-		_, err = c.Token.AuthVerify(ctx, "c1", cert.cert.Raw, make([]byte, 64))
+		c, _ = tsrv(jsonReply(200, reply), okTrust)
+		_, err = c.Token.AuthVerify(ctx, chal, cert.cert.Raw, sig)
 		wantInvalid(t, err, "token auth")
 		if strings.Contains(err.Error(), "PNOMN-") {
 			t.Fatal("PII:", err)
 		}
 	}
-	if _, err := c.Token.AuthVerify(ctx, "c1", []byte("junk"), make([]byte, 64)); err == nil {
+	// CA OK гэсэн ч SDK-ийн шалгалт унавал CA руу ЯВАХГҮЙ.
+	other := *chal
+	other.Challenge = "AQECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	otherRP := *chal
+	otherRP.RPUUID = "00000000-0000-4000-8000-000000000000"
+	// Токены SIGN гэрчилгээ (P-CITIZEN-SIGN-TOKEN: KU contentCommitment, EKU-гүй) нэвтрэлтэд.
+	sk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	signTmpl := leafTmpl()
+	signTmpl.Subject.SerialNumber = "PNOMN-55667788"
+	signTmpl.KeyUsage, signTmpl.ExtKeyUsage = x509.KeyUsageDigitalSignature|x509.KeyUsageContentCommitment, nil
+	signCert := mkCert(t, signTmpl, p.inter, &sk.PublicKey, sk)
+	for _, tc := range []struct {
+		name  string
+		ch    *TokenAuthChallenge
+		cert  []byte
+		sig   []byte
+		trust TrustConfig
+		want  string
+	}{
+		{"тэг гарын үсэг", chal, cert.cert.Raw, make([]byte, 64), okTrust, "гарын үсэг"},
+		{"өөр challenge", &other, cert.cert.Raw, sig, okTrust, "гарын үсэг"},
+		{"өөр RP", &otherRP, cert.cert.Raw, sigOf(cert.key, &otherRP), okTrust, "rpUUID"},
+		{"анхдагч issuer", chal, cert.cert.Raw, sig, TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}}, "AllowedIssuerSKIs"},
+		{"anchor алга", chal, cert.cert.Raw, sig, TrustConfig{}, "trust anchor"},
+		{"гарын үсгийн гэрчилгээ", chal, signCert.cert.Raw, sigOf(signCert.key, chal), okTrust, "clientAuth"},
+	} {
+		cl, rcl := tsrv(jsonReply(200, ok), tc.trust)
+		_, err := cl.Token.AuthVerify(ctx, tc.ch, tc.cert, tc.sig)
+		wantInvalid(t, err, tc.want)
+		if len(rcl.reqs) != 0 {
+			t.Fatalf("%s: CA руу явсан", tc.name)
+		}
+	}
+	if _, err := c.Token.AuthVerify(ctx, chal, []byte("junk"), sig); err == nil {
 		t.Fatal("буруу гэрчилгээ")
 	}
-	c, _ = server(t, jsonReply(410, `{"error":"x","code":"CHALLENGE_EXPIRED"}`))
+	if _, err := c.Token.AuthVerify(ctx, nil, cert.cert.Raw, sig); err == nil {
+		t.Fatal("challenge алга")
+	}
+	c, _ = tsrv(jsonReply(410, `{"error":"x","code":"CHALLENGE_EXPIRED"}`), okTrust)
 	var api *APIError
-	if _, err := c.Token.AuthVerify(ctx, "c1", cert.cert.Raw, make([]byte, 64)); !errors.As(err, &api) || api.Code != "CHALLENGE_EXPIRED" {
+	if _, err := c.Token.AuthVerify(ctx, chal, cert.cert.Raw, sig); !errors.As(err, &api) || api.Code != "CHALLENGE_EXPIRED" {
 		t.Fatal(err)
 	}
 }
@@ -432,7 +502,7 @@ func purposeLeaf(t *testing.T, ku x509.KeyUsage, eku []x509.ExtKeyUsage) *testCA
 func validatorWith(t *testing.T, mod func(*TrustConfig)) *Validator {
 	t.Helper()
 	p := testPKI(t)
-	tc := TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}}
+	tc := TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, AllowAnyIssuer: true}
 	mod(&tc)
 	v, err := NewValidator(tc)
 	if err != nil {
@@ -465,7 +535,7 @@ func TestValidatorIssuerAllowlist(t *testing.T) {
 }
 
 func TestValidatorKeyUsage(t *testing.T) {
-	strict := validatorWith(t, func(c *TrustConfig) { c.CheckKeyUsage = true })
+	strict := validatorWith(t, func(*TrustConfig) {}) // v0.6.0-аас зориулалт анхдагчаар
 	auth := purposeLeaf(t, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection})
 	sign := purposeLeaf(t, x509.KeyUsageDigitalSignature|x509.KeyUsageContentCommitment, []x509.ExtKeyUsage{x509.ExtKeyUsageEmailProtection})
@@ -477,9 +547,9 @@ func TestValidatorKeyUsage(t *testing.T) {
 	r, acsp = signedAuth(t, "QR", authOpts{leaf: sign})
 	_, err := strict.ValidateAuth(r, acsp, ValidateAuthOptions{})
 	wantInvalid(t, err, "clientAuth")
-	// CheckKeyUsage=false ч EKU-г гинжийн шалгалт (x509.Verify, auth → clientAuth) үргэлж шалгана (0.1.3-аас).
-	_, err = trusted(t).ValidateAuth(r, acsp, ValidateAuthOptions{})
-	wantInvalid(t, err, "ExtKeyUsage")
+	// SkipKeyUsageCheck ч EKU-г гинжийн шалгалт (x509.Verify, auth → clientAuth) үргэлж шалгана (0.1.3-аас).
+	_, err = validatorWith(t, func(c *TrustConfig) { c.SkipKeyUsageCheck = true }).ValidateAuth(r, acsp, ValidateAuthOptions{})
+	wantInvalid(t, err, "гинж")
 
 	digest := sha256.Sum256([]byte("doc"))
 	mkSign := func(leaf *testCA) *SessionResult {
