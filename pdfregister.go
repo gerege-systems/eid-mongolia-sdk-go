@@ -58,11 +58,71 @@ type PDFSignatureRegistered struct {
 	Created bool `json:"-"`
 }
 
+// POST /pdf/signatures (RegisterSignature)-ийн CA алдааны кодууд — APIError.Code / ForbiddenError.Code (CA
+// pades_register.go, handlers_pdf.go). CodeRequestInvalid, CodeRepresentationRevoked, CodeRateLimited,
+// CodeStateUnavailable нь бусад урсгалтай хуваалцна. Session олдоогүй бол 404 code-гүй.
+const (
+	// CodeRequestTooLarge — 413: body 64 KiB-аас их.
+	CodeRequestTooLarge = "REQUEST_TOO_LARGE"
+	// CodeCMSInvalid — 400: cms задарсангүй эсвэл профайлд (pades-client/1) нийцэхгүй.
+	CodeCMSInvalid = "CMS_INVALID"
+	// CodeSignatureInvalid — 400: CMS-ийн гарын үсэг signedAttrs-тэй таарахгүй.
+	CodeSignatureInvalid = "SIGNATURE_INVALID"
+	// CodeTimestampInvalid — 400: signatureTimeStampToken хүчингүй (imprint, TSA гинж эсвэл цаг).
+	CodeTimestampInvalid = "TIMESTAMP_INVALID"
+	// CodeSignerMismatch — 409: SignerEtsi нь CMS-ийн зурагчийн гэрчилгээтэй таарахгүй.
+	CodeSignerMismatch = "SIGNER_MISMATCH"
+	// CodeSignerCertInvalid — 409: утасны SIGN гэрчилгээ хүчингүй (CA-аас биш, хугацаа, цуцлагдсан, бүртгэлгүй).
+	CodeSignerCertInvalid = "SIGNER_CERT_INVALID"
+	// CodeTokenCertInvalid — 409: токены гэрчилгээ хүчингүй (medium token).
+	CodeTokenCertInvalid = "TOKEN_CERT_INVALID"
+	// CodeTokenOrgMismatch — 403: OnBehalfOf нь токены байгууллагын холбоостой таарахгүй.
+	CodeTokenOrgMismatch = "TOKEN_ORG_MISMATCH"
+	// CodeSessionMismatch — 409: session-ий digest / гарын үсэг / гэрчилгээ CMS-тэй таарахгүй эсвэл гарын үсгийнх биш.
+	CodeSessionMismatch = "SESSION_MISMATCH"
+	// CodeSessionNotComplete — 409: session дуусаагүй.
+	CodeSessionNotComplete = "SESSION_NOT_COMPLETE"
+	// CodeSessionFailed — 409: session амжилттай дуусаагүй.
+	CodeSessionFailed = "SESSION_FAILED"
+	// CodeClaimedRoleMismatch — 409: claimedRole / onBehalfOf тухайн мөчийн төлөөлөл эсвэл session-ийнхтэй таарахгүй.
+	CodeClaimedRoleMismatch = "CLAIMED_ROLE_MISMATCH"
+	// CodeDocIDConflict — 409: docID аль хэдийн бүртгэлтэй (revIndex > 1 ба prior* илгээнэ).
+	CodeDocIDConflict = "DOC_ID_CONFLICT"
+	// CodeRegistryConflict — 409: messageDigest, CMS эсвэл файлын hash өөр бүртгэлд бий.
+	CodeRegistryConflict = "REGISTRY_CONFLICT"
+	// CodeDocNotFound — 404: docID бүртгэлгүй (эхний гарын үсэгт revIndex 1).
+	CodeDocNotFound = "DOC_NOT_FOUND"
+	// CodePriorMismatch — 409: revIndex эсвэл priorCmsSha256/priorRevisionSha256 бүртгэлтэй таарахгүй.
+	CodePriorMismatch = "PRIOR_MISMATCH"
+)
+
+// PDFRegisterErrorCodes — POST /pdf/signatures-ийн бүх CA код (TS SDK PDF_REGISTER_ERROR_CODES-тэй ижил дараалал).
+var PDFRegisterErrorCodes = []string{
+	CodeRequestInvalid,
+	CodeRequestTooLarge,
+	CodeCMSInvalid,
+	CodeSignatureInvalid,
+	CodeTimestampInvalid,
+	CodeSignerMismatch,
+	CodeSignerCertInvalid,
+	CodeTokenCertInvalid,
+	CodeTokenOrgMismatch,
+	CodeSessionMismatch,
+	CodeSessionNotComplete,
+	CodeSessionFailed,
+	CodeClaimedRoleMismatch,
+	CodeRepresentationRevoked,
+	CodeDocIDConflict,
+	CodeRegistryConflict,
+	CodeDocNotFound,
+	CodePriorMismatch,
+	CodeRateLimited,
+	CodeStateUnavailable,
+}
+
 // RegisterSignature — POST /pdf/signatures (SIGN эрх): клиент талын PAdES гарын үсгийг CA-ийн бүртгэлд (docID,
-// /verify) оруулна. pades.Complete-ийн дараа заавал. Давталт идэмпотент (ижил body → 200). Алдаа (*APIError Code):
-// 400 REQUEST_INVALID / CMS_INVALID / SIGNATURE_INVALID / TIMESTAMP_INVALID, 403 REPRESENTATION_REVOKED /
-// TOKEN_ORG_MISMATCH, 404 DOC_NOT_FOUND, 409 DOC_ID_CONFLICT / PRIOR_MISMATCH / REGISTRY_CONFLICT / SESSION_MISMATCH /
-// SIGNER_MISMATCH / CLAIMED_ROLE_MISMATCH …, 413 REQUEST_TOO_LARGE, 429 RATE_LIMITED.
+// /verify) оруулна. pades.Complete-ийн дараа заавал. Давталт идэмпотент (ижил body → 200). Алдаа: *APIError /
+// *ForbiddenError Code ∈ PDFRegisterErrorCodes (CodePriorMismatch, CodeDocNotFound г.м.).
 func (p *PDFService) RegisterSignature(ctx context.Context, r PDFSignatureRegistration) (*PDFSignatureRegistered, error) {
 	switch {
 	case r.DocID == "" || r.RevIndex < 1 || len(r.CMS) == 0:
@@ -110,7 +170,7 @@ func (p *PDFService) register(ctx context.Context, r PDFSignatureRegistration) (
 
 func isPriorMismatch(err error) bool {
 	var ae *APIError
-	return errors.As(err, &ae) && ae.Code == "PRIOR_MISMATCH"
+	return errors.As(err, &ae) && ae.Code == CodePriorMismatch
 }
 
 // priorSplits — PRIOR_MISMATCH-ийн дараах оролдлогууд (true = тухайн өмнөх гарын үсгийг revision-оор): эхлээд эхний k

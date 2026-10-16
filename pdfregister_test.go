@@ -154,3 +154,22 @@ func TestPriorSplits(t *testing.T) {
 		t.Fatalf("n > 4: зөвхөн эхний k (%d)", n)
 	}
 }
+
+// PDFRegisterErrorCodes — CA main (2026-10-16) pades_register.go / handlers_pdf.go-ийн POST /pdf/signatures-ийн бүх
+// code; TS SDK PDF_REGISTER_ERROR_CODES-тэй ижил дараалал.
+func TestPDFRegisterErrorCodes(t *testing.T) {
+	want := []string{"REQUEST_INVALID", "REQUEST_TOO_LARGE", "CMS_INVALID", "SIGNATURE_INVALID", "TIMESTAMP_INVALID",
+		"SIGNER_MISMATCH", "SIGNER_CERT_INVALID", "TOKEN_CERT_INVALID", "TOKEN_ORG_MISMATCH", "SESSION_MISMATCH",
+		"SESSION_NOT_COMPLETE", "SESSION_FAILED", "CLAIMED_ROLE_MISMATCH", "REPRESENTATION_REVOKED", "DOC_ID_CONFLICT",
+		"REGISTRY_CONFLICT", "DOC_NOT_FOUND", "PRIOR_MISMATCH", "RATE_LIMITED", "STATE_UNAVAILABLE"}
+	if strings.Join(PDFRegisterErrorCodes, ",") != strings.Join(want, ",") {
+		t.Fatalf("PDFRegisterErrorCodes = %v", PDFRegisterErrorCodes)
+	}
+	seen := map[string]bool{}
+	for _, c := range PDFRegisterErrorCodes {
+		if seen[c] {
+			t.Fatalf("давхардсан %s", c)
+		}
+		seen[c] = true
+	}
+}
