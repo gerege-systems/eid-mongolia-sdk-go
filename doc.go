@@ -9,7 +9,7 @@
 //
 //	c, err := eid.NewClient(eid.Config{
 //		Credentials: eid.Credentials{RPUUID: uuid, RPName: "Интернэт банк", APISecret: secret},
-//		Trust: eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, IntermediatesPEM: intermediates},
+//		Trust: eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}}, // завсрын 02–04 анхдагчаар
 //	})
 //	s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678",
 //		[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Банкинд нэвтрэх"}}, nil)

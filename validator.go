@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -78,7 +79,8 @@ type TrustConfig struct {
 	// TrustAnchorsPEM — trust anchor (Root CA) PEM-үүд (ж: NationalRootCAPEM). Production-д ЗААВАЛ — хоосон бол
 	// ValidateAuth/ValidateSign алдаа буцаана (AllowUntrusted-аар л алгасна, зөвхөн dev/тест).
 	TrustAnchorsPEM []string
-	// IntermediatesPEM — завсрын CA PEM-үүд (leaf ↔ root хооронд). Нэг мөрөнд олон гэрчилгээ байж болно.
+	// IntermediatesPEM — завсрын CA PEM-үүд (leaf ↔ root хооронд). Нэг мөрөнд олон гэрчилгээ байж болно. nil бол
+	// CitizenIntermediatesPEM (02 → 03 → 04; v0.6.0-аас) — RP-API хариунд гинж ирдэггүй.
 	IntermediatesPEM []string
 	// RequiredLevel — шаардах certLevel ("" = QUALIFIED). Шаардсанаас дээш түвшнийг хүлээн авна (QSCD ⊇ QUALIFIED).
 	RequiredLevel CertificateLevel
@@ -91,13 +93,20 @@ type TrustConfig struct {
 	// RevocationMode — "" = RevocationHardFail.
 	RevocationMode RevocationMode
 	// AllowedIssuerSKIs — иргэний гэрчилгээг шууд гаргасан CA-ийн Subject Key Identifier (hex, ":" зөвшөөрнө) жагсаалт.
-	// Хоосон бол trust anchor хүртэл гинжлэгдсэн дурын CA зөвшөөрөгдөнө (хуучин зан). Ижил root-ийн доорх өөр CA
-	// (ж: байгууллагын Issuing CA) иргэний гэрчилгээ гаргахаас хамгаалахад: []string{CitizenIssuingCASKI}.
+	// v0.6.0-аас хоосон бол []string{CitizenIssuingCASKI} (TrustAnchorsPEM тохируулсан үед) — ижил root-ийн доорх өөр
+	// CA (ж: байгууллагын Issuing CA 05) иргэний гэрчилгээ гаргахаас хамгаална. Өгвөл энэ жагсаалтаар шалгана (үргэлж).
 	AllowedIssuerSKIs []string
-	// CheckKeyUsage — true бол гэрчилгээний зориулалтыг CA-ийн профайлаар шалгана: auth → KeyUsage digitalSignature +
-	// ExtKeyUsage clientAuth (P-CITIZEN-AUTH); sign → KeyUsage contentCommitment / nonRepudiation (P-CITIZEN-SIGN).
-	// false (анхдагч) — шалгахгүй (хуучин зан).
+	// AllowAnyIssuer — true бол анхдагч issuer allowlist-ийг унтраана: trust anchor хүртэл гинжлэгдсэн дурын CA
+	// (v0.5.x-ийн зан). AllowedIssuerSKIs өгсөн бол түүнийг шалгасаар байна. Тест/dev, эсвэл өөр Issuing CA-тай орчинд л.
+	AllowAnyIssuer bool
+	// CheckKeyUsage — Deprecated: v0.6.0-аас зориулалтын шалгалт анхдагчаар асаалттай тул энэ талбар нөлөөгүй (хуучин
+	// кодыг эвдэхгүйн тулд үлдсэн). Унтраах бол SkipKeyUsageCheck.
 	CheckKeyUsage bool
+	// SkipKeyUsageCheck — true бол гэрчилгээний зориулалтыг (CA-ийн профайл: auth → KeyUsage digitalSignature +
+	// ExtKeyUsage clientAuth (P-CITIZEN-AUTH); sign → KeyUsage contentCommitment / nonRepudiation (P-CITIZEN-SIGN))
+	// шалгахгүй — v0.5.x-ийн анхдагч зан, зөвлөхгүй: нэвтрэлтийн (PIN1) түлхүүрийн гарын үсэг ValidateSign-д тэнцэнэ.
+	// TS SDK-ийн `checkKeyUsage: false`.
+	SkipKeyUsageCheck bool
 	// SchemeName — ACSP_V2 payload-ийн scheme нэр (CA-ийн capabilities.acsp_scheme_name); "" = "smart-id".
 	SchemeName string
 }
@@ -112,8 +121,10 @@ type VerifiedIdentity struct {
 	// Certificate — иргэний X.509 гэрчилгээ.
 	Certificate *x509.Certificate
 	// Subject — задалсан subject (нэр, ETSI дугаар); SubjectDN — түүхий DN.
-	Subject          Subject
-	SubjectDN        string
+	Subject   Subject
+	SubjectDN string
+	// CertificateLevel — үнэлэгдсэн түвшин (v0.6.0-аас): хариуны certificateLevel ба гэрчилгээнээс тогтоосон
+	// (CertificateLevelOf) түвшний бага нь. Хариу гэрчилгээнээс өндөр түвшин зарлавал *ValidationError.
 	CertificateLevel string
 }
 
@@ -166,12 +177,21 @@ func NewValidator(t TrustConfig) (*Validator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("eid: TrustAnchorsPEM: %w", err)
 	}
-	inter, err := parseCerts(t.IntermediatesPEM)
+	interPEM := t.IntermediatesPEM
+	if interPEM == nil {
+		interPEM = CitizenIntermediatesPEM[:]
+	}
+	inter, err := parseCerts(interPEM)
 	if err != nil {
 		return nil, fmt.Errorf("eid: IntermediatesPEM: %w", err)
 	}
+	skis := t.AllowedIssuerSKIs
+	if len(skis) == 0 && !t.AllowAnyIssuer && len(anchors) > 0 {
+		// Анхдагч allowlist зөвхөн гинж шалгах үед — AllowUntrusted (anchor-гүй dev) горимд issuer тогтоох гинж алга.
+		skis = []string{CitizenIssuingCASKI}
+	}
 	var issuers map[string]bool
-	for _, s := range t.AllowedIssuerSKIs {
+	for _, s := range skis {
 		ski := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), ":", ""))
 		if b, err := hex.DecodeString(ski); err != nil || len(b) == 0 {
 			return nil, fmt.Errorf("eid: AllowedIssuerSKIs: %q hex key identifier биш", s)
@@ -190,7 +210,7 @@ func NewValidator(t TrustConfig) (*Validator, error) {
 		revocation:     t.Revocation,
 		revocationMode: orDefault(t.RevocationMode, RevocationHardFail),
 		allowedIssuers: issuers,
-		checkKeyUsage:  t.CheckKeyUsage,
+		checkKeyUsage:  !t.SkipKeyUsageCheck,
 		schemeName:     t.SchemeName,
 		now:            time.Now,
 	}, nil
@@ -232,7 +252,7 @@ func (v *Validator) ValidateAuth(r *SessionResult, acsp *ACSPContext, o Validate
 	if acsp == nil {
 		return nil, invalid("ACSP контекст алга")
 	}
-	leaf, err := v.precheck(r, "ACSP_V2")
+	leaf, level, err := v.precheck(r, "ACSP_V2")
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +307,7 @@ func (v *Validator) ValidateAuth(r *SessionResult, acsp *ACSPContext, o Validate
 		Certificate:      leaf,
 		Subject:          ParseSubject(leaf),
 		SubjectDN:        leaf.Subject.String(),
-		CertificateLevel: r.CertificateLevel,
+		CertificateLevel: string(level),
 	}, nil
 }
 
@@ -298,7 +318,7 @@ func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAl
 	if len(opts) > 1 {
 		return nil, invalid("ValidateSign: ValidateSignOptions дээд тал нь нэг")
 	}
-	leaf, err := v.precheck(r, "RAW_DIGEST_SIGNATURE")
+	leaf, level, err := v.precheck(r, "RAW_DIGEST_SIGNATURE")
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +359,7 @@ func (v *Validator) ValidateSign(r *SessionResult, digestB64 string, hash HashAl
 		Certificate:        leaf,
 		Subject:            ParseSubject(leaf),
 		SubjectDN:          leaf.Subject.String(),
-		CertificateLevel:   r.CertificateLevel,
+		CertificateLevel:   string(level),
 	}, nil
 }
 
@@ -452,18 +472,18 @@ func isP256(pub crypto.PublicKey) bool {
 }
 
 // precheck — state/endResult, гэрчилгээ, гинж, хугацаа, certLevel — нийтлэг шалгалт.
-func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certificate, error) {
+func (v *Validator) precheck(r *SessionResult, protocol string) (*x509.Certificate, CertificateLevel, error) {
 	if err := sessionDone(r); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if r.SignatureProtocol != "" && r.SignatureProtocol != protocol {
-		return nil, invalid("signatureProtocol %s ≠ %s", r.SignatureProtocol, protocol)
+		return nil, "", invalid("signatureProtocol %s ≠ %s", r.SignatureProtocol, protocol)
 	}
 	if r.CertificateDERB64 == "" {
-		return nil, invalid("хариунд гэрчилгээ алга")
+		return nil, "", invalid("хариунд гэрчилгээ алга")
 	}
 	if r.SignatureValueB64 == "" {
-		return nil, invalid("хариунд гарын үсэг алга")
+		return nil, "", invalid("хариунд гарын үсэг алга")
 	}
 	return v.leafOf(r, protocol)
 }
@@ -487,49 +507,131 @@ func sessionDone(r *SessionResult) error {
 }
 
 // leafOf — хариуны гэрчилгээ: documentNumber, задлалт, хугацаа, certLevel, зориулалт (protocol), гинж, issuer.
-func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate, error) {
+func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate, CertificateLevel, error) {
 	if r.CertificateDERB64 == "" {
-		return nil, invalid("хариунд гэрчилгээ алга")
+		return nil, "", invalid("хариунд гэрчилгээ алга")
 	}
 	if r.DocumentNumber == "" {
-		return nil, invalid("хариунд documentNumber алга")
+		return nil, "", invalid("хариунд documentNumber алга")
 	}
 	der, err := base64.StdEncoding.DecodeString(r.CertificateDERB64)
 	if err != nil {
-		return nil, invalid("гэрчилгээ base64 буруу")
+		return nil, "", invalid("гэрчилгээ base64 буруу")
 	}
 	leaf, err := x509.ParseCertificate(der)
 	if err != nil {
-		return nil, invalid("гэрчилгээ задарсангүй: %v", err)
+		return nil, "", invalid("гэрчилгээ задарсангүй: %v", err)
 	}
 	now := v.now()
 	if err := v.checkValidity(leaf, now); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if err := v.checkLevel(r.CertificateLevel); err != nil {
-		return nil, err
+	if err := v.verifyCertificate(leaf, protocol, now); err != nil {
+		return nil, "", err
 	}
+	fromCert, err := CertificateLevelOf(leaf, protocol)
+	if err != nil {
+		return nil, "", err
+	}
+	level, err := effectiveLevel(r.CertificateLevel, fromCert)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := v.checkLevel(string(level)); err != nil {
+		return nil, "", err
+	}
+	return leaf, level, nil
+}
+
+// verifyTokenAuthCertificate — токены нэвтрэлтийн гэрчилгээ (TokenService.AuthVerify): хугацаа, зориулалт (auth),
+// гинж, issuer. Түвшинг шалгахгүй (USB токен ADVANCED).
+func (v *Validator) verifyTokenAuthCertificate(leaf *x509.Certificate) error {
+	now := v.now()
+	if err := v.checkValidity(leaf, now); err != nil {
+		return err
+	}
+	return v.verifyCertificate(leaf, "ACSP_V2", now)
+}
+
+// verifyCertificate — зориулалт (protocol), гинж, issuer (хугацааг дуудагч шалгасан).
+func (v *Validator) verifyCertificate(leaf *x509.Certificate, protocol string, now time.Time) error {
 	if err := v.checkPurpose(leaf, protocol); err != nil {
-		return nil, err
+		return err
 	}
 	// Trust anchor ЗААВАЛ — хоосон бол fail-closed (AllowUntrusted-аар л алгасна).
 	if len(v.anchors) == 0 {
 		if !v.allowUntrusted {
-			return nil, invalid("trust anchor тохируулаагүй — итгэлцэл шалгах боломжгүй (production-д TrustAnchorsPEM өг, эсвэл AllowUntrusted)")
+			return invalid("trust anchor тохируулаагүй — итгэлцэл шалгах боломжгүй (production-д TrustAnchorsPEM өг, эсвэл AllowUntrusted)")
 		}
-		return leaf, nil
+		return nil
 	}
 	usage := x509.ExtKeyUsageClientAuth
 	if protocol != "ACSP_V2" {
 		usage = x509.ExtKeyUsageEmailProtection
 	}
 	if err := v.verifyChain(leaf, now, usage); err != nil {
-		return nil, err
+		return err
 	}
-	if err := v.checkIssuer(leaf); err != nil {
-		return nil, err
+	return v.checkIssuer(leaf)
+}
+
+var (
+	oidQcStatementsExt = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 3}
+	oidQcCompliance    = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 1}
+	oidQcSSCD          = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 4}
+)
+
+// CertificateLevelOf — гэрчилгээнээс тогтоох түвшин (CA crypto/ca_profile.go): qcStatements-д QcCompliance →
+// QUALIFIED (+ QcSSCD → QSCD); qcStatements алга бол — гарын үсгийн гэрчилгээ ADVANCED (USB токен), нэвтрэлтийн
+// гэрчилгээ (CA AUTH-д qcStatements бичдэггүй) KeyUsage-аар: keyEncipherment-тэй (утасны P-CITIZEN-AUTH) → QUALIFIED,
+// үгүй (токены P-CITIZEN-AUTH-TOKEN) → ADVANCED. protocol — "ACSP_V2" (auth) эсвэл "RAW_DIGEST_SIGNATURE" (sign).
+// qcStatements гэмтсэн бол *ValidationError. TS SDK-ийн certificateLevelOf-тэй ижил.
+func CertificateLevelOf(c *x509.Certificate, protocol string) (CertificateLevel, error) {
+	for _, e := range c.Extensions {
+		if !e.Id.Equal(oidQcStatementsExt) {
+			continue
+		}
+		var sts []asn1.RawValue
+		if rest, err := asn1.Unmarshal(e.Value, &sts); err != nil || len(rest) > 0 {
+			return "", invalid("qcStatements буруу")
+		}
+		var compliance, sscd bool
+		for _, st := range sts {
+			var id asn1.ObjectIdentifier
+			if st.Tag != asn1.TagSequence {
+				return "", invalid("qcStatements буруу")
+			}
+			if _, err := asn1.Unmarshal(st.Bytes, &id); err != nil {
+				return "", invalid("qcStatements буруу")
+			}
+			compliance = compliance || id.Equal(oidQcCompliance)
+			sscd = sscd || id.Equal(oidQcSSCD)
+		}
+		switch {
+		case !compliance:
+			return LevelAdvanced, nil
+		case sscd:
+			return LevelQSCD, nil
+		}
+		return LevelQualified, nil
 	}
-	return leaf, nil
+	if protocol == "ACSP_V2" && c.KeyUsage&x509.KeyUsageKeyEncipherment != 0 {
+		return LevelQualified, nil
+	}
+	return LevelAdvanced, nil
+}
+
+// effectiveLevel — хариуны түвшин гэрчилгээнийхээс өндөр бол *ValidationError (хуурамч/proxy хариу); бага бол
+// хариуных. Хариунд түвшин алга/үл таних бол гэрчилгээнийх.
+func effectiveLevel(claimed string, fromCert CertificateLevel) (CertificateLevel, error) {
+	c, ok := levelRank[claimed]
+	if !ok {
+		return fromCert, nil
+	}
+	if c > levelRank[string(fromCert)] {
+		return "", invalid("хариуны certificateLevel %s гэрчилгээнээс (%s) өндөр", claimed, fromCert)
+	}
+	return CertificateLevel(claimed), nil
 }
 
 // checkValidity — алдааны текстэд subject (иргэний нэр/PNOMN) биш serial (hex) орно.

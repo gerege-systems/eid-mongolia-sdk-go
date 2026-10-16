@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
+	mrand "math/rand/v2"
 	"net/http"
 	"time"
 
@@ -29,6 +30,23 @@ type CompleteOptions struct {
 	Now func() time.Time `json:"-"`
 	// Roots — итгэлийн тулгуур DER (TSA гинж, self-validation); хоосон бол Mongolian National Root CA.
 	Roots [][]byte `json:"roots,omitempty"`
+	// LTVRetries — OCSP/CRL (DSS) цуглуулалт унавал ижил state, гарын үсэг, TSA timestamp-аар дахин оролдох тоо (PIN
+	// дахин асуухгүй). nil = DefaultLTVRetries (2; нийт 3 оролдлого, хүлээлт ~1 с, ~3 с + 0–25% jitter); 0 — унтраах;
+	// 0–MaxLTVRetries-аас гадуур → CodeRequestInvalid. Бүгд унавал CodeLTVUnavailable. ctx цуцлагдвал хүлээлт тасарна.
+	// TS SDK 0.18.3-ийн `ltvRetries`-тэй ижил.
+	LTVRetries *int `json:"ltvRetries,omitempty"`
+}
+
+// DefaultLTVRetries / MaxLTVRetries — CompleteOptions.LTVRetries-ийн анхдагч ба дээд утга.
+const (
+	DefaultLTVRetries = 2
+	MaxLTVRetries     = 10
+)
+
+// ltvBackoff — LTV retry-ийн хүлээлт: 1 с, 3 с (цааш 3 с) + 0–25% jitter (TS ltvBackoffMs-тэй ижил).
+func ltvBackoff(attempt int) time.Duration {
+	base := []time.Duration{time.Second, 3 * time.Second}[min(attempt, 1)]
+	return base + time.Duration(mrand.Int64N(int64(base/4)+1))
 }
 
 // Completed — гарын үсэгтэй PDF + CA-ийн бүртгэлд (POST /pdf/signatures, docs/PADES_CLIENT_SIDE.md §4.3) хэрэгтэй
@@ -71,6 +89,13 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 	if err != nil {
 		return nil, newErr(CodeRequestInvalid, "roots", err)
 	}
+	retries := DefaultLTVRetries
+	if o.LTVRetries != nil {
+		retries = *o.LTVRetries
+	}
+	if retries < 0 || retries > MaxLTVRetries {
+		return nil, newErr(CodeRequestInvalid, "LTVRetries 0–10 бүхэл тоо", nil)
+	}
 	now := o.Now
 	if now == nil {
 		now = time.Now
@@ -104,9 +129,21 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 		return nil, newErr(CodeStateInvalid, "CMS-ийг placeholder-т бичиж чадсангүй", err)
 	}
 	citizenChain := append([]*x509.Certificate{cert}, chain...)
-	dss, err := collectLTVWithWait(ctx, f, now, ts.Time, roots, citizenChain, ts.Certificates)
-	if err != nil {
-		return nil, newErr(CodeLTVUnavailable, "OCSP/CRL бүрэн авч чадсангүй", err)
+	// OCSP/CRL түр унавал (ж: CRL толь 404) ижил TSA token-оор дахин цуглуулна — амжсан CRL таталт fetcher-ийн cache-д.
+	var dss core.DSS
+	for attempt := 0; ; attempt++ {
+		if dss, err = collectLTVWithWait(ctx, f, now, ts.Time, roots, citizenChain, ts.Certificates); err == nil {
+			break
+		}
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, newErr(CodeLTVUnavailable, "цуцлагдсан", cerr)
+		}
+		if attempt >= retries {
+			return nil, newErr(CodeLTVUnavailable, "OCSP/CRL бүрэн авч чадсангүй", err)
+		}
+		if serr := sleepFn(ctx, ltvBackoff(attempt)); serr != nil {
+			return nil, newErr(CodeLTVUnavailable, "цуцлагдсан", serr)
+		}
 	}
 	if dss.Contents, err = core.SignatureContents(signed, st.ByteRange); err != nil {
 		return nil, newErr(CodeSelfValidationFailed, "/Contents уншиж чадсангүй", err)

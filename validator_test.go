@@ -72,8 +72,23 @@ func leafTmpl() *x509.Certificate {
 				{Type: asn1.ObjectIdentifier{2, 5, 4, 4}, Value: "DORJ"},
 			},
 		},
-		KeyUsage: x509.KeyUsageDigitalSignature,
+		// v0.6.0: зориулалт анхдагчаар шалгагдана, түвшин гэрчилгээнээс — тестийн «бүх зориулалттай» leaf: KU DS+KE+NR,
+		// EKU clientAuth+emailProtection, qcStatements QcCompliance (QUALIFIED).
+		KeyUsage:        x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageContentCommitment,
+		ExtKeyUsage:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection},
+		ExtraExtensions: []pkix.Extension{qcStatementsExt(false)},
 	}
+}
+
+// qcStatementsExt — ETSI EN 319 412-5 QCStatements: QcCompliance [+ QcSSCD] (CA crypto/ca_profile_org.go-ийн бүтэц).
+func qcStatementsExt(sscd bool) pkix.Extension {
+	type st struct{ ID asn1.ObjectIdentifier }
+	sts := []st{{oidQcCompliance}}
+	if sscd {
+		sts = append(sts, st{oidQcSSCD})
+	}
+	v, _ := asn1.Marshal(sts)
+	return pkix.Extension{Id: oidQcStatementsExt, Value: v}
 }
 
 type pki struct {
@@ -104,7 +119,8 @@ func testPKI(t *testing.T) pki {
 
 func trusted(t *testing.T) *Validator {
 	p := testPKI(t)
-	v, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}})
+	// Тестийн issuer нь иргэний 04 биш — анхдагч issuer allowlist-ийг (v0.6.0) унтраана.
+	v, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, AllowAnyIssuer: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,12 +347,11 @@ func TestValidateAuth_MissingFields(t *testing.T) {
 	if _, err := V.ValidateAuth(&c, a, ValidateAuthOptions{}); !errors.As(err, &sf) || sf.EndResult != "USER_REFUSED" {
 		t.Fatal(err)
 	}
-	// QSCD нь QUALIFIED-ийг хангана
+	// v0.6.0: хариу гэрчилгээнээс (QUALIFIED — QcSSCD алга) өндөр түвшин зарлавал татгалзана.
 	c = *r
 	c.CertificateLevel = "QSCD"
-	if _, err := V.ValidateAuth(&c, a, ValidateAuthOptions{}); err != nil {
-		t.Fatal(err)
-	}
+	_, err := V.ValidateAuth(&c, a, ValidateAuthOptions{})
+	wantInvalid(t, err, "гэрчилгээнээс (QUALIFIED) өндөр")
 }
 
 // ── ACSP_V2 initialCallbackUrl — CA урсгалаар шийднэ, хариунаас сэргээнэ ──
@@ -555,7 +570,7 @@ func TestChain(t *testing.T) {
 	r4.CertificateDERB64 = base64.StdEncoding.EncodeToString(justExpired.cert.Raw)
 	_, err = trusted(t).ValidateAuth(&r4, a, ValidateAuthOptions{})
 	wantInvalid(t, err, "хугацаа дууссан")
-	vs, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, ClockSkew: time.Hour})
+	vs, _ := NewValidator(TrustConfig{TrustAnchorsPEM: []string{p.root.pem}, IntermediatesPEM: []string{p.inter.pem}, ClockSkew: time.Hour, AllowAnyIssuer: true})
 	_, err = vs.ValidateAuth(&r4, a, ValidateAuthOptions{})
 	wantInvalid(t, err, "ACSP_V2 payload")
 	if _, err := NewValidator(TrustConfig{TrustAnchorsPEM: []string{"not pem"}}); err == nil {

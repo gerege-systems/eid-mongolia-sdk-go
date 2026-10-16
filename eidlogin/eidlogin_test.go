@@ -11,6 +11,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"math/big"
@@ -54,7 +55,9 @@ func newFake(t *testing.T) *fakeEID {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		KeyUsage: x509.KeyUsageDigitalSignature,
+		// v0.6.0: зориулалт анхдагчаар (KU DS + EKU clientAuth), түвшин гэрчилгээнээс (AUTH KU keyEncipherment → QUALIFIED).
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection},
 		Subject: pkix.Name{Country: []string{"MN"}, CommonName: "DORJ,BAT", SerialNumber: "PNOMN-111949212017",
 			ExtraNames: []pkix.AttributeTypeAndValue{
 				{Type: asn1.ObjectIdentifier{2, 5, 4, 42}, Value: "BAT"},
@@ -417,7 +420,7 @@ func TestRateLimitsOverridePush(t *testing.T) {
 
 func TestDefaultRateLimitAndValidation(t *testing.T) {
 	d := DefaultRateLimit()
-	if len(d) != 1 || d["push"].Max != 3 || d["push"].Window != time.Minute {
+	if len(d) != 2 || d["push"].Max != 3 || d["push"].Window != time.Minute || d["start"].Max != 20 || d["start"].Window != time.Minute {
 		t.Fatalf("%+v", d)
 	}
 	d["push"] = RateRule{}
@@ -605,3 +608,93 @@ func TestWithReturnHint(t *testing.T) {
 		}
 	}
 }
+
+// v0.6.0: start анхдагчаар нэг IP-ээс 60 секундэд 20; RateRule{} — хязгааргүй.
+func TestDefaultStartLimit(t *testing.T) {
+	ip := "192.0.2.1"
+	e := setup(t, func(c *Config) { c.ClientIP = func(*http.Request) string { return ip } })
+	for i := 0; i < 20; i++ {
+		if r := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil); r.code != 200 {
+			t.Fatalf("#%d: %d", i, r.code)
+		}
+	}
+	if r := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil); r.code != 429 {
+		t.Fatalf("21: %d", r.code)
+	}
+	ip = "192.0.2.2"
+	if r := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil); r.code != 200 {
+		t.Fatalf("өөр IP: %d", r.code)
+	}
+	off := setup(t, func(c *Config) {
+		c.ClientIP = func(*http.Request) string { return "192.0.2.1" }
+		c.RateLimits = map[string]RateRule{"start": {}}
+	})
+	for i := 0; i < 25; i++ {
+		if r := off.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil); r.code != 200 {
+			t.Fatalf("off #%d: %d", i, r.code)
+		}
+	}
+}
+
+// Дүүрсэн хязгаарлагч: олон түлхүүрээр дүүргэж тухайн түлхүүрийн хязгаарыг тойрох боломжгүй; шинэ түлхүүр fail-closed;
+// цонх өнгөрсөн түлхүүр цэвэрлэгдэнэ.
+func TestWindowLimiterFullFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	lim := windowLimiter(1, 50*time.Millisecond, 3)
+	if !lim(ctx, "push:victim") || lim(ctx, "push:victim") {
+		t.Fatal("victim 1/цонх")
+	}
+	if !lim(ctx, "a") || !lim(ctx, "b") {
+		t.Fatal("a, b")
+	}
+	if lim(ctx, "c") {
+		t.Fatal("дүүрсэн — шинэ түлхүүр татгалзагдах ёстой")
+	}
+	if lim(ctx, "push:victim") {
+		t.Fatal("victim-ийн тоолуур арилсан (v0.5.x: бүгдийг цэвэрлэдэг байв)")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if !lim(ctx, "c") {
+		t.Fatal("цонх өнгөрсөн түлхүүрүүд цэвэрлэгдэх ёстой")
+	}
+}
+
+// Санах ойн сан: дээд хэмжээнд хүрвэл хугацаа дууссаныг цэвэрлэнэ, үгүй бол ErrStoreFull (эхэлсэнийг устгахгүй);
+// start → 503 busy.
+func TestMemoryStoreCap(t *testing.T) {
+	ctx := context.Background()
+	s := newMemoryStore(2)
+	if err := s.Set(ctx, &Tx{SessionID: "a"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set(ctx, &Tx{SessionID: "b"}, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if err := s.Set(ctx, &Tx{SessionID: "c"}, time.Minute); err != nil {
+		t.Fatal("хугацаа дууссан b цэвэрлэгдэх ёстой:", err)
+	}
+	if err := s.Set(ctx, &Tx{SessionID: "d"}, time.Minute); !errors.Is(err, ErrStoreFull) {
+		t.Fatal(err)
+	}
+	if err := s.Set(ctx, &Tx{SessionID: "a"}, time.Minute); err != nil {
+		t.Fatal("байгаа түлхүүрийг шинэчлэх:", err)
+	}
+	if tx, _ := s.Get(ctx, "a"); tx == nil {
+		t.Fatal("a устсан")
+	}
+	full := setup(t, func(c *Config) { c.Store = fullStore{} })
+	r := full.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil)
+	if r.code != 503 || r.body["error"] != "busy" {
+		t.Fatalf("%d %v", r.code, r.body)
+	}
+	if MemoryStoreMax != 10_000 || NewMemoryStore().(*memoryStore).max != MemoryStoreMax {
+		t.Fatal("MemoryStoreMax")
+	}
+}
+
+type fullStore struct{}
+
+func (fullStore) Get(context.Context, string) (*Tx, error)      { return nil, nil }
+func (fullStore) Set(context.Context, *Tx, time.Duration) error { return ErrStoreFull }
+func (fullStore) Delete(context.Context, string) (bool, error)  { return false, nil }

@@ -424,6 +424,13 @@ func sha256hex(b []byte) string { return sha256Hex(b) }
 // runGolden — нэг тохиолдол: Prepare → иргэний RSA гарын үсэг → Complete (тогтмол HTTP). Гаралт ба хүлээгдэх утга.
 func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, input []byte) (goldenExpect, []byte) {
 	t.Helper()
+	got, out, _ := runGoldenWith(context.Background(), t, p, rt, c, input, nil)
+	return got, out
+}
+
+// runGoldenWith — runGolden + transport, ctx, LTVRetries-ийг өгнө; Complete-ийн алдааг буцаана.
+func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.RoundTripper, c goldenCase, input []byte, ltvRetries *int) (goldenExpect, []byte, error) {
+	t.Helper()
 	var got goldenExpect
 	got.InputSHA256 = sha256hex(input)
 	o := c.Prep
@@ -436,7 +443,7 @@ func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, in
 		if got.Error == "" {
 			t.Fatalf("%s: %v", c.Name, err)
 		}
-		return got, nil
+		return got, nil, err
 	}
 	st, err := decodeState(prep.State)
 	if err != nil {
@@ -451,17 +458,17 @@ func runGolden(t *testing.T, p *goldenPKI, rt *replayTransport, c goldenCase, in
 	got.SignedAttrs, got.Signature = hex.EncodeToString(st.SignedAttrs), hex.EncodeToString(sig)
 	nonceReader = &seededReader{seed: []byte("golden-nonce:" + c.Name)}
 	defer func() { nonceReader = rand.Reader }()
-	res, err := Complete(context.Background(), prep.State, sig, CompleteOptions{
+	res, err := Complete(ctx, prep.State, sig, CompleteOptions{
 		HTTPClient: &http.Client{Transport: rt}, TSAURL: "http://tsa.pki.test/",
-		Now: func() time.Time { return goldenNow }, Roots: [][]byte{p.root.cert.Raw}})
+		Now: func() time.Time { return goldenNow }, Roots: [][]byte{p.root.cert.Raw}, LTVRetries: ltvRetries})
 	if err != nil {
 		got.Error = ErrorCode(err)
 		t.Logf("%s: %v", c.Name, err)
-		return got, nil
+		return got, nil, err
 	}
 	got.OutSHA256, got.RevIndex, got.HasPage, got.PageSHA256 = res.OutSHA256, res.RevIndex, res.HasPage, res.PageSHA256
 	got.SigRevSHA256, got.CMSSHA256, got.PriorCMSSHA256 = res.SigRevSHA256, sha256hex(res.CMS), res.PriorCMSSHA256
-	return got, res.PDF
+	return got, res.PDF, nil
 }
 
 // TestGolden — бүх тохиолдлын prepare/complete-ийг manifest-тэй байт-түвшинд (sha256) тулгана. Дараа нь гаралт бүрийг

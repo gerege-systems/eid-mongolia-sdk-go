@@ -128,12 +128,22 @@ type memEntry struct {
 }
 
 type memoryStore struct {
-	mu sync.Mutex
-	m  map[string]memEntry
+	mu  sync.Mutex
+	m   map[string]memEntry
+	max int
 }
 
-// NewMemoryStore — нэг процессын санах ойн сан (TTL-тэй).
-func NewMemoryStore() Store { return &memoryStore{m: map[string]memEntry{}} }
+// MemoryStoreMax — NewMemoryStore-ийн дээд хэмжээ (идэвхтэй нэвтрэлт).
+const MemoryStoreMax = 10_000
+
+// ErrStoreFull — санах ойн сан дүүрсэн (хугацаа нь дуусаагүй MemoryStoreMax нэвтрэлт): start 503 {"error":"busy"}.
+var ErrStoreFull = errors.New("eidlogin: memory store дүүрсэн")
+
+// NewMemoryStore — нэг процессын санах ойн сан (TTL-тэй), дээд тал нь MemoryStoreMax: дүүрвэл хугацаа дууссаныг
+// цэвэрлээд, хоосроогүй бол ШИНЭ нэвтрэлтийг ErrStoreFull-аар татгалзана — эхэлсэн нэвтрэлтүүдийг хэзээ ч устгахгүй.
+func NewMemoryStore() Store { return newMemoryStore(MemoryStoreMax) }
+
+func newMemoryStore(max int) *memoryStore { return &memoryStore{m: map[string]memEntry{}, max: max} }
 
 func (s *memoryStore) Get(_ context.Context, k string) (*Tx, error) {
 	s.mu.Lock()
@@ -154,11 +164,14 @@ func (s *memoryStore) Set(_ context.Context, tx *Tx, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
-	if len(s.m) > 1000 {
+	if _, ok := s.m[tx.SessionID]; !ok && len(s.m) >= s.max {
 		for k, e := range s.m {
 			if !now.Before(e.exp) {
 				delete(s.m, k)
 			}
+		}
+		if len(s.m) >= s.max {
+			return ErrStoreFull
 		}
 	}
 	s.m[tx.SessionID] = memEntry{tx: *tx, exp: now.Add(ttl)}
@@ -189,11 +202,15 @@ type RateRule struct {
 	Func   func(ctx context.Context, key string) bool
 }
 
-// DefaultRateLimit — анхдагч хязгаар (шинэ map): push — нэг дугаарт 60 секундэд 3. Config.RateLimits-д өгөөгүй төрөл
-// энүүгээр үлдэнэ; илэрхий бичих бол үүнийг аваад өөрчилж өг.
+// DefaultRateLimit — анхдагч хязгаар (шинэ map): start — нэг IP-ээс 60 секундэд 20 (v0.6.0-аас; ClientIP өгсөн үед);
+// push — нэг дугаарт 60 секундэд 3. Config.RateLimits-д өгөөгүй төрөл энүүгээр үлдэнэ; илэрхий бичих бол үүнийг аваад
+// өөрчилж өг. TS SDK-ийн defaultRateLimit-тэй ижил.
 func DefaultRateLimit() map[string]RateRule {
-	return map[string]RateRule{"push": {Max: 3, Window: time.Minute}}
+	return map[string]RateRule{"start": {Max: 20, Window: time.Minute}, "push": {Max: 3, Window: time.Minute}}
 }
+
+// limiterMaxKeys — санах ойн хязгаарлагчийн дээд түлхүүрийн тоо (төрөл тус бүрд).
+const limiterMaxKeys = 10_000
 
 var rateKinds = []string{"start", "push"}
 
@@ -245,8 +262,9 @@ type Config struct {
 	CookieName, CookiePath, CookieDomain string
 	InsecureCookie                       bool
 	// RateLimits — төрөл тус бүрийн хязгаар ("start" — "start:<ip>", "push" — "push:<idCode>"); DefaultRateLimit()-тэй
-	// НЭГТГЭГДЭНЭ: өгсөн төрөл анхдагчийг дарна, өгөөгүй нь анхдагчаараа (push: нэг дугаарт 60 секундэд 3, MFA
-	// fatigue). Тухайн төрлийг хязгааргүй болгох бол хоосон RateRule{}. Өөр түлхүүр → New алдаа.
+	// НЭГТГЭГДЭНЭ: өгсөн төрөл анхдагчийг дарна, өгөөгүй нь анхдагчаараа (start: нэг IP-ээс 60 секундэд 20 (v0.6.0-аас);
+	// push: нэг дугаарт 60 секундэд 3, MFA fatigue). Тухайн төрлийг хязгааргүй болгох бол хоосон RateRule{}. Өөр түлхүүр →
+	// New алдаа.
 	RateLimits map[string]RateRule
 	// RateLimit — бүх түлхүүрт ("start:<ip>", "push:<idCode>") дуудагдах нэмэлт шалгалт; false → 429. Анхдагч
 	// хязгаар ДЭЭР нэмэгдэнэ (хоёулаа зөвшөөрөх ёстой) — анхдагчийг солих бол RateLimits-ээр тухайн төрлийг өг.
@@ -466,22 +484,31 @@ func buildLimits(user map[string]RateRule) (map[string]func(context.Context, str
 			if r.Window <= 0 {
 				return nil, fmt.Errorf("eidlogin: RateLimits[%q].Window > 0 байх ёстой", k)
 			}
-			out[k] = windowLimiter(r.Max, r.Window)
+			out[k] = windowLimiter(r.Max, r.Window, limiterMaxKeys)
 		}
 	}
 	return out, nil
 }
 
-// windowLimiter — санах ойн гулсах цонх (түлхүүр тус бүрд), 10 000 түлхүүрээс хэтэрвэл цэвэрлэнэ.
-func windowLimiter(limit int, window time.Duration) func(context.Context, string) bool {
+// windowLimiter — санах ойн гулсах цонх (түлхүүр тус бүрд), дээд тал нь maxKeys түлхүүр. Дүүрвэл цонх нь өнгөрсөн
+// түлхүүрийг цэвэрлээд, хоосроогүй бол ШИНЭ түлхүүрийг татгалзана (fail-closed) — байгаа түлхүүрийн тоолуурыг хэзээ ч
+// арилгахгүй тул олон түлхүүрээр дүүргэж тухайн дугаарын хязгаарыг тойрох боломжгүй (v0.5.x бүгдийг цэвэрлэдэг байв).
+func windowLimiter(limit int, window time.Duration, maxKeys int) func(context.Context, string) bool {
 	var mu sync.Mutex
 	hits := map[string][]time.Time{}
 	return func(_ context.Context, key string) bool {
 		mu.Lock()
 		defer mu.Unlock()
 		now := time.Now()
-		if len(hits) > 10000 {
-			hits = map[string][]time.Time{}
+		if _, ok := hits[key]; !ok && len(hits) >= maxKeys {
+			for k, ts := range hits {
+				if len(ts) == 0 || now.Sub(ts[len(ts)-1]) >= window {
+					delete(hits, k)
+				}
+			}
+			if len(hits) >= maxKeys {
+				return false
+			}
 		}
 		var h []time.Time
 		for _, t := range hits[key] {
@@ -682,6 +709,11 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		var ae *eid.APIError
 		if errors.As(err, &ae) && ae.Status == http.StatusTooManyRequests {
 			limited()
+			return
+		}
+		if errors.Is(err, ErrStoreFull) {
+			w.Header().Set("Retry-After", "30")
+			errJSON(w, http.StatusServiceUnavailable, "busy")
 			return
 		}
 		errJSON(w, http.StatusBadGateway, "eid_unavailable")

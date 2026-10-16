@@ -57,7 +57,8 @@ eID сервер Web2App буцах замыг үргэлж `/auth/eid/callback`
 ```go
 c, _ := eid.NewClient(eid.Config{
 	Credentials: eid.Credentials{RPUUID: uuid, RPName: "Интернэт банк", APISecret: secret},
-	Trust:       eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, IntermediatesPEM: intermediates},
+	// Root (01) — итгэлийн тулгуур; завсрын 02 → 03 → 04 нь SDK-д суусан (eid.CitizenIntermediatesPEM, анхдагч).
+	Trust: eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}},
 })
 login, err := eidlogin.New(eidlogin.Config{
 	Client:      c,
@@ -143,8 +144,12 @@ Proxy-гүй бол `eidlogin.RemoteAddrIP`. nil бол IP-ээр хязгаар
 `trustProxy` / `getClientIp`-тэй ижил дүрэм.
 
 **Хязгаарлалт.** Түлхүүр: `start:<ip>` (ClientIP өгсөн бол), `push:<idCode>`; татгалзвал 429 + `Retry-After: 60`.
-Анхдагч `eidlogin.DefaultRateLimit()` = `{"push": {Max: 3, Window: time.Minute}}` (нэг дугаарт минутад 3 мэдэгдэл, MFA
-fatigue); `start`-ийг анхдагчаар хязгаарладаггүй.
+Анхдагч `eidlogin.DefaultRateLimit()` = `{"start": {Max: 20, Window: time.Minute}, "push": {Max: 3, Window: time.Minute}}`
+— нэг IP-ээс минутад 20 эхлэл (v0.6.0-аас; `ClientIP` өгсөн бол), нэг дугаарт минутад 3 мэдэгдэл (MFA fatigue). Санах
+ойн хязгаарлагч төрөл тус бүрд ≤ 10 000 түлхүүр: дүүрвэл цонх нь өнгөрсөнийг цэвэрлэж, хоосроогүй бол **шинэ** түлхүүрийг
+429-өөр татгалзана (fail-closed) — байгаа тоолуурыг хэзээ ч арилгахгүй тул олон IP/дугаараар дүүргэж хязгаарыг тойрох
+боломжгүй. `NewMemoryStore()` ч мөн адил ≤ `eidlogin.MemoryStoreMax` (10 000): дүүрвэл start 503 `{"error":"busy"}`
+(`eidlogin.ErrStoreFull`), эхэлсэн нэвтрэлтийг устгахгүй. Олон instance бол Redis store/limiter.
 
 - `Config.RateLimits map[string]RateRule` — анхдагчтай **нэгтгэгдэнэ**: өгсөн төрөл (`"start"` | `"push"`) анхдагчийг
   дарна, өгөөгүй нь анхдагчаараа. `RateRule{Max, Window}` — процессын санах ойн гулсах цонх; `RateRule{Func: …}` — өөрийн
@@ -155,6 +160,7 @@ fatigue); `start`-ийг анхдагчаар хязгаарладаггүй.
 ```go
 lim := eidlogin.DefaultRateLimit()                                  // илэрхий бичих бол
 lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push 3/мин хэвээр
+// lim["start"] = eidlogin.RateRule{}                               // start-ийг nginx/gateway-д хязгаарладаг бол
 lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // олон instance: push-ийг Redis-ээр солино
 cfg.RateLimits = lim
 ```
@@ -218,14 +224,15 @@ c, err := eid.NewClient(eid.Config{
 		APISecret: os.Getenv("EID_SECRET"),
 	},
 	Trust: eid.TrustConfig{
-		TrustAnchorsPEM:  []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01) — production-д ЗААВАЛ
-		IntermediatesPEM: intermediatePEMs,               // 02 MDDC → 03 Gerege → 04 eID Mongolia Issuing CA
+		TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01) — production-д ЗААВАЛ
+		// IntermediatesPEM nil = eid.CitizenIntermediatesPEM (02 MDDC → 03 Gerege → 04 eID Mongolia Issuing CA)
 	},
 })
 ```
 
 Бүх дуудлага `context.Context` авна (цуцлалт, deadline); дуудлага бүрийн анхдагч хугацаа `Config.Timeout` (15s),
-long-poll өөрийн уртыг, `PDF.RegisterSignature` `Config.PDFTimeout`-ийг (анхдагч 80s) хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
+long-poll өөрийн уртыг, `PDF.RegisterSignature` `Config.PDFTimeout`-ийг (анхдагч 80s — CA CMS + TSA + LTV-г шалгадаг;
+TS SDK 0.19.0-аас `pdfTimeoutMs` ижил 80 с) хэрэглэнэ. Завсрын CA-уудын эх: <https://developer.eidmongolia.mn/#verification>.
 
 ### 3.1. Нэвтрэлт — push
 
@@ -465,7 +472,10 @@ if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Li
 // токеноор нэвтрэх (AUTH эрх)
 ch, err := c.Token.AuthChallenge(ctx)
 digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
-who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
+// v0.6.0-аас challenge-ийг бүтнээр нь (RP хадгалсан, эсвэл клиентээс буцаж ирсэн — CA ChallengeID-ээр тулгана):
+// SDK CA-ийн OK-д дангаар итгэхгүй — r||s-ийг гэрчилгээний түлхүүрээр, RPUUID-ийг өөрийнхтэй, гэрчилгээг Trust-аар
+// (гинж, issuer, зориулалт auth) шалгаад дараа нь CA руу илгээнэ.
+who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 
 // токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
 ```
@@ -493,9 +503,15 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
    keyUsage keyCertSign, **name constraints**, **EKU** (auth → clientAuth, sign → emailProtection — CA-ийн профайл;
    завсрын CA-д EKU байвал түүнд багтах), үл таних **critical extension** → татгалзана, гарын үсэг, хугацаа (гинжийг
    leaf-ийн хүчинтэй хугацаанд, `ClockSkew`-ийн хүрээнд). Trust anchor тохируулаагүй бол **fail-closed**
-   (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй. `IntermediatesPEM`-д 02, 03, 04-ийг бүгдийг өгнө
-   (хариунд гинж ирдэггүй). certificatePolicies-ийг шалгахгүй (CA-ийн гинжинд policyConstraints алга).
+   (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй. Хариунд гинж ирдэггүй — `IntermediatesPEM` nil
+   бол SDK-д суусан 02, 03, 04 (`eid.CitizenIntermediatesPEM`, v0.6.0-аас). certificatePolicies-ийг шалгахгүй
+   (CA-ийн гинжинд policyConstraints алга).
 3. Гэрчилгээ хүчинтэй хугацаанд (`ClockSkew`) + шаардсан түвшин (`RequiredLevel`, анхдагч `QUALIFIED`; `QSCD` хангана).
+   **v0.6.0-аас түвшинг гэрчилгээнээс тогтооно** (`eid.CertificateLevelOf`): гарын үсгийн гэрчилгээнд qcStatements
+   QcCompliance → QUALIFIED (+ QcSSCD → QSCD), qcStatements-гүй (USB токен) → ADVANCED; нэвтрэлтийн гэрчилгээнд CA
+   qcStatements бичдэггүй тул профайлаар — KeyUsage keyEncipherment (утасны P-CITIZEN-AUTH) → QUALIFIED, үгүй (токены)
+   → ADVANCED. Хариуны `CertificateLevel` түүнээс өндөр бол татгалзана; бага бол хариуныхыг авна.
+   `VerifiedIdentity` / `VerifiedSignature` / `Signer`-ийн `CertificateLevel` = энэ утга.
 4. Гарын үсэг (`rsassa-pss` / `shaNNNWithRSAEncryption` / `ecdsa-with-SHA256`):
    - **auth** → ACSP_V2 payload (`smart-id|ACSP_V2|serverRandom|rpChallenge|userChallenge|B64(rpName)|B64(brokeredRpName)|B64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType`),
      hash = хүсэлтийн `HashAlgorithm`; `flowType` санал болгосон урсгалд, `ExpectedFlowType` өгвөл ЯГ таарах,
@@ -517,9 +533,12 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
    `unchecked`, nil (шалтгааныг `Observe`-оос); hard → `*ValidationError` (`Cause` = `*OCSPError`). Олгогчийн гаргасан,
    хариунд шигтгэсэн `id-kp-OCSPSigning` responder (RFC 6960 §4.2.2.2, ocsp.eidmongolia.mn-ийн «eID OCSP Responder»)-ийг
    хүлээн авна (бодит хариугаар тест: `testdata/ocsp-eid-delegated.der`).
-6. Нэмэлт (сонголттой): `AllowedIssuerSKIs: []string{eid.CitizenIssuingCASKI}` — зөвхөн иргэний Issuing CA (04)-ийн
-   гэрчилгээ (ижил root-ийн доорх байгууллагын CA-г хаана); `CheckKeyUsage: true` — auth → clientAuth, sign →
-   nonRepudiation (CA-ийн профайл); `SchemeName` — CA-ийн `acsp_scheme_name` (анхдагч `smart-id`).
+6. **Issuer ба зориулалт (v0.6.0-аас анхдагч):** `AllowedIssuerSKIs` хоосон бол `[]string{eid.CitizenIssuingCASKI}`
+   (TrustAnchorsPEM тохируулсан үед) — зөвхөн иргэний Issuing CA (04)-ийн гэрчилгээ (ижил root-ийн доорх байгууллагын
+   05 г.м. хаагдана; унтраах: `AllowAnyIssuer: true`); зориулалт анхдагчаар шалгагдана — auth → KU digitalSignature +
+   EKU clientAuth, sign → KU nonRepudiation (CA-ийн профайл): нэвтрэлтийн (PIN1) түлхүүрийн гарын үсэг `ValidateSign`-д
+   тэнцэхгүй (унтраах: `SkipKeyUsageCheck: true`, зөвлөхгүй; `CheckKeyUsage` deprecated, нөлөөгүй). `SchemeName` —
+   CA-ийн `acsp_scheme_name` (анхдагч `smart-id`).
 
 Аль нэг алхам бүтэлгүйтвэл `*eid.ValidationError` — хариунд **итгэхгүй**. Алдааны текстэд иргэний нэр, PNOMN, РД
 ордоггүй (гэрчилгээг serial-аар, замыг `/etsi/…`-ээр) — шууд лог руу бичиж болно.
@@ -582,6 +601,7 @@ _, err = c.Validator.ValidateSign(res, s.Sign.Digest, s.Sign.HashAlgorithm, eid.
 sig, _ := base64.StdEncoding.DecodeString(res.SignatureValueB64)
 // 5. Complete — TSA https://tsa.timeserver.mn/, OCSP/CRL (AIA/CDP), DSS, өөрийн шалгалт.
 done, err := pades.Complete(ctx, p.State, sig, pades.CompleteOptions{})
+// OCSP/CRL түр унавал SDK өөрөө 2 удаа дахин оролдоно (~1с, ~3с + jitter; PIN дахин асуухгүй) — CompleteOptions.LTVRetries.
 if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State хэвээр — дахин оролдоно */ }
 // 6. CA-ийн бүртгэл (docID, /verify) — заавал.
 reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: s.SessionID,
@@ -606,6 +626,11 @@ rep, err := pades.Verify(done.PDF, pades.VerifyOptions{}) // CA-ийн /v3/valid
   (оролт > 10 223 616 байт), `PDF_TOO_MANY_SIGNATURES`, `PDF_PRIOR_SIGNATURE_INVALID`, `PDF_FOREIGN_SIGNATURE` (өмнөх
   гарын үсгийн signer нь eID-ийн 04/05-аас биш эсвэл SubFilter CAdES биш — [PRECHECKS.md](pades/PRECHECKS.md)), `SIGNER_INVALID`, `REQUEST_INVALID`, `SIGNATURE_INVALID`, `TSA_UNAVAILABLE`,
   `LTV_UNAVAILABLE`, `SELF_VALIDATION_FAILED`, `PLACEHOLDER_OVERFLOW`, `STATE_INVALID`.
+- **LTV retry (v0.6.0)** — OCSP/CRL (DSS) цуглуулалт унавал (`LTV_UNAVAILABLE` нөхцөл, ж: үндэсний CRL толь түр 404)
+  `Complete` ижил state, гарын үсэг, TSA timestamp-аар өөрөө дахин оролдоно: `CompleteOptions.LTVRetries` (`*int`; nil =
+  `pades.DefaultLTVRetries` 2 — нийт 3 оролдлого, хүлээлт ~1 с, ~3 с + 0–25% jitter; `0` — унтраах; 0–10-аас гадуур →
+  `REQUEST_INVALID`). Бүгд унавал `LTV_UNAVAILABLE`; `ctx` цуцлагдвал хүлээлт тасарч `context.Canceled`-ийг боосон
+  `LTV_UNAVAILABLE`. TS SDK 0.18.3-ийн `ltvRetries`-тэй ижил — TS ба Go хоёулаа LTV retry-тэй.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
 
 ### 7.1. Харагдах гарын үсэг (сонголттой)

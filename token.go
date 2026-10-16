@@ -3,6 +3,8 @@ package eid
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/x509"
@@ -11,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -29,6 +32,7 @@ import (
 type TokenService struct {
 	h     *httpDoer
 	creds Credentials
+	v     *Validator // AuthVerify-ийн гэрчилгээний шалгалт (Config.Trust)
 }
 
 // TokenCertInput — POST /token/certificate-ийн оролт.
@@ -228,19 +232,40 @@ func (t *TokenService) AuthChallenge(ctx context.Context) (*TokenAuthChallenge, 
 	return &r, nil
 }
 
-// AuthVerify — POST /token/auth/verify: токены AUTH гэрчилгээ (DER) + challenge дээрх түүхий r||s гарын үсэг. CA гинж,
-// төлөв, цуцлалт, гарын үсгийг шалгана; SDK нэмж endResult == OK ба identity.etsi == гэрчилгээний SERIALNUMBER-ийг
-// тулгана (эс бөгөөс *ValidationError). Challenge нэг удаагийн — алдааны дараа шинээр авна.
-func (t *TokenService) AuthVerify(ctx context.Context, challengeID string, certDER, signature []byte) (*TokenAuthResult, error) {
+// AuthVerify — POST /token/auth/verify: токены AUTH гэрчилгээ (DER) + challenge дээрх түүхий r||s (64 байт).
+//
+// v0.6.0-аас SDK CA-ийн OK-д дангаар итгэхгүй (бусад auth-тай ижил): CA руу илгээхээс өмнө ch.RPUUID == энэ RP,
+// гарын үсэг TokenAuthDigest(ch.RPUUID, ch.Challenge) дээр гэрчилгээний түлхүүрээр (EC P-256) таарах, гэрчилгээ
+// Config.Trust-аар (хугацаа, зориулалт auth, гинж, issuer allowlist) хүчинтэйг шалгана (эс бөгөөс *ValidationError,
+// CA руу явахгүй); дараа нь CA-ийн endResult == OK ба identity.etsi == гэрчилгээний SERIALNUMBER. Цуцлалтыг CA шалгана;
+// RP нэмж Validator.CheckRevocation дуудаж болно. ch — AuthChallenge-ийн хариу (RP хадгалсан, эсвэл клиентээс буцаж
+// ирсэн — CA ChallengeID-ээр тулгана). Challenge нэг удаагийн — алдааны дараа шинээр авна.
+func (t *TokenService) AuthVerify(ctx context.Context, ch *TokenAuthChallenge, certDER, signature []byte) (*TokenAuthResult, error) {
 	crt, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return nil, fmt.Errorf("eid: token auth: гэрчилгээ задарсангүй: %w", err)
 	}
-	if challengeID == "" || len(signature) == 0 {
-		return nil, errors.New("eid: token auth: challengeID ба signature шаардлагатай")
+	if ch == nil || ch.ChallengeID == "" || len(signature) == 0 {
+		return nil, errors.New("eid: token auth: challenge (ChallengeID, Challenge, RPUUID) ба signature шаардлагатай")
+	}
+	if !strings.EqualFold(ch.RPUUID, t.creds.RPUUID) {
+		return nil, invalid("token auth: challenge өөр RP-д холбогдсон (rpUUID)")
+	}
+	digest, err := TokenAuthDigest(ch.RPUUID, ch.Challenge)
+	if err != nil {
+		return nil, &ValidationError{Reason: "token auth: challenge/rpUUID хэлбэр буруу", Cause: err}
+	}
+	if !verifyTokenSignature(crt, digest, signature) {
+		return nil, invalid("token auth: гарын үсэг challenge-тэй таарсангүй (EC P-256 r||s)")
+	}
+	if t.v == nil {
+		return nil, errors.New("eid: token auth: Validator алга (NewClient-ээр үүсгэнэ үү)")
+	}
+	if err := t.v.verifyTokenAuthCertificate(crt); err != nil {
+		return nil, err
 	}
 	body := map[string]string{
-		"challengeId": challengeID,
+		"challengeId": ch.ChallengeID,
 		"certificate": base64.StdEncoding.EncodeToString(certDER),
 		"signature":   base64.StdEncoding.EncodeToString(signature),
 	}
@@ -274,6 +299,16 @@ func (t *TokenService) AuthVerify(ctx context.Context, challengeID string, certD
 		org = nil
 	}
 	return &TokenAuthResult{Identity: r.Identity, SerialHex: r.Cert.SerialHex, NotAfter: r.Cert.NotAfter, Organization: org, Raw: raw}, nil
+}
+
+// verifyTokenSignature — токены түүхий r||s (P-256, 64 байт) нь digest дээр гэрчилгээний түлхүүрээр таарах эсэх.
+func verifyTokenSignature(crt *x509.Certificate, digest, sig []byte) bool {
+	pub, ok := crt.PublicKey.(*ecdsa.PublicKey)
+	if !ok || pub.Curve != elliptic.P256() || len(sig) != 64 {
+		return false
+	}
+	r, s := new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])
+	return ecdsa.Verify(pub, digest, r, s)
 }
 
 var rpUUIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
