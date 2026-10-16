@@ -609,7 +609,7 @@ reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMe
 	OnBehalfOf: "NTRMN-6235972"})
 _, err = c.PDF.RegisterSignature(ctx, reg) // POST /pdf/signatures
 // done.PDF — PAdES-BASELINE-LT
-rep, err := pades.Verify(done.PDF, pades.VerifyOptions{}) // CA-ийн /v3/validate/pdf-тэй ижил тайлан, сүлжээгүй
+rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ийн /v3/validate/pdf-тэй ижил тайлан (§7.2)
 ```
 
 Бүтэн, compile-оор шалгагддаг хувилбар: `pades/example_test.go` (`Example`).
@@ -653,6 +653,39 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
   мэдэгдэхгүй).
 - `Verify` тайлан: `visible` (энэ гарын үсэг харагдах), `visible_later_signature`. Шалгагч зөвхөн яг энэ хэлбэрийг (widget +
   `/AP`-ийг дахин үүсгэж байт-түвшинд тулгана) хүлээн авна. Дэлгэрэнгүй: [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md).
+
+### 7.2. Гарын үсэгтэй PDF шалгах — `pades.ValidatePDF` (v0.7.0)
+
+RP өөрийн backend дээр (файлыг хаашаа ч илгээлгүй) CA-ийн нийтийн шалгагчийн (`/v3/validate/pdf`) кодоор шалгана —
+тайлан нь CA-ийн JSON-той ижил (snake_case). Хөтөчид ижил дүрэм: TS SDK `validatePdf` (`@gerege-systems/eid-mongolia-sdk/validate`).
+
+```go
+rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // анхдагч: шигтгэсэн үндэсний Root CA, онлайн цуцлалт
+switch pades.ErrorCode(err) {
+case pades.CodePDFNoSignature, pades.CodePDFInvalid, pades.CodePDFTooLarge, pades.CodePDFTooManySignatures: // 4xx
+}
+if rep.Indication == pades.Valid { /* бүх гарын үсэг хүчинтэй */ }
+for _, s := range rep.Signatures {
+	_ = s.SignerName           // гэрчилгээнээс (claimed_name — PDF-д бичигдсэн, баталгаагүй)
+	_ = s.SigningTime          // итгэмжлэгдсэн RFC 3161 цаг
+	_ = s.SignatureLevel       // PAdES-BASELINE-B | -T | -LT
+	_ = s.CertificateLevel     // QUALIFIED | QSCD | ADVANCED (qcStatements)
+	_ = s.Problems             // integrity_failed, untrusted_chain, revoked, modified_after_signing …
+}
+```
+
+- Шалгалт: ByteRange (завсар нь яг энэ `/Contents`) ба messageDigest, CMS гарын үсэг, signingCertificateV2, гинж
+  (үндэсний 01 → 02/03 → 04/05), KU/EKU (иргэний SIGN, байгууллагын тамга, doc-signer; AUTH/TLS → `wrong_key_usage`),
+  хугацаа (цагийн тэмдгийн цагт), RFC 3161 токен (TSA гинж, critical timeStamping EKU), гарын үсгийн ДАРААХ revision бүр зөвхөн
+  eID-ийн гарын үсэг/LTV-ийн зөвшөөрөгдсөн хэлбэр (бусад → `modified_after_signing`), харагдах гарын үсэг (APPEARANCE_SPEC
+  §5), LTV-ийн бүрэн байдал (`ltv`).
+- Цуцлалт (eID-ийн 04/05-аас гарсан гэрчилгээнд): онлайн — AIA OCSP, эс бөгөөс CDP CRL (олгогчийн гарын үсэгтэй); хариугүй
+  эсвэл `Offline: true` бол баримтын DSS. Аль нь ч үгүй → `revocation_unavailable` (indeterminate). Цагийн тэмдгээс хойш
+  цуцлагдсан → `revoked_after_signing` (хүчинтэй хэвээр). Сүлжээгээр зөвхөн гэрчилгээний serial (OCSP) явна, баримт биш.
+- `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown` (CA бүртгэлээсээ `token` ч
+  тогтооно). `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` нь CA-ийн бүртгэлээс — SDK-д байхгүй.
+- `Verify` (v0.5) = `ValidatePDF` + `Offline: true` (deprecated; гарын үсэггүй баримтад хуучин зангаар хоосон `valid`).
+- Conformance: `pades/testdata/validate/` — Go, TS ба CA ижил багцаар ижил тайлан.
 
 Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verify`-тэй, backend-д); TS / Swift / Kotlin / C# native SDK-ууд гарын
 үсгийн замыг ([PROFILE.md](pades/PROFILE.md), [PAGE_SPEC.md](pades/PAGE_SPEC.md), [PRECHECKS.md](pades/PRECHECKS.md),
@@ -730,7 +763,8 @@ standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/tex
   app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
-  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `Verify`. Derived from the CA writer
+  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
+  — same JSON report as `/v3/validate/pdf`, online OCSP/CRL with DSS fallback, `certificate_level`). Derived from the CA writer
   (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
   PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.

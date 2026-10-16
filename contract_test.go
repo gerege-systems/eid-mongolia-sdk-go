@@ -239,7 +239,7 @@ func TestContractTokenCertificate(t *testing.T) {
 }
 
 // TestContractPDFRegisterErrorCodes — discovery-ийн pdfSigning.registerErrorCodes == PDFRegisterErrorCodes (олонлогоор).
-// CA-д талбар гарахаас өмнө skip + WARN (гарсны дараа тулгалт заавал). TS SDK-ийн contract тесттэй ижил.
+// CA !377-оос заавал (алга бол унана). TS SDK-ийн contract тесттэй ижил.
 func TestContractPDFRegisterErrorCodes(t *testing.T) {
 	var d struct {
 		PDFSigning struct {
@@ -247,9 +247,8 @@ func TestContractPDFRegisterErrorCodes(t *testing.T) {
 		} `json:"pdfSigning"`
 	}
 	fetchJSON(t, eidDiscoveryURL, &d)
-	if d.PDFSigning.RegisterErrorCodes == nil {
-		warn("pdfSigning.registerErrorCodes discovery-д алга", []string{"CA-д нэмэгдсэний дараа тулгалт идэвхжинэ"})
-		t.Skip("pdfSigning.registerErrorCodes алга")
+	if d.PDFSigning.RegisterErrorCodes == nil { // CA !377 (прод 35f92276)-оос заавал
+		t.Fatal("pdfSigning.registerErrorCodes discovery-д алга")
 	}
 	set := func(xs []string) string {
 		m := map[string]bool{}
