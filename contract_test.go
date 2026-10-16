@@ -177,3 +177,45 @@ func TestContractPDFSignaturesBody(t *testing.T) {
 		t.Fatalf("POST /pdf/signatures бие зөрөв:\ndiscovery %v\nSDK       %v", want, got)
 	}
 }
+
+// TestContractShare — discovery-ийн endpoints.share-ийн multipart талбарууд ({file, filename?, to (1–5), …}) нь
+// shareFormFields-тэй ЯГ тэнцүү (CA үл мэдэгдэх талбарыг 400-аар татгалздаг), share блок ShareInfo-д задарна.
+func TestContractShare(t *testing.T) {
+	var d struct {
+		RPAPIBase string         `json:"rp_api_base"`
+		Endpoints map[string]any `json:"endpoints"`
+		Share     *ShareInfo     `json:"share"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	desc, _ := d.Endpoints["share"].(string)
+	if !strings.HasPrefix(desc, "POST "+d.RPAPIBase+routeShare.path+" ") {
+		t.Fatalf("endpoints.share: %q", desc)
+	}
+	i, j := strings.IndexByte(desc, '{'), strings.IndexByte(desc, '}')
+	if i < 0 || j < i {
+		t.Fatalf("endpoints.share-д талбар алга: %q", desc)
+	}
+	var want []string
+	for _, f := range strings.Split(desc[i+1:j], ",") {
+		f = strings.TrimSpace(f)
+		if k := strings.IndexByte(f, ' '); k >= 0 { // "to (1–5)"
+			f = f[:k]
+		}
+		want = append(want, strings.TrimSuffix(f, "?"))
+	}
+	got := append([]string(nil), shareFormFields...)
+	sort.Strings(want)
+	sort.Strings(got)
+	if strings.Join(want, ",") != strings.Join(got, ",") {
+		t.Fatalf("POST /share талбар зөрөв:\ndiscovery %v\nSDK       %v", want, got)
+	}
+	s := d.Share
+	if s == nil {
+		t.Fatal("discovery-д share блок алга")
+	}
+	if s.Endpoint != d.RPAPIBase+routeShare.path || s.MaxFileBytes <= 0 || s.MaxRecipients <= 0 || len(s.Formats) == 0 ||
+		s.Quota.PerRPHour <= 0 || s.Quota.PerRPDay <= 0 || s.Quota.PerRecipientDay <= 0 {
+		t.Fatalf("share блок: %+v", s)
+	}
+	t.Logf("share.enabled=%v maxFileBytes=%d maxRecipients=%d quota=%+v", s.Enabled, s.MaxFileBytes, s.MaxRecipients, s.Quota)
+}

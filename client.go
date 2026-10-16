@@ -64,6 +64,7 @@ type Config struct {
 //	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
 //	Session      — үр дүн long-poll
 //	Validator    — хариуг крипто-баталгаажуулах (гинж + гарын үсэг)
+//	Share        — гарын үсэгтэй файлыг имэйлээр дамжуулах (SIGN; ShareInfo — discovery-ийн туг, хязгаар)
 //
 // Client нь goroutine-safe.
 type Client struct {
@@ -77,6 +78,7 @@ type Client struct {
 	Validator    *Validator
 
 	rpName string
+	h      *httpDoer
 }
 
 // RPName — Credentials.RPName (иргэний утсанд харагдах RP нэр).
@@ -122,6 +124,7 @@ func NewClient(cfg Config) (*Client, error) {
 		Session:      &SessionService{h: h},
 		Validator:    v,
 		rpName:       cfg.Credentials.RPName,
+		h:            h,
 	}, nil
 }
 

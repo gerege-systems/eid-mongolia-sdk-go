@@ -36,6 +36,7 @@ var (
 	routeTokenCertificateResult   = rpRoute{"GET", "/token/certificate/{sessionID}"}
 	routeTokenAuthChallenge       = rpRoute{"POST", "/token/auth/challenge"}
 	routeTokenAuthVerify          = rpRoute{"POST", "/token/auth/verify"}
+	routeShare                    = rpRoute{"POST", "/share"}
 )
 
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
@@ -50,6 +51,7 @@ var rpRoutes = []rpRoute{
 	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,
 	routeTokenCertificate, routeTokenCertificateResult,
 	routeTokenAuthChallenge, routeTokenAuthVerify,
+	routeShare,
 }
 
 // rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
