@@ -198,9 +198,13 @@ func (e *SessionFailedError) Error() string { return "eid: session амжилт�
 // (хуурамч/proxy хийгдсэн байж болзошгүй).
 type ValidationError struct {
 	Reason string
+	// Cause — үндсэн шалтгаан (байвал): ж: hard-fail горимд OCSP хариугүй бол *OCSPError (errors.Is(err, ErrOCSPNoAnswer)).
+	Cause error
 }
 
 func (e *ValidationError) Error() string { return "eid: баталгаажуулалт: " + e.Reason }
+
+func (e *ValidationError) Unwrap() error { return e.Cause }
 
 // DeviceLinkError — device link угсрах боломжгүй: deviceLinkBase https биш, token/lang/secret хэлбэр буруу, эсвэл
 // төрөлд хэрэгтэй талбар дутуу. Session-ийг дахин эхлүүлнэ; холбоосыг таахгүй.

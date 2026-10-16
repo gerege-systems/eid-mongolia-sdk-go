@@ -357,7 +357,7 @@ func (v *Validator) CheckRevocation(ctx context.Context, cert *x509.Certificate)
 //	RevocationUnchecked, nil — "unknown", soft-fail горимд зөвшөөрөв
 //	RevocationSkipped, nil   — RevocationChecker тохируулаагүй
 //	RevocationRevoked, *ValidationError — цуцлагдсан
-//	RevocationUnknown, *ValidationError — "unknown", hard-fail
+//	RevocationUnknown, *ValidationError — "unknown", hard-fail (NewOCSPChecker: Cause = *OCSPError, ErrOCSPNoAnswer)
 //	"", error                — checker-ийн алдаа (итгэхгүй)
 func (v *Validator) CheckRevocationStatus(ctx context.Context, cert *x509.Certificate) (RevocationStatus, error) {
 	return v.CheckRevocationWith(ctx, cert, v.revocation, v.revocationMode)
@@ -370,7 +370,9 @@ func (v *Validator) CheckRevocationWith(ctx context.Context, cert *x509.Certific
 		return RevocationSkipped, nil
 	}
 	status, err := checker(ctx, cert, v.findIssuer(cert))
-	if err != nil {
+	// NewOCSPChecker хариугүй үед (RevocationUnknown, *OCSPError) — "unknown"-оор горим шийднэ, шалтгааныг хадгална.
+	noAnswer := err != nil && status == RevocationUnknown && errors.Is(err, ErrOCSPNoAnswer)
+	if err != nil && !noAnswer {
 		return "", fmt.Errorf("eid: revocation шалгалт: %w", err)
 	}
 	switch status {
@@ -381,6 +383,9 @@ func (v *Validator) CheckRevocationWith(ctx context.Context, cert *x509.Certific
 	}
 	if mode == RevocationSoftFail {
 		return RevocationUnchecked, nil
+	}
+	if noAnswer {
+		return RevocationUnknown, &ValidationError{Reason: "гэрчилгээний revocation төлөв тогтоогдсонгүй (hard-fail): " + err.Error(), Cause: err}
 	}
 	return RevocationUnknown, invalid("гэрчилгээний revocation төлөв тогтоогдсонгүй (hard-fail)")
 }
