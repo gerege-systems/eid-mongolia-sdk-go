@@ -123,7 +123,7 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
   `/start` нь «энэ регистр eID-д бүртгэлтэй эсэх»-ийг нэвтрээгүй хэнд ч хэлнэ; зөвхөн дотоод/тестийн орчинд.
 - **Гэрчилгээний цуцлалт (OCSP, анхдагчаар асаалттай).** `ValidateAuth`-ийн дараа, `OnSuccess`-ийн өмнө иргэний гэрчилгээг
   түүний AIA-д бичигдсэн OCSP responder-оос асууна (`Config.Revocation`, nil = `eid.NewOCSPChecker`; хариу олгогч эсвэл
-  түүний OCSPSigning responder-ийн гарын үсэгтэй, энэ serial-ийн, thisUpdate ≤ 48 цаг, good-ийг 5 мин кэшлэнэ).
+  түүний OCSPSigning responder-ийн гарын үсэгтэй, энэ serial-ийн, thisUpdate ≤ 48 цаг, good-ийг min(5 мин, NextUpdate) кэшлэнэ).
   `revoked`, мөн `unknown` (олгогч энэ гэрчилгээг олгоогүй) → `FAILED` / `VALIDATION` (500 биш), `OnSuccess` дуудагдахгүй.
   Хариугүй (timeout 2 с, 5xx, AIA алга, шалгалт унасан хариу): `RevocationMode` "" = soft-fail — зөвшөөрч Warn лог,
   `Identity.Revocation = unchecked` (eID порталын `EID_OCSP=soft`: CA-ийн responder унавал бүх иргэн түгжигдэхгүй; утас
@@ -509,6 +509,14 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
    `CheckRevocationStatus` (`good` / `unchecked` (soft-fail) / `skipped` (hook алга) + алдаа). QUALIFIED
    non-repudiation-д RP тохируулна. Бэлэн hook: `eid.NewOCSPChecker(eid.OCSPOptions{})` — гэрчилгээний AIA OCSP
    (revoked/unknown → revoked; хариугүй → unknown, горим шийднэ). Өөр checker/горимоор нэг удаа: `CheckRevocationWith`.
+   `OCSPOptions` (v0.5.2+): `CacheTTL` (good-ийн кэш = min(CacheTTL, NextUpdate−одоо); анхдагч 5 мин, сөрөг = кэшгүй);
+   `Observe func(eid.OCSPObservation)` — шалгалт бүрд (кэшээс ч) `Status`, `Responder` URL, `Duration`, `Cached`, `Err`
+   (PII-гүй) — метрик/аудитад. Хариугүй бол checker `RevocationUnknown` + `*eid.OCSPError` (`Kind`: `no_responder`,
+   `no_issuer`, `timeout`, `network`, `http_status` (+`HTTPStatus`), `responder_status`, `parse`, `signature`, `invalid`;
+   `errors.Is(err, eid.ErrOCSPNoAnswer)`) буцаана; `CheckRevocationWith` үүнийг unknown гэж горимоор шийднэ — soft →
+   `unchecked`, nil (шалтгааныг `Observe`-оос); hard → `*ValidationError` (`Cause` = `*OCSPError`). Олгогчийн гаргасан,
+   хариунд шигтгэсэн `id-kp-OCSPSigning` responder (RFC 6960 §4.2.2.2, ocsp.eidmongolia.mn-ийн «eID OCSP Responder»)-ийг
+   хүлээн авна (бодит хариугаар тест: `testdata/ocsp-eid-delegated.der`).
 6. Нэмэлт (сонголттой): `AllowedIssuerSKIs: []string{eid.CitizenIssuingCASKI}` — зөвхөн иргэний Issuing CA (04)-ийн
    гэрчилгээ (ижил root-ийн доорх байгууллагын CA-г хаана); `CheckKeyUsage: true` — auth → clientAuth, sign →
    nonRepudiation (CA-ийн профайл); `SchemeName` — CA-ийн `acsp_scheme_name` (анхдагч `smart-id`).
