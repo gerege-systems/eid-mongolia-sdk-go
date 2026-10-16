@@ -555,8 +555,8 @@ func (v *Validator) verifyChain(leaf *x509.Certificate, extra []*x509.Certificat
 func (v *Validator) certInfo(c *x509.Certificate, chain []*x509.Certificate) CertInfo {
 	info := CertInfo{
 		CommonName: c.Subject.CommonName,
-		Subject:    c.Subject.String(),
-		Issuer:     c.Issuer.String(),
+		Subject:    nameString(c.Subject),
+		Issuer:     nameString(c.Issuer),
 		Serial:     hexSerial(c.SerialNumber),
 		NotBefore:  c.NotBefore.UTC(),
 		NotAfter:   c.NotAfter.UTC(),
