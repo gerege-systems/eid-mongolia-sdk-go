@@ -109,7 +109,7 @@ func newDSSStatus(raws []validate.RawSignature, issuers, _ []*x509.Certificate) 
 func (s *dssStatus) CertStatus(serial *big.Int) (validate.CertStatus, error) {
 	for _, der := range s.ocsps {
 		for _, iss := range s.issuers {
-			resp, err := ocsp.ParseResponse(der, iss)
+			resp, err := parseOCSPFrom(der, nil, iss)
 			if err != nil || resp.SerialNumber == nil || resp.SerialNumber.Cmp(serial) != 0 || !responderOK(resp, iss) {
 				continue
 			}

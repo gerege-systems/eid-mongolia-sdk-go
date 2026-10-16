@@ -22,6 +22,8 @@ const (
 	CodeSelfValidationFailed     = "SELF_VALIDATION_FAILED"
 	CodePlaceholderOverflow      = "PLACEHOLDER_OVERFLOW"
 	CodeStateInvalid             = "STATE_INVALID"
+	// CodePDFNoSignature — ValidatePDF: баримтад цахим гарын үсэг алга (CA /v3/validate/pdf "no_signature").
+	CodePDFNoSignature = "PDF_NO_SIGNATURE"
 )
 
 // Error — pades-ийн бүх алдаа. Code нь дээрх тогтмолуудын нэг; Err нь шалтгаан (байвал).

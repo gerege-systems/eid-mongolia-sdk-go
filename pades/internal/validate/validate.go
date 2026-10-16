@@ -201,6 +201,9 @@ type SignatureReport struct {
 	SessionID string `json:"session_id,omitempty"`
 	// DocID — дуудагч pdf_signatures-аас олсон үед: баримтын ID (нэгдсэн /verify/{docID}).
 	DocID string `json:"doc_id,omitempty"`
+	// KeyMedium — зурагчийн түлхүүрийн байршил: "token" (USB токен) | "phone" (eID апп) | "unknown" (CA !377). CA нь
+	// бүртгэлээс тавина; SDK (pades.ValidatePDF) зөвхөн гэрчилгээнээс — validatepdf.go keyMedium.
+	KeyMedium string `json:"key_medium"`
 	// ClaimedRoles — CMS-ийн signer-attributes-v2 (0.4.0.19122.1.1) claimedAttributes / id-at-role: гарын үсэг
 	// зурагчийн мэдүүлсэн үүрэг (гарын үсгээр хамгаалагдсан, гэхдээ өөрөө баталгаа биш). eID-ийн байгууллагын нэрийн
 	// өмнөөс гарын үсэгт «<албан тушаал>, <байгууллага> (NTRMN-…)».
@@ -215,6 +218,10 @@ type SignatureReport struct {
 	// LTV — гинжийн (root-оос бусад) ба TSA гинжийн гэрчилгээ бүрд баримтын DSS-д тохирох OCSP/CRL байгаа эсэх
 	// (мэдээллийн; indication-ийг өөрчлөхгүй — §8.3). Гэрчилгээ задраагүй бол nil.
 	LTV *LTVInfo `json:"ltv,omitempty"`
+	// CertificateLevel — гарын үсэг зурагчийн гэрчилгээний түвшин (eid.CertificateLevelOf, гарын үсгийн протокол):
+	// qcStatements-д QcCompliance → QUALIFIED (+ QcSSCD → QSCD), бусад → ADVANCED (USB токен). Гинж итгэмжлэгдээгүй
+	// эсвэл qcStatements гэмтсэн бол хоосон. SDK бөглөнө (pades.ValidatePDF); CA-д нэмэх санал.
+	CertificateLevel string `json:"certificate_level,omitempty"`
 }
 
 // LTVInfo — урт хугацааны баталгаажуулалтын өгөгдлийн бүрэн байдал. Missing — DSS-д хүчинтэй цуцлалтын

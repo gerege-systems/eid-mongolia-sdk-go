@@ -3,7 +3,6 @@ package pades
 import (
 	"bytes"
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -41,42 +40,19 @@ type VerifyOptions struct {
 	Time time.Time `json:"time,omitempty"`
 }
 
-// Verify — PDF доторх бүх гарын үсгийг CA-ийн нийтийн шалгагчийн кодоор (hardened revision profile) шалгана.
-// Сүлжээ рүү гарахгүй: цуцлалтыг баримтын DSS-ийн OCSP/CRL-ээс (CA өөрийн бүртгэлээс уншдаг).
+// Verify — ValidatePDF-ийн сүлжээгүй хэлбэр (Offline: true): цуцлалтыг зөвхөн баримтын DSS-ийн OCSP/CRL-ээс.
+//
+// Deprecated: ValidatePDF (онлайн OCSP/CRL, ctx) ашиглана уу.
 func Verify(doc []byte, o VerifyOptions) (*Report, error) {
-	if len(doc) > MaxOutputBytes {
-		return nil, newErr(CodePDFTooLarge, "PDF 10 MiB-аас их", nil)
+	rep, err := ValidatePDF(context.Background(), doc, ValidateOptions{Roots: o.Roots, Intermediates: o.Intermediates,
+		Issuers: o.Issuers, Time: o.Time, Offline: true})
+	if ErrorCode(err) == CodePDFNoSignature {
+		return &Report{Indication: Valid, Signatures: []SignatureReport{}}, nil // v0.6.0 хүртэлх зан
 	}
-	roots, err := parseRoots(o.Roots)
-	if err != nil {
-		return nil, newErr(CodeRequestInvalid, "roots", err)
+	if ErrorCode(err) == CodePDFTooManySignatures {
+		err.(*Error).Code = CodePDFInvalid // v0.6.0 хүртэлх зан
 	}
-	inter, err := parseDERs(o.Intermediates)
-	if err != nil {
-		return nil, newErr(CodeRequestInvalid, "intermediates", err)
-	}
-	issuers, err := parseDERs(o.Issuers)
-	if err != nil {
-		return nil, newErr(CodeRequestInvalid, "issuers", err)
-	}
-	raws, err := validate.Extract(doc)
-	switch {
-	case errors.Is(err, validate.ErrNoSignature):
-		return &Report{Indication: Valid, Signatures: []SignatureReport{}}, nil
-	case err != nil:
-		return nil, newErr(CodePDFInvalid, "PDF задарсангүй", err)
-	}
-	var now func() time.Time
-	if !o.Time.IsZero() {
-		t := o.Time
-		now = func() time.Time { return t }
-	}
-	v := newValidator(roots, inter, issuers, now, raws)
-	rep, err := v.ValidatePDF(context.Background(), doc)
-	if err != nil {
-		return nil, newErr(CodePDFInvalid, "шалгаж чадсангүй", err)
-	}
-	return rep, nil
+	return rep, err
 }
 
 // docIDFromPage — баталгаажуулалтын хуудасны холбоос (`<pageVerifyURL><uuid>`)-оос docID; олдохгүй бол "".

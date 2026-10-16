@@ -127,6 +127,9 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 		if r := recover(); r != nil {
 			sigs, err = nil, ErrNotPDF
 		}
+		if CorpusHook != nil && err != nil {
+			CorpusHook(doc, p == profileBroad, nil, nil, "", err)
+		}
 	}()
 	rdr, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
@@ -209,8 +212,30 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 			s.LaterSignaturesOnly, s.LaterSignatures, s.LaterVisible = later.SignaturesOnly, later.Signatures, later.Visible
 		}
 	}
+	if CorpusHook != nil {
+		m := make(map[int]SigMeta, len(metas))
+		for k, v := range metas {
+			m[k] = SigMeta{RevIndex: v.revIndex, Role: v.role, RoleOK: v.roleOK}
+		}
+		CorpusHook(doc, p == profileBroad, sigs, m, docID, nil)
+	}
 	return sigs, nil
 }
+
+// CorpusHook — ЗӨВХӨН тест: extractWith-ийн оролт/гаралтыг differential corpus-д (TS SDK-ийн validatePdf-ийн порт
+// Go-той ижил дүгнэлт гаргаж байгааг тулгах) бичнэ. Prod-д nil.
+var CorpusHook func(doc []byte, broad bool, sigs []RawSignature, metas map[int]SigMeta, docID string, err error)
+
+// SigMeta — CorpusHook-д: гарын үсгийн харагдах дүрслэлийн өгөгдөл (sigMeta-ийн экспортолсон хуулбар).
+type SigMeta struct {
+	RevIndex int    `json:"revIndex"`
+	Role     string `json:"role"`
+	RoleOK   bool   `json:"roleOK"`
+}
+
+// ObjNum / ByteRange — CorpusHook-д: экспортлогдоогүй талбарууд.
+func (s RawSignature) ObjNum() int        { return s.objNum }
+func (s RawSignature) ByteRange() []int64 { return s.byteRange }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
