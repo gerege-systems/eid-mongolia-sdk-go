@@ -410,8 +410,8 @@ Person блок гарын үсэгт **ордоггүй** — гэрчилгэ�
 Гарын үсэг зурсан PDF-ээ дараагийн гарын үсэг зурагч / хүлээн авагч руу хавсралтаар илгээнэ (`POST /share`). CA файлыг
 **хадгалахгүй**: eID-ийн хүчинтэй гарын үсэгтэй эсэхийг шалгаад илгээж, хаяна. Хүлээн авагч бүрт тусдаа имэйл.
 
-> CA-ийн туг одоогоор **унтраалттай** (`share.enabled=false` → 503 `SHARE_DISABLED`). Дуудахын өмнө
-> `c.ShareInfo(ctx)`-ийн `Enabled`-ийг шалга.
+> CA дээр үргэлж асаалттай (2026-10-16-наас туг байхгүй). Хязгаар, квотыг `c.ShareInfo(ctx)`-ээс уншина;
+> `Enabled` false бол имэйлийн үйлчилгээ түр тохируулагдаагүй (503).
 
 ```go
 info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
@@ -444,7 +444,7 @@ if err == nil && info.Enabled {
 | 422 | `FILE_NOT_SIGNED` | `.Reason`: `no_signature` \| `invalid` \| `untrusted` |
 | 429 | `RATE_LIMITED` | квот; `.RetryAfter`, `.Retryable()` |
 | 502 | `MAIL_FAILED` | `.Sent`, `.Failed`, `.Recipients` (`To`-гийн дарааллаар `sent` \| `failed`) |
-| 503 | `SHARE_DISABLED`, `MAIL_UNAVAILABLE`, `VALIDATOR_UNAVAILABLE`, `VALIDATOR_BUSY` | туг / тохиргоо / ачаалал (`VALIDATOR_*` — Retry-After) |
+| 503 | `MAIL_UNAVAILABLE`, `VALIDATOR_UNAVAILABLE`, `VALIDATOR_BUSY` (`SHARE_DISABLED` — хуучин CA) | тохиргоо / ачаалал (`VALIDATOR_*` — Retry-After) |
 
 401 → `*eid.AuthenticationError`, 403 (SIGN эрхгүй, IP/mTLS) → `*eid.ForbiddenError`. Квот: RP тутам цагт 30 / өдөрт 200
 хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
@@ -680,7 +680,7 @@ standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/tex
   certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
 - `Client.Share` (SIGN, v0.5.0) — e-mail a signed PDF (valid eID signature required; the CA does not store it) to 1–5
   recipients; `*eid.ShareError` (`Code`, `Reason` on 422, `Sent`/`Failed`/`Recipients` on 502 `MAIL_FAILED`).
-  `Client.ShareInfo` reads the discovery `share` block — the CA flag is currently **off** (503 `SHARE_DISABLED`).
+  `Client.ShareInfo` reads the discovery `share` block (limits, quota; the CA has no share flag since 2026-10-16).
   `PersonCertificate` gained `IssuedAt`, `RevokedAt`, `RevocationReason` (RFC 5280 name).
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
 - `eidlogin.New` — "Log in with eID" one-button backend (net/http, mount at `/auth/eid/`): `start` (QR / push by
