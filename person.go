@@ -30,6 +30,15 @@ type PersonCertificate struct {
 	NotBefore time.Time `json:"notBefore"`
 	NotAfter  time.Time `json:"notAfter"`
 	IssuerDN  string    `json:"issuerDn"`
+	// IssuedAt — олгосон мөч; хуучин CA-д nil.
+	IssuedAt *time.Time `json:"issuedAt,omitempty"`
+	// RevokedAt — цуцалсан мөч (REVOKED). Сунгалт/дахин бүртгэлээр солигдсон (Status SUSPENDED,
+	// RevocationReason "superseded") мөрд ихэвчлэн nil.
+	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+	// RevocationReason — RFC 5280 CRLReason-ийн нэр (keyCompromise, cACompromise, affiliationChanged, superseded,
+	// cessationOfOperation, certificateHold, privilegeWithdrawn г.м.); "" = цуцлаагүй. Status өөрчлөгдөхгүй —
+	// солигдсоныг (SUSPENDED) "superseded"-ээр ялга.
+	RevocationReason string `json:"revocationReason,omitempty"`
 	// CertValue — base64 DER (нийтийн артефакт).
 	CertValue string `json:"certValue,omitempty"`
 	// Organization — TOKEN мөрөнд токенд холбогдсон байгууллага; хувийн токенд nil.

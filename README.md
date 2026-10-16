@@ -401,6 +401,55 @@ Person блок гарын үсэгт **ордоггүй** — гэрчилгэ�
 `c.Person.Certificates` · `Devices` · `Activity(ctx, etsi, &eid.ActivityQuery{Flow, Limit, Offset})` · `Summary` ·
 `Children` — иргэн сүүлийн 24 цагт танай RP-ээр нэвтэрсэн байх ёстой (эс бөгөөс 403). Хариу бүрт `Raw`.
 
+`PersonCertificate`-д (v0.5.0-аас) `IssuedAt` (олгосон), `RevokedAt` (цуцалсан — REVOKED), `RevocationReason` (RFC 5280
+нэр: `keyCompromise`, `superseded`, `cessationOfOperation` …). `Status` өөрчлөгдөхгүй: сунгалт/дахин бүртгэлээр солигдсон
+мөр `SUSPENDED` + `RevocationReason: "superseded"`, `RevokedAt` nil.
+
+### 3.8. Гарын үсэгтэй файлыг имэйлээр — `c.Share` (`SIGN` эрх)
+
+Гарын үсэг зурсан PDF-ээ дараагийн гарын үсэг зурагч / хүлээн авагч руу хавсралтаар илгээнэ (`POST /share`). CA файлыг
+**хадгалахгүй**: eID-ийн хүчинтэй гарын үсэгтэй эсэхийг шалгаад илгээж, хаяна. Хүлээн авагч бүрт тусдаа имэйл.
+
+> CA-ийн туг одоогоор **унтраалттай** (`share.enabled=false` → 503 `SHARE_DISABLED`). Дуудахын өмнө
+> `c.ShareInfo(ctx)`-ийн `Enabled`-ийг шалга.
+
+```go
+info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
+if err == nil && info.Enabled {
+	res, err := c.Share(ctx, eid.ShareRequest{
+		File:     signedPDF,                // ≤ 3 080 192 байт, eID-ийн хүчинтэй гарын үсэгтэй PDF
+		Filename: "гэрээ.pdf",              // .pdf өргөтгөлтэй; "" = document.pdf
+		To:       []string{"next@example.mn"}, // 1–5, давхардалгүй
+		Subject:  "Гэрээ — гарын үсэг",      // ≤ 150; CA «‹RP нэр›: …» угтвар тавина
+		Message:  "Хоёр дахь гарын үсгийг зурна уу", // ≤ 1000
+		Lang:     "mn",                      // mn | en
+	})
+	var se *eid.ShareError
+	switch {
+	case errors.As(err, &se) && se.Code == eid.CodeMailFailed:
+		// se.Recipients[i] == eid.ShareRecipientFailed — зөвхөн тэднийг дахин илгээ
+	case errors.As(err, &se) && se.Code == eid.CodeFileNotSigned:
+		// se.Reason: eid.ShareReasonNoSignature | ShareReasonInvalid | ShareReasonUntrusted
+	case err == nil:
+		_ = res.DocID // CA-д бүртгэлтэй бол (имэйлд verify холбоос)
+	}
+}
+```
+
+| HTTP | `ShareError.Code` | Тайлбар |
+|---|---|---|
+| 400 | `REQUEST_INVALID`, `FILE_EMPTY`, `RECIPIENT_REQUIRED`, `TOO_MANY_RECIPIENTS`, `RECIPIENT_INVALID`, `RECIPIENT_DUPLICATE` | талбарын алдаа |
+| 413 | `FILE_TOO_LARGE` | файл / имэйл хязгаараас их |
+| 415 | `FILE_TYPE_NOT_SUPPORTED` | PDF биш (өргөтгөл, Content-Type, `%PDF-` гурвуулаа таарна) |
+| 422 | `FILE_NOT_SIGNED` | `.Reason`: `no_signature` \| `invalid` \| `untrusted` |
+| 429 | `RATE_LIMITED` | квот; `.RetryAfter`, `.Retryable()` |
+| 502 | `MAIL_FAILED` | `.Sent`, `.Failed`, `.Recipients` (`To`-гийн дарааллаар `sent` \| `failed`) |
+| 503 | `SHARE_DISABLED`, `MAIL_UNAVAILABLE`, `VALIDATOR_UNAVAILABLE`, `VALIDATOR_BUSY` | туг / тохиргоо / ачаалал (`VALIDATOR_*` — Retry-After) |
+
+401 → `*eid.AuthenticationError`, 403 (SIGN эрхгүй, IP/mTLS) → `*eid.ForbiddenError`. Квот: RP тутам цагт 30 / өдөрт 200
+хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
+ctx-ийн deadline богино бол тэр нь ялна.
+
 ### 3.7. USB токен
 
 ```go
@@ -465,6 +514,7 @@ who, err := c.Token.AuthVerify(ctx, ch.ChallengeID, authCertDER, rs)
 | `*eid.AuthenticationError` | 401 — API secret буруу/байхгүй; CA-ийн JSON бол `.Code`/`.Message`, proxy-ийнх бол хоосон (`.Body`, `.Header`) |
 | `*eid.ForbiddenError` | 403 — IP allowlist / mTLS / RP-ийн эрх; `OnBehalfOf` татгалзвал `.Code` |
 | `eid.ErrNoSigningCertificate` / `ErrCertChoiceInvalid` / `ErrRequestInvalid` | `errors.Is` — `*eid.APIError`-ийн `Code` (409 `NO_SIGNING_CERTIFICATE`, 409 `CERT_CHOICE_INVALID`, 400 `REQUEST_INVALID`) |
+| `*eid.ShareError` | `Share`-ийн 4xx/5xx (401/403-аас бусад) — `.Code`, `.Reason` (422), `.Sent`/`.Failed`/`.Recipients` (502); `Unwrap` → `*eid.APIError` |
 | `*eid.APIError` | бусад HTTP алдаа (`.Status`, `.Body`, `.Code`, `.RetryAfter`, `.Header`, `.Retryable()` — ж: 404 `ORG_NOT_FOUND`) |
 | `*eid.ResponseTooLargeError` | хариу SDK-ийн хязгаараас их (JSON 4 MiB) — `.Op`, `.Limit` |
 | `*eid.NetworkError` | сүлжээ / timeout (`.Timeout`, `Unwrap` → `context.DeadlineExceeded` г.м.); `.Op`-д иргэний дугаар `…` болно |
@@ -619,6 +669,10 @@ standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/tex
   `RightTypeLabel`), never translate `Role` / `RightType` / `Source` (machine values). `Config.Language` (`"mn"` | `"en"`) sends `Accept-Language`; unset = server default (mn).
 - `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
   certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
+- `Client.Share` (SIGN, v0.5.0) — e-mail a signed PDF (valid eID signature required; the CA does not store it) to 1–5
+  recipients; `*eid.ShareError` (`Code`, `Reason` on 422, `Sent`/`Failed`/`Recipients` on 502 `MAIL_FAILED`).
+  `Client.ShareInfo` reads the discovery `share` block — the CA flag is currently **off** (503 `SHARE_DISABLED`).
+  `PersonCertificate` gained `IssuedAt`, `RevokedAt`, `RevocationReason` (RFC 5280 name).
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
 - `eidlogin.New` — "Log in with eID" one-button backend (net/http, mount at `/auth/eid/`): `start` (QR / push by
   registration number / Web2App 302), `status` (fresh QR every second), `callback` (Web2App + `userChallengeVerifier`).
