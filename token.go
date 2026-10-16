@@ -136,7 +136,7 @@ type tokenCertRequest struct {
 // Сунгалт: ижил TokenSerial дээр энэ иргэний ACTIVE бүртгэл байвал олголт = сунгалт, scope-ийг хадгална — байгууллагын
 // токен зөвхөн тэр байгууллагаар (OnBehalfOf ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол 409
 // CodeTokenScopeChange (override үгүй); scope солих = иргэн eID апп-аас токеноо цуцлаад шинээр олгуулна. Бусад 409:
-// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse.
+// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending.
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
 	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
 		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
@@ -177,7 +177,7 @@ const tokenResultTimeout = 30 * time.Second
 
 // CertificateResult — GET /token/certificate/{sessionID}: олгосон AUTH + SIGN гэрчилгээ + гинж. Токенд бичихээс өмнө
 // VerifyTokenCertificates-аар CSR-ийн түлхүүртэй тулга. Эхлэл ба батлалтын хооронд нөхцөл өөрчлөгдсөн бол 409
-// (CodeTokenLimitReached / CodeTokenInUse / CodeTokenScopeChange) — гэрчилгээ гараагүй.
+// (CodeTokenLimitReached / CodeTokenInUse / CodeTokenScopeChange / CodeAccountDeletePending) — гэрчилгээ гараагүй.
 func (t *TokenService) CertificateResult(ctx context.Context, sessionID string) (*TokenCertResult, error) {
 	var r TokenCertResult
 	path := routeTokenCertificateResult.expand(sessionID)
@@ -346,6 +346,8 @@ const (
 	// CodeTokenScopeChange — сунгалт scope-ийг солих гэсэн (хувийн ↔ байгууллага, эсвэл өөр OnBehalfOf). Override үгүй:
 	// иргэн eID апп-аас токеноо цуцалж (/v3/mobile/tokens/{tokenSerial}/revoke) байж шинэ scope-оор олгуулна.
 	CodeTokenScopeChange = "TOKEN_SCOPE_CHANGE"
+	// CodeAccountDeletePending — иргэн «Бүртгэл устгах» хүсэлт (PENDING) өгсөн: токен олгохгүй (CA !377).
+	CodeAccountDeletePending = "ACCOUNT_DELETE_PENDING"
 )
 
 // TokenCertInfo — discovery (/.well-known/eid)-ийн tokenCertificate блок.
