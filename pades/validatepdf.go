@@ -40,9 +40,9 @@ type ValidateOptions struct {
 // гарын үсгээр шалгана); хариу авч чадаагүй эсвэл Offline бол баримтын DSS-ийн OCSP/CRL. Аль нь ч үгүй бол
 // revocation_unavailable (indeterminate). Баримт сүлжээгээр хаашаа ч илгээгдэхгүй — зөвхөн гэрчилгээний serial (OCSP).
 //
-// Алдаа (*Error): PDF_TOO_LARGE (> 10 MiB), PDF_INVALID (задрахгүй), PDF_NO_SIGNATURE, PDF_TOO_MANY_SIGNATURES (> 16),
-// REQUEST_INVALID (Roots/Intermediates/Issuers задрахгүй) — CA-ийн too_large / not_pdf / no_signature /
-// too_many_signatures-тэй харгалзана.
+// Алдаа (*Error): PDF_TOO_LARGE (> 10 MiB), PDF_INVALID (задрахгүй), PDF_ENCRYPTED (/Encrypt — ямар ч шифрлэлт, хоосон
+// нууц үгтэй ч), PDF_NO_SIGNATURE, PDF_TOO_MANY_SIGNATURES (> 16), REQUEST_INVALID (Roots/Intermediates/Issuers
+// задрахгүй) — CA-ийн too_large / not_pdf / encrypted / no_signature / too_many_signatures-тэй харгалзана.
 func ValidatePDF(ctx context.Context, doc []byte, o ValidateOptions) (*Report, error) {
 	if len(doc) > MaxOutputBytes {
 		return nil, newErr(CodePDFTooLarge, "PDF 10 MiB-аас их", nil)
@@ -65,6 +65,8 @@ func ValidatePDF(ctx context.Context, doc []byte, o ValidateOptions) (*Report, e
 		return nil, newErr(CodePDFNoSignature, "баримтад цахим гарын үсэг алга", err)
 	case errors.Is(err, validate.ErrTooMany):
 		return nil, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", err)
+	case errors.Is(err, validate.ErrEncrypted):
+		return nil, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF-ийг шалгах боломжгүй — нууцлалыг арилгаад дахин оролдоно уу", err)
 	case err != nil:
 		return nil, newErr(CodePDFInvalid, "PDF задарсангүй", err)
 	}

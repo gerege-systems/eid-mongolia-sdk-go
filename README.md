@@ -663,6 +663,7 @@ RP өөрийн backend дээр (файлыг хаашаа ч илгээлгү�
 rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // анхдагч: шигтгэсэн үндэсний Root CA, онлайн цуцлалт
 switch pades.ErrorCode(err) {
 case pades.CodePDFNoSignature, pades.CodePDFInvalid, pades.CodePDFTooLarge, pades.CodePDFTooManySignatures: // 4xx
+case pades.CodePDFEncrypted: // v0.7.1: шифрлэгдсэн (/Encrypt) — нууцлалыг арилгаад дахин илгээхийг хэрэглэгчид хэл
 }
 if rep.Indication == pades.Valid { /* бүх гарын үсэг хүчинтэй */ }
 for _, s := range rep.Signatures {
@@ -684,6 +685,8 @@ for _, s := range rep.Signatures {
   цуцлагдсан → `revoked_after_signing` (хүчинтэй хэвээр). Сүлжээгээр зөвхөн гэрчилгээний serial (OCSP) явна, баримт биш.
 - `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown` (CA бүртгэлээсээ `token` ч
   тогтооно). `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` нь CA-ийн бүртгэлээс — SDK-д байхгүй.
+- Шифрлэгдсэн PDF (`/Encrypt` — RC4, AES-128, AES-256, хоосон хэрэглэгчийн нууц үгтэй ч) → `PDF_ENCRYPTED` (v0.7.1;
+  өмнө нь `PDF_INVALID`, RC4-д зөв гарын үсгийг `malformed_signature` гэж буруу хүчингүйд тооцдог байв). TS SDK, CA ижил.
 - `Verify` (v0.5) = `ValidatePDF` + `Offline: true` (deprecated; гарын үсэггүй баримтад хуучин зангаар хоосон `valid`).
 - Conformance: `pades/testdata/validate/` — Go, TS ба CA ижил багцаар ижил тайлан.
 

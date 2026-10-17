@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -44,9 +45,13 @@ const MaxPAdESInputBytes = MaxPDFBytes - 256<<10
 // ажлыг үржүүлэхээс хамгаална).
 const maxSignatures = 16
 
+// encryptRef — trailer / xref stream-ийн /Encrypt лавлагаа (pades.encrypted-тэй ижил).
+var encryptRef = regexp.MustCompile(`/Encrypt\s+\d+\s+\d+\s+R`)
+
 var (
 	ErrNoSignature   = errors.New("баримтад цахим гарын үсэг алга")
 	ErrNotPDF        = errors.New("PDF файл задарсангүй")
+	ErrEncrypted     = errors.New("шифрлэгдсэн PDF-ийг шалгах боломжгүй — нууцлалыг арилгаад дахин оролдоно уу")
 	ErrNotCert       = errors.New("X.509 гэрчилгээ задарсангүй")
 	ErrTooMany       = errors.New("баримтад хэт олон гарын үсэг байна")
 	ErrUnprocessable = errors.New("баримтыг задалж чадсангүй")
@@ -133,7 +138,17 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	}()
 	rdr, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
+		// digitorus нь AES-256 / хэрэглэгчийн нууц үгтэй баримтыг нээхгүй — trailer/xref stream-ийн /Encrypt түлхүүрээр.
+		if encryptRef.Match(doc) {
+			return nil, ErrEncrypted
+		}
 		return nil, ErrNotPDF
+	}
+	// /Encrypt: digitorus RC4-д /Contents-ийг (спекээр шифрлэгддэггүй) тайлж эвддэг, AES-128-д panic хийдэг тул
+	// шифрлэгдсэн баримтыг ямар ч хувилбарт шалгахгүй (CA, TS SDK-тэй ижил). Keys — /Encrypt толийг resolve хийхгүй
+	// (AES-д O/U string-ийг тайлах гэж panic хийнэ).
+	if slices.Contains(rdr.Trailer().Keys(), "Encrypt") {
+		return nil, ErrEncrypted
 	}
 	visible := map[uint32]bool{} // Sig толийн дугаар → widget харагдах
 	docID := ""
