@@ -11,11 +11,13 @@
   `input` (testdata-аас харьцангуй PDF), `offline`, `nationalRoots` (true — `roots` хоосон: SDK-д шигтгэсэн бодит
   Mongolian National Root CA, тестийн гинж итгэмжлэгдэхгүй), `http` (онлайн OCSP/CRL-ийн хариу: түлхүүр
   `METHOD URL hex(sha256(body))[:16]` → `http/<файл>`; жагсаалтад байхгүй хүсэлт → HTTP 404), `expect` — тайлан эсвэл
-  `{"error": "<код>"}` (`PDF_NO_SIGNATURE`, `PDF_INVALID`, `PDF_TOO_MANY_SIGNATURES`, `PDF_TOO_LARGE`).
+  `{"error": "<код>"}` (`PDF_NO_SIGNATURE`, `PDF_INVALID`, `PDF_ENCRYPTED`, `PDF_TOO_MANY_SIGNATURES`, `PDF_TOO_LARGE`).
 - Тохиолдлууд: зөв (B-LT, objstm, linearized, desktop), олон revision, харагдах гарын үсэг (APPEARANCE_SPEC),
   өөрчлөгдсөн байт (`tampered`), гарын үсгийн дараах өөрчлөлт (`modified-after-signing`), итгэмжлэгдээгүй root,
   утасны (qcStatements → QUALIFIED, `key_medium` phone) ба токены (qcStatements-гүй → ADVANCED) гэрчилгээ, онлайн
-  OCSP good / revoked / revoked_after_signing, CRL revoked, хариугүй → DSS, CA-ийн хуучин stamp, гарын үсэггүй, PDF биш.
+  OCSP good / revoked / revoked_after_signing, CRL revoked, хариугүй → DSS, CA-ийн хуучин stamp, гарын үсэггүй, PDF биш, шифрлэгдсэн (`input/encrypted-*.pdf` — pyHanko-оор тестийн
+  PKI-гаар зурсан RC4-128 / AES-128 / AES-256 хоосон хэрэглэгчийн нууц үгтэй ба RC4-128 нууц үгтэй; бүгд
+  `PDF_ENCRYPTED`, `-update` дахин бичихгүй).
 - CA-д `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` (бүртгэлээс), `key_medium` (бүртгэлээс) нэмэгдэж болно;
   харьцуулахдаа эдгээрийг хасна. `certificate_level` нь SDK-д (CA-д нэмэх санал).
 

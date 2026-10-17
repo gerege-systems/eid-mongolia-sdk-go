@@ -1597,6 +1597,38 @@
       "expect": {
         "error": "PDF_INVALID"
       }
+    },
+    {
+      "name": "encrypted-rc4-128",
+      "input": "validate/input/encrypted-rc4-128.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_ENCRYPTED"
+      }
+    },
+    {
+      "name": "encrypted-aes-128",
+      "input": "validate/input/encrypted-aes-128.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_ENCRYPTED"
+      }
+    },
+    {
+      "name": "encrypted-aes-256",
+      "input": "validate/input/encrypted-aes-256.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_ENCRYPTED"
+      }
+    },
+    {
+      "name": "encrypted-user-password",
+      "input": "validate/input/encrypted-rc4-128-userpw.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_ENCRYPTED"
+      }
     }
   ]
 }

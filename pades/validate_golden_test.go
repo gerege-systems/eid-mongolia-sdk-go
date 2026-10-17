@@ -87,6 +87,12 @@ func vCases() []vCase {
 		{Name: "legacy-stamp", Input: "golden/input/stamped.pdf", Offline: true, NationalRoots: true},
 		{Name: "no-signature", Input: "golden/input/quartz-pdf13.pdf", Offline: true},
 		{Name: "not-pdf", Input: "validate/input/not-pdf.pdf", Offline: true},
+		// Шифрлэгдсэн (pyHanko-оор тестийн PKI-гаар зурсан, -update дахин бичихгүй): хоосон хэрэглэгчийн нууц үгтэй ч
+		// PDF_ENCRYPTED (README).
+		{Name: "encrypted-rc4-128", Input: "validate/input/encrypted-rc4-128.pdf", Offline: true},
+		{Name: "encrypted-aes-128", Input: "validate/input/encrypted-aes-128.pdf", Offline: true},
+		{Name: "encrypted-aes-256", Input: "validate/input/encrypted-aes-256.pdf", Offline: true},
+		{Name: "encrypted-user-password", Input: "validate/input/encrypted-rc4-128-userpw.pdf", Offline: true},
 	}
 }
 
