@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.11.0 — 2026-10-19
+
+### Changed — `pades`: the visible stamp avoids existing page content (PLACEMENT_SPEC.md)
+
+- **What:** `Appearance.X/Y` is now the preferred spot. Before writing the widget, the target page is scanned
+  (content stream text/paths/images/forms/inline images + annotation `/Rect`s, no rendering, no font files) and, when
+  the requested rect (+4 pt) overlaps something, the stamp moves to the first free candidate: mirrored column at the
+  same height (bottom-right → bottom-left), then up the requested column in 12 pt steps, then up the mirrored column.
+  Nothing free → requested spot. New `Prepared.Placement` (`page, x, y, width, height, status`:
+  `requested | moved | overlap | unscanned`).
+- **Why:** prod 2026-10-19 — on a LibreOffice-converted Word contract the stamp covered the last-page footer.
+- **Where:** `pades/internal/core/occupancy.go` (scanner), `placement.go` (candidates), `signature.go`
+  (`Visible.Avoid`, `Prepared.Placement`), `pades/prepare.go`, spec `pades/PLACEMENT_SPEC.md`, APPEARANCE_SPEC §1,
+  README §7.1. Golden v5: 6 new cases (`libreoffice-contract-visible`, `…-second`, `table-bottom-visible`,
+  `rotated90-footer-visible`, `quartz-pdf13-visible-third`, `full-page-visible`), `expect.placement` on all visible
+  cases; scanner vectors `pades/testdata/golden/placement/`. CI fuzz job also runs `FuzzOccupancy`.
+- **Verified:** all v3/v4 golden outputs byte-identical (only `expect.placement: requested` added to the manifest);
+  `go test -race ./...`, `go vet`, `gofmt`, staticcheck, govulncheck, `FuzzOccupancy` 60 s locally; before/after
+  renders with pdftoppm.
+- **Remaining:** TS / Swift / Kotlin / .NET ports (byte-identical to golden v5) and the `pades-golden-v5` tag at
+  release.
+### Fixed — `pades` placement: saturating float → int (`SatInt`); PLACEMENT_SPEC port traps + 8 vectors
+
+- **Юу:** `/W` CID, `/FirstChar`, quantise, `Round100`-ийн float → int нь `core.SatInt` (NaN → 0, хүрээнээс гарсан /
+  ±Inf → MinInt64 / MaxInt64). PLACEMENT_SPEC: §2 saturating дүрэм; §3.1 zlib — тасархай (deflate эсвэл Adler-32 дутуу),
+  буруу Adler-32 → unscannable, Adler-ийн дараах байт үл тоогдоно, FDICT DICTID = 1 зөвшөөрөгдөнө (бусад → unscannable),
+  truncation илрүүлдэггүй decoder (.NET `ZLibStream`) дангаараа нийцгүй; §3.4 font cache = агуулж буй indirect объект
+  (шууд бичигдсэн хоёр фонт нэг мөр). `placement/vectors.json`-д 8 vector: `zlib-trailing`, `zlib-truncated-data`,
+  `zlib-no-adler`, `zlib-bad-adler`, `zlib-fdict-empty`, `zlib-fdict-other`, `fonts-direct`, `int-saturate`.
+- **Яагаад:** Go-гийн `int(f)` хүрээнээс гарсан утгад платформоос хамаардаг — `/W [0 1e20 100]` arm64 дээр бүх CID-д
+  100, amd64 дээр юу ч оноохгүй (`/DW` 1000) байсан тул эталон өөрөө Linux ба Mac дээр өөр box гаргадаг байв. Бусад
+  заалтууд TS/.NET/native port-уудад гарсан зангууд.
+- **Хаана:** `pades/internal/core/{occupancy.go,appearance.go,placement_test.go}`, `pades/PLACEMENT_SPEC.md`,
+  `pades/testdata/golden/placement/{vectors.json,input/*.pdf}`.
+- **Шалгасан:** `-update-placement` → өмнөх 21 vector байт-ижил, шинэ 8; `TestGolden -update` → golden v5 өөрчлөгдөөгүй;
+  `go test ./pades/...` arm64 ба `GOARCH=amd64` (Rosetta) хоёуланд; `TestSatInt`.
+
 ## v0.10.0 — 2026-10-19
 
 ### Changed — `eidlogin`: хугацаа CA-ийн session-оос урт байхгүй; `Auth.SessionTTL` (discovery `sessionTtl`)
