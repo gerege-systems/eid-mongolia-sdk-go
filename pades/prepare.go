@@ -101,7 +101,8 @@ type Prepared struct {
 // signingZone — /M ба хуудасны огнооны тогтмол бүс (Asia/Ulaanbaatar, DST-гүй).
 var signingZone = time.FixedZone("+08", 8*3600)
 
-var encryptKey = regexp.MustCompile(`/Encrypt\s+\d+\s+\d+\s+R`)
+// encryptKey — trailer / xref stream-ийн /Encrypt: лавлагаа (`N G R`) эсвэл шууд толь (`<<`); /EncryptMetadata биш.
+var encryptKey = regexp.MustCompile(`/Encrypt(?:\s+\d+\s+\d+\s+R|\s*<<)`)
 
 var uuidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
