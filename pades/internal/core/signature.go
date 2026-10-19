@@ -57,6 +57,14 @@ type Prepared struct {
 	Digest []byte
 	// FieldName — шинэ талбарын /T ("Signature k").
 	FieldName string
+	// Placement — the visible stamp's final position (nil for an invisible signature).
+	Placement *Placement
+}
+
+// Placement — the stamp's lower-left corner in visible page space (h100) and how it was chosen (PLACEMENT_SPEC.md).
+type Placement struct {
+	X, Y   int
+	Status PlaceStatus
 }
 
 // PrepareSignature — base-ийн ард үл харагдах approval гарын үсгийн revision (Sig толь + placeholder,
@@ -138,6 +146,7 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 	// ── Талбар + widget ──
 	var page pdf.Value
 	var hasPage bool
+	var placed *Placement
 	if vis == nil {
 		// Үл харагдах (digitorus createVisualSignature, invisible): эхний хуудас.
 		var fld bytes.Buffer
@@ -163,6 +172,26 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 		rect, err := VisibleRect(box, rot, vis.X, vis.Y, vis.W, vis.H)
 		if err != nil {
 			return nil, err
+		}
+		placed = &Placement{X: vis.X, Y: vis.Y, Status: PlaceRequested}
+		if vis.Avoid {
+			// PLACEMENT_SPEC.md: move off existing page content; the requested rect stays when nothing is free.
+			occ, err := Occupancy(page, box)
+			switch {
+			case err != nil:
+				placed.Status = PlaceUnscanned
+			default:
+				px, py, ok := PlaceVisible(box, rot, vis.X, vis.Y, vis.W, vis.H, occ)
+				switch {
+				case !ok:
+					placed.Status = PlaceOverlap
+				case px != vis.X || py != vis.Y:
+					placed.X, placed.Y, placed.Status = px, py, PlaceMoved
+					if rect, err = VisibleRect(box, rot, px, py, vis.W, vis.H); err != nil {
+						return nil, err
+					}
+				}
+			}
 		}
 		bodies, err := AppearanceObjects(AppearanceParams{W: vis.W, H: vis.H, Rotate: rot, Name: vis.Name, Role: vis.Role,
 			Lang: vis.Lang, Date: vis.Date, URL: vis.URL}, apIDs)
@@ -258,7 +287,7 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 	h := sha256.New()
 	h.Write(doc[:a])
 	h.Write(doc[b:])
-	return &Prepared{PDF: doc, ByteRange: br, Digest: h.Sum(nil), FieldName: fieldName}, nil
+	return &Prepared{PDF: doc, ByteRange: br, Digest: h.Sum(nil), FieldName: fieldName, Placement: placed}, nil
 }
 
 // EmbedCMS — prepared баримтын placeholder-т CMS-ийг hex-ээр бичнэ (бусад байт өөрчлөгдөхгүй). CMS

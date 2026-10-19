@@ -96,6 +96,21 @@ type Prepared struct {
 	Digest []byte // messageDigest = SHA-256(ByteRange)
 	DocID  string
 	State  []byte // тунгалаг, хадгалж болно (Complete-д буцааж өгнө)
+	// Placement — where the visible stamp was drawn; nil without Appearance (PLACEMENT_SPEC.md).
+	Placement *Placement
+}
+
+// Placement — the visible stamp's final rect (Appearance coordinates, pt) and how it was chosen. The stamp avoids
+// existing page content (PLACEMENT_SPEC.md): Status "requested" = drawn at Appearance.X/Y; "moved" = that spot was
+// occupied and the stamp moved to free space; "overlap" = no free spot, drawn at the requested spot over content;
+// "unscanned" = the page could not be scanned within the limits, drawn at the requested spot.
+type Placement struct {
+	Page   int     `json:"page"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Status string  `json:"status"`
 }
 
 // signingZone — /M ба хуудасны огнооны тогтмол бүс (Asia/Ulaanbaatar, DST-гүй).
@@ -189,10 +204,10 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		name = core.SignerDisplayName(cert)
 	}
 	var prep *core.Prepared
+	var vis core.Visible
 	if o.Appearance == nil {
 		prep, err = core.PrepareSignatureWithReason(base, now, name, o.Reason)
 	} else {
-		var vis core.Visible
 		if vis, err = visibleSpec(doc, o, name, now, docID, revIndex); err != nil {
 			return nil, err
 		}
@@ -220,7 +235,12 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Prepared{DTBS: core.DTBS(attrs), Digest: prep.Digest, DocID: docID, State: state}, nil
+	out := &Prepared{DTBS: core.DTBS(attrs), Digest: prep.Digest, DocID: docID, State: state}
+	if pl := prep.Placement; pl != nil && o.Appearance != nil {
+		out.Placement = &Placement{Page: vis.Page, X: float64(pl.X) / 100, Y: float64(pl.Y) / 100,
+			Width: float64(vis.W) / 100, Height: float64(vis.H) / 100, Status: string(pl.Status)}
+	}
+	return out, nil
 }
 
 // checkAppearance — Appearance-ийн PDF-ээс үл хамаарах шалгалт (APPEARANCE_SPEC.md §1).
@@ -278,8 +298,9 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 	return core.Visible{
 		Page: page, X: core.Round100(a.X), Y: core.Round100(a.Y), W: core.Round100(a.Width), H: core.Round100(a.Height),
 		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
-		Date: now.Format("2006-01-02 15:04") + " (+08)",
-		URL:  pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
+		Date:  now.Format("2006-01-02 15:04") + " (+08)",
+		URL:   pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
+		Avoid: true,
 	}, nil
 }
 

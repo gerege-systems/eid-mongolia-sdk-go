@@ -29,6 +29,8 @@ type Visible struct {
 	Lang       string // "mn" | "en"
 	Date       string // «YYYY-MM-DD HH:MM (+08)»
 	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>
+	// Avoid — scan the page and move the stamp off existing content (PLACEMENT_SPEC.md); false = exactly (X, Y).
+	Avoid bool
 	// Tamper — ЗӨВХӨН validator-ийн халдлагын тест (pades багц хэзээ ч тавихгүй).
 	Tamper *VisibleTamper
 }

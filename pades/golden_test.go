@@ -72,6 +72,8 @@ type goldenExpect struct {
 	SigRevSHA256   string   `json:"sigRevSha256,omitempty"`
 	CMSSHA256      string   `json:"cmsSha256,omitempty"`
 	PriorCMSSHA256 []string `json:"priorCmsSha256,omitempty"`
+	// Placement — the visible stamp's final rect and status (PLACEMENT_SPEC.md); absent for invisible signatures.
+	Placement *Placement `json:"placement,omitempty"`
 }
 
 type goldenManifest struct {
@@ -117,6 +119,23 @@ func goldenCases() []goldenCase {
 			Appearance{Page: 1, X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "quartz-rotated90-visible", Input: "input/quartz-rotated90.pdf", Prep: visible(page("ac1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "rotated.pdf"),
 			Appearance{X: 36, Y: 36, Width: 220, Height: 64})},
+		// Stamp placement (PLACEMENT_SPEC.md, golden v5): the requested spot overlaps page content → the stamp moves.
+		// (a) LibreOffice-converted contract whose last-page footer sits under the default spot (prod 2026-10-19) and a
+		// second signer on the same page; (b) a full-width table at the bottom of an A4 page; (c) /Rotate 90 with a
+		// footer across the visible bottom; (d) an existing visible signature at the bottom-right (second signer);
+		// (e) a page full of text — nothing is free, the stamp stays at the requested spot ("overlap").
+		{Name: "libreoffice-contract-visible", Input: "input/libreoffice-contract.pdf", Prep: visible(page("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e", "ТЕСТ гэрээ.pdf"),
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "libreoffice-contract-visible-second", Input: "case:libreoffice-contract-visible", Prep: visible(PrepareOptions{Reason: "Тест ХХК-ийг төлөөлж",
+			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "table-bottom-visible", Input: "input/table-bottom.pdf", Prep: visible(page("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f", "table.pdf"),
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "rotated90-footer-visible", Input: "input/rotated90-footer.pdf", Prep: visible(page("d3e4f5a6-b7c8-4d9e-8f1a-2b3c4d5e6f70", "landscape.pdf"),
+			Appearance{X: 536, Y: 36, Width: 220, Height: 64})},
+		{Name: "quartz-pdf13-visible-third", Input: "case:quartz-pdf13-visible-second", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{Page: 1, X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "full-page-visible", Input: "input/full-page.pdf", Prep: visible(page("e4f5a6b7-c8d9-4e0f-9a2b-3c4d5e6f7081", "full.pdf"),
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "stamped-foreign", Input: "input/stamped.pdf", Prep: page("", "stamped.pdf")},
 		{Name: "encrypted", Input: "input/encrypted.pdf", Prep: page("", "enc.pdf")},
 	}
@@ -451,6 +470,7 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 	}
 	got.DocID, got.Digest, got.DTBS = prep.DocID, hex.EncodeToString(prep.Digest), hex.EncodeToString(prep.DTBS)
 	got.PreparedSHA256, got.ByteRange = st.PreparedSHA256, st.ByteRange
+	got.Placement = prep.Placement
 	sig, err := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
 	if err != nil {
 		t.Fatal(err)
