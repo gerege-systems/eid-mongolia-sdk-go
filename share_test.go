@@ -239,3 +239,18 @@ func TestPersonCertificateRevocationFields(t *testing.T) {
 		t.Fatalf("%+v", b)
 	}
 }
+
+func TestPersonCertificateTokenSerial(t *testing.T) {
+	c := shareClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"personEtsi":"PNOMN-1","counts":{"valid":2,"total":2},"certificates":[
+			{"type":"AUTH","keyMedium":"TOKEN","status":"VALID","tokenSerial":"EP2003-0042A1","organization":{"etsi":"NTRMN-1","name":"Тест ХХК"}},
+			{"type":"SIGN","keyMedium":"MOBILE","status":"VALID"}]}`)
+	})
+	pc, err := c.Person.Certificates(context.Background(), "PNOMN-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok, mob := pc.Certificates[0], pc.Certificates[1]; tok.TokenSerial != "EP2003-0042A1" || mob.TokenSerial != "" {
+		t.Fatalf("%+v %+v", tok, mob)
+	}
+}

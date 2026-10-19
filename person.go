@@ -43,6 +43,10 @@ type PersonCertificate struct {
 	CertValue string `json:"certValue,omitempty"`
 	// Organization — TOKEN мөрөнд токенд холбогдсон байгууллага; хувийн токенд nil.
 	Organization *TokenOrganization `json:"organization,omitempty"`
+	// TokenSerial — TOKEN мөрөнд гэрчилгээ олгогдсон USB токены серийн дугаар (/mobile/tokens-ийн tokenSerial-тай ижил).
+	// Нэг токены AUTH + SIGN-ийг үүгээр бүлэглэ; сунгалтаар солигдсон (SUSPENDED) мөр ч өөрийн токены дугаартай.
+	// MOBILE/HSM мөрөнд болон хуучин CA-д "".
+	TokenSerial string `json:"tokenSerial,omitempty"`
 }
 
 // CertCounts — гэрчилгээний статусын тоолол.
