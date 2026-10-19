@@ -29,6 +29,34 @@ the first free spot in a fixed order. When the preferred rect is free, the outpu
   1-based page the stamp is on. Callers should surface `overlap` / `unscanned` (e.g. a notice) — the signature is valid
   either way. The final position only changes the widget `/Rect`; the appearance stream depends on `w, h, rot` only.
 
+### 1a. Default page (`page` 0 / absent)
+
+`appearance.page` 1…N is used as given (even when it is a verify page). `page` 0 or absent selects **the last page of the
+input that is not an eID verify page** — the verify pages added by earlier revisions are skipped exactly like the
+verify page this Prepare adds is not counted. Pages are taken in `/Pages` tree order (APPEARANCE_SPEC §1: `/Kids`
+order, depth ≤ 32, at most 65 537 pages); scan from the last page backwards and pick the first page that is not a
+verify page; when every page is a verify page, the last page.
+
+**Verify page** (structural, no text recognition): a page whose `/Annots` (an array; its first 10 000 elements) contains
+a dictionary with `/Subtype /Link` and `/A` a dictionary with `/S /URI` and `/URI` a string **byte-equal** to
+`https://ca.eidmongolia.mn/verify/` + `docId`, where `docId` is the document id this Prepare uses (the one written on
+the first eID signature's verify page, `Prepared.docId`). The verify page carries that link (PAGE_SPEC §6, the
+`VerifyURL` link), and it is the same link from which later signers read `docId` (so any document whose `docId` comes
+from its page has it); a visible stamp has no Link annotation, and its QR URL (`…/verify/<docId>/<rev>`) is not byte-equal anyway.
+Annotation entries may be direct or indirect; anything else (a non-dictionary entry, `/A` missing, another `/S`, a
+`/URI` that differs in any byte, a page that cannot be read) does not make a verify page.
+
+The rule errs towards *content*: a page that only looks like a verify page (another `docId`, a different host, a
+`/rev` suffix, text without the link) is a content page — the stamp may then land on it, which is the pre-v6 behaviour
+and harmless; a real content page is never skipped unless it links to this document's own verify URL. No marker is
+added to new verify pages: the link already identifies them, in old files as well.
+
+Golden v6 (`manifest.json`): `page0-after-verify` (2nd signer, page 0 on content + verify → page 1),
+`page0-after-verify-second` (3rd signer → page 1, moved past the 2nd stamp), `page0-two-verify`
+(`input/two-verify.pdf`: 1 content + 2 verify pages → page 1), `page-explicit-verify` (`page: 2` = the verify page →
+kept), `page0-fake-verify` (`input/fake-verify.pdf`: last page links to another docId and to `…/<docId>/1` → content,
+page 2).
+
 Units: h100 = 1/100 pt integers (APPEARANCE_SPEC §1). All scanner arithmetic is IEEE-754 binary64 (§2).
 
 ## 2. Arithmetic (determinism)

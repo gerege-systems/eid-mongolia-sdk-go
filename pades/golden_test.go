@@ -138,6 +138,20 @@ func goldenCases() []goldenCase {
 			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "stamped-foreign", Input: "input/stamped.pdf", Prep: page("", "stamped.pdf")},
 		{Name: "encrypted", Input: "input/encrypted.pdf", Prep: page("", "enc.pdf")},
+		// appearance.page 0 / absent = the last page that is not an eID verify page (PLACEMENT_SPEC §1a, golden v6):
+		// (a) after the first signature's verify page the stamp goes to the content page, (b) a second page-0 signer
+		// lands there too (above the first stamp), (c) two verify pages are both skipped, (d) an explicit page number is
+		// kept even when it is the verify page, (e) a verify-looking page for another docId stays a content page.
+		{Name: "page0-after-verify", Input: "case:quartz-pdf13", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "page0-after-verify-second", Input: "case:page0-after-verify", Prep: visible(PrepareOptions{},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "page0-two-verify", Input: "input/two-verify.pdf", Prep: visible(PrepareOptions{DocID: "f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "page-explicit-verify", Input: "case:quartz-pdf13", Prep: visible(PrepareOptions{},
+			Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "page0-fake-verify", Input: "input/fake-verify.pdf", Prep: visible(PrepareOptions{DocID: "f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 	}
 }
 

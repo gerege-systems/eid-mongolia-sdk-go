@@ -79,8 +79,9 @@ type PrepareOptions struct {
 // (байхгүй бол MediaBox)-ийн /Rotate-ийн ДАРААХ (дэлгэцэнд харагдах) зүүн доод булангаас; x баруун тийш, y дээш.
 // Утга бүр 0.01 pt хүртэл тойрогдоно.
 type Appearance struct {
-	// Page — оролтын баримтын хуудас, 1-ээс; 0 (анхдагч) = оролтын сүүлийн хуудас (энэ Prepare-ийн нэмэх verify
-	// хуудас тооцогдохгүй).
+	// Page — оролтын баримтын хуудас, 1-ээс (тодорхой дугаар — юуг ч алгасахгүй); 0 (анхдагч) = оролтын eID verify
+	// хуудас БИШ сүүлийн хуудас: энэ Prepare-ийн нэмэх ба өмнөх revision-уудын нэмсэн verify хуудсууд тооцогдохгүй
+	// (PLACEMENT_SPEC.md §1a).
 	Page   int     `json:"page,omitempty"`
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
@@ -277,19 +278,20 @@ func roleText(s string) bool {
 	return utf8.ValidString(s)
 }
 
-// visibleSpec — Appearance → core.Visible: хуудас (0 → оролтын сүүлийн), h100, хэл, огноо, verify URL.
+// visibleSpec — Appearance → core.Visible: хуудас (0 → verify биш сүүлийн), h100, хэл, огноо, verify URL.
 func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID string, revIndex int) (core.Visible, error) {
 	a := o.Appearance
 	if docID == "" {
 		return core.Visible{}, newErr(CodeRequestInvalid, "appearance: docId заавал (баримтад verify хуудас алга)", nil)
 	}
-	n, err := core.PageCount(doc)
+	// page 0 / байхгүй = eID verify хуудас БИШ сүүлийн хуудас (PLACEMENT_SPEC §1a); тодорхой дугаар хэвээр.
+	last, n, err := core.DefaultStampPage(doc, pageVerifyURL+docID)
 	if err != nil {
 		return core.Visible{}, newErr(CodePDFInvalid, "PDF задарсангүй", err)
 	}
 	page := a.Page
 	if page == 0 {
-		page = n
+		page = last
 	}
 	if page > n {
 		return core.Visible{}, newErr(CodeRequestInvalid, fmt.Sprintf("appearance: page %d > хуудасны тоо %d", page, n), nil)
