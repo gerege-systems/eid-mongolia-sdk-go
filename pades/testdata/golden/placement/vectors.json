@@ -2607,5 +2607,130 @@
    "y": 3600,
    "status": "requested"
   }
+ },
+ {
+  "name": "zlib-trailing",
+  "input": "placement/input/zlib-trailing.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": [
+    [7200, 7200, 17200, 9200],
+    [30000, 4000, 50000, 7000]
+   ],
+   "x": 34000,
+   "y": 8400,
+   "status": "moved"
+  }
+ },
+ {
+  "name": "zlib-truncated-data",
+  "input": "placement/input/zlib-truncated-data.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": null,
+   "x": 34000,
+   "y": 3600,
+   "status": "unscanned"
+  }
+ },
+ {
+  "name": "zlib-no-adler",
+  "input": "placement/input/zlib-no-adler.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": null,
+   "x": 34000,
+   "y": 3600,
+   "status": "unscanned"
+  }
+ },
+ {
+  "name": "zlib-bad-adler",
+  "input": "placement/input/zlib-bad-adler.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": null,
+   "x": 34000,
+   "y": 3600,
+   "status": "unscanned"
+  }
+ },
+ {
+  "name": "zlib-fdict-empty",
+  "input": "placement/input/zlib-fdict-empty.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": [
+    [7200, 7200, 17200, 9200],
+    [30000, 4000, 50000, 7000]
+   ],
+   "x": 34000,
+   "y": 8400,
+   "status": "moved"
+  }
+ },
+ {
+  "name": "zlib-fdict-other",
+  "input": "placement/input/zlib-fdict-other.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": null,
+   "x": 34000,
+   "y": 3600,
+   "status": "unscanned"
+  }
+ },
+ {
+  "name": "fonts-direct",
+  "input": "placement/input/fonts-direct.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": [
+    [7200, 69700, 7500, 71000],
+    [7200, 59700, 7500, 61000],
+    [36000, 3700, 36300, 5000]
+   ],
+   "x": 5200,
+   "y": 3600,
+   "status": "moved"
+  }
+ },
+ {
+  "name": "int-saturate",
+  "input": "placement/input/int-saturate.pdf",
+  "page": 1,
+  "request": [340, 36, 220, 64],
+  "expect": {
+   "box": [0, 0, 61200, 79200],
+   "rotate": 0,
+   "boxes": [
+    [7200, 6900, 7400, 8200],
+    [7200, 19700, 7800, 21000]
+   ],
+   "x": 34000,
+   "y": 3600,
+   "status": "requested"
+  }
  }
 ]

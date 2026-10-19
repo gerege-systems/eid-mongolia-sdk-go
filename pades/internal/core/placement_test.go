@@ -2,7 +2,11 @@ package core
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/zlib"
+	"encoding/binary"
+	"hash/adler32"
+	"math"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -44,6 +48,29 @@ func fxPDF(objs ...string) []byte {
 
 func fxStream(dict, data string) string {
 	return fmt.Sprintf("<< %s/Length %d >>\nstream\n%s\nendstream", dict, len(data), data)
+}
+
+// fxZlib — FlateDecode stream built by hand: header (FDICT set with dictID when dictID ≥ 0), raw deflate of data,
+// Adler-32; mutate edits the raw bytes (truncation, bad checksum, trailing bytes).
+func fxZlib(dict, data string, dictID int64, mutate func([]byte) []byte) string {
+	var raw bytes.Buffer
+	w, _ := flate.NewWriter(&raw, flate.BestCompression)
+	_, _ = w.Write([]byte(data))
+	_ = w.Close()
+	var z []byte
+	if dictID < 0 {
+		z = []byte{0x78, 0xDA}
+	} else {
+		cmf, flg := byte(0x78), byte(0xC0|0x20) // FLEVEL 3, FDICT
+		flg += byte(31 - (int(cmf)*256+int(flg))%31)
+		z = binary.BigEndian.AppendUint32([]byte{cmf, flg}, uint32(dictID))
+	}
+	z = append(z, raw.Bytes()...)
+	z = binary.BigEndian.AppendUint32(z, adler32.Checksum([]byte(data)))
+	if mutate != nil {
+		z = mutate(z)
+	}
+	return fxStream(dict+"/Filter /FlateDecode ", string(z))
 }
 
 func fxFlate(dict, data string) string {
@@ -251,6 +278,37 @@ func placementInputs() map[string][]byte {
 		fmt.Fprintf(&many, "%d %d 2 2 re f\n", 36+(i%250)*2, 300+(i/250)*4)
 	}
 	out["many-ops.pdf"] = fxPage(letter, many.String())
+
+	// zlib (§3.1): trailing bytes after the Adler-32 are ignored; truncated data, a missing Adler-32 or a wrong one →
+	// unscanned (a decoder that does not detect truncation is not conformant).
+	zpage := func(z string) []byte {
+		return fxPDF("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+			"<< /Type /Page /Parent 2 0 R "+letter+" /Contents 4 0 R >>", z)
+	}
+	zdata := "0 g 72 72 100 20 re f 300 40 200 30 re f"
+	out["zlib-trailing.pdf"] = zpage(fxZlib("", zdata, -1, func(b []byte) []byte { return append(b, "garbage\x00\xff"...) }))
+	out["zlib-truncated-data.pdf"] = zpage(fxZlib("", zdata, -1, func(b []byte) []byte { return b[:len(b)-12] }))
+	out["zlib-no-adler.pdf"] = zpage(fxZlib("", zdata, -1, func(b []byte) []byte { return b[:len(b)-4] }))
+	out["zlib-bad-adler.pdf"] = zpage(fxZlib("", zdata, -1, func(b []byte) []byte { b[len(b)-1] ^= 1; return b }))
+	// FDICT (§3.1): dictionary id 1 (the Adler-32 of the empty dictionary) is accepted; any other id → unscanned.
+	out["zlib-fdict-empty.pdf"] = zpage(fxZlib("", zdata, 1, nil))
+	out["zlib-fdict-other.pdf"] = zpage(fxZlib("", zdata, 0x0A0B0C0D, nil))
+
+	// Font cache (§3.4): two fonts written directly inside the page object share one cache entry (the containing
+	// object) — /B is measured with /A's widths.
+	narrow, wide := "<< /Type /Font /Subtype /Type1 /BaseFont /A /FirstChar 65 /Widths [100 100 100] >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /B /FirstChar 65 /Widths [900 900 900] >>"
+	out["fonts-direct.pdf"] = fxPDF("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R "+letter+" /Resources << /Font << /A "+narrow+" /B "+wide+" >> >> /Contents 4 0 R >>",
+		fxStream("", "BT /A 10 Tf 72 700 Td (ABC) Tj ET\nBT /B 10 Tf 72 600 Td (ABC) Tj ET\nBT /B 10 Tf 360 40 Td (ABC) Tj ET"))
+
+	// Huge reals (§2): float → int is saturating — /W range `0 1e20 100` assigns CIDs 0…65535 (Go amd64's plain
+	// int() would give MinInt64 and assign nothing); /FirstChar 1e20 puts every code out of /Widths.
+	out["int-saturate.pdf"] = fxPage(letter+" /Resources << /Font << /T0 6 0 R /S 8 0 R >> >>",
+		"BT /T0 10 Tf 72 72 Td <00010002> Tj ET\nBT /S 10 Tf 72 200 Td (AB) Tj ET",
+		"<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H /DescendantFonts [7 0 R] >>",
+		"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /X /DW 1000 /W [0 100000000000000000000.0 100 5 [1 2] -100000000000000000000.0 [3]] >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Y /FirstChar 100000000000000000000.0 /Widths [50 50] /FontDescriptor << /MissingWidth 300 >> >>")
 	return out
 }
 
@@ -286,7 +344,9 @@ func placementVectorDefs() []placementVector {
 		{Name: "desktop-objstm", Input: "input/desktop-objstm.pdf", Page: 1, Request: def},
 	}
 	for _, n := range []string{"text-state", "fonts", "paths", "xobjects", "annots", "flate-rotate180", "rotate270",
-		"unscanned-filter", "limit-depth", "limit-save", "malformed", "many-ops"} {
+		"unscanned-filter", "limit-depth", "limit-save", "malformed", "many-ops",
+		"zlib-trailing", "zlib-truncated-data", "zlib-no-adler", "zlib-bad-adler", "zlib-fdict-empty", "zlib-fdict-other",
+		"fonts-direct", "int-saturate"} {
 		v = append(v, placementVector{Name: n, Input: "placement/input/" + n + ".pdf", Page: 1, Request: def})
 	}
 	return v
@@ -458,4 +518,17 @@ func FuzzOccupancy(f *testing.F) {
 			PlaceVisible([4]int{0, 0, 61200, 79200}, 0, 34000, 3600, 22000, 6400, occ)
 		}
 	})
+}
+
+// TestSatInt — float → int is saturating on every platform (PLACEMENT_SPEC §2).
+func TestSatInt(t *testing.T) {
+	for in, want := range map[float64]int{
+		0: 0, 1.9: 1, -1.9: -1, math.NaN(): 0, math.Inf(1): math.MaxInt64, math.Inf(-1): math.MinInt64,
+		1e20: math.MaxInt64, -1e20: math.MinInt64, 9223372036854775807: math.MaxInt64, -9223372036854775808: math.MinInt64,
+		9223372036854774784: 9223372036854774784, // the largest float64 below 2^63
+	} {
+		if got := SatInt(in); got != want {
+			t.Errorf("SatInt(%v) = %d, want %d", in, got, want)
+		}
+	}
 }
