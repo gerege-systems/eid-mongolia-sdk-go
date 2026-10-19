@@ -122,6 +122,12 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
   **decoy биш** — `502 eid_unavailable` / `429` (eID порталын зан: тасалдлыг decoy-оор нуувал иргэн дуусахгүй spinner харна;
   эдгээр нь дугаараас хамаардаггүй тул oracle биш). Унтраах: `DisableDecoy`, `DisablePushFloor` — **АНХААР:** тэгвэл
   `/start` нь «энэ регистр eID-д бүртгэлтэй эсэх»-ийг нэвтрээгүй хэнд ч хэлнэ; зөвхөн дотоод/тестийн орчинд.
+- **Хугацаа (`Config.TTL`, анхдагч 2 мин) CA-ийн session-оос урт байхгүй.** QR / Web2App: `expiresIn`, cookie
+  `Max-Age`, store = min(`TTL`, CA-ийн start хариуны `expiresAt` − одоо). Push (бодит ба decoy **ижил**): min(`TTL`,
+  discovery `sessionTtl.auth`) — decoy-д CA хариу байхгүй тул CA-ийн `expiresAt`-аас бус discovery-оос (`c.Auth.SessionTTL`,
+  handler дотор 10 мин кэш, татаж чадаагүй бол 1 мин-ийн дараа дахин) — хугацааны зөрүү oracle болохгүй. Хуучин CA
+  (discovery-д `sessionTtl` алга): бодит push-ийн `expiresAt`-аас ажигласан утгыг дараагийн decoy авна (±1 с); анхны
+  бодит push-ээс өмнө `TTL`.
 - **Гэрчилгээний цуцлалт (OCSP, анхдагчаар асаалттай).** `ValidateAuth`-ийн дараа, `OnSuccess`-ийн өмнө иргэний гэрчилгээг
   түүний AIA-д бичигдсэн OCSP responder-оос асууна (`Config.Revocation`, nil = `eid.NewOCSPChecker`; хариу олгогч эсвэл
   түүний OCSPSigning responder-ийн гарын үсэгтэй, энэ serial-ийн, thisUpdate ≤ 48 цаг, good-ийг min(5 мин, NextUpdate) кэшлэнэ).
@@ -333,7 +339,7 @@ Web2App/App2App); холбоосыг `eid.BuildDeviceLink(s.LinkInput(eid.LinkQR
 **`ExpiresAt`** — session дуусах мөч: CA-ийн session start хариуны `expiresAt` (RFC 3339; auth / sign / certificate-choice
 бүгдэд, 2026-10-14-өөс). Хуучин CA (талбаргүй) үед sign / certificate-choice-д SDK тооцоолно — CA-ийн анхдагч 600с
 (`eid.DefaultSignSessionTTL`; CA админ 60–1800с → `Config.SignSessionTTL`), auth-д тэг. Эцсийн үнэн нь `GET /session`
-(`TIMEOUT`).
+(`TIMEOUT`). CA-ийн тохиргооны амьд утга: `c.Auth.SessionTTL(ctx)` — discovery `sessionTtl` (`Auth`, `Sign`; хуучин CA-д 0).
 
 **Session эхлэх алдаа** (`*eid.APIError`, `errors.Is`-ээр): `eid.ErrNoSigningCertificate` — 409 `NO_SIGNING_CERTIFICATE`
 (sign / certificate-choice start: иргэнд идэвхтэй төхөөрөмж / хүчинтэй гарын үсгийн гэрчилгээ алга,

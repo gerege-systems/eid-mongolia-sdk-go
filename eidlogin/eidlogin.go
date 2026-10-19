@@ -111,6 +111,8 @@ type Tx struct {
 	Link        *Link            `json:"link,omitempty"`
 	// Decoy — eID татгалзсан push-ийн оронд өгсөн хуурмаг session (eID-д байхгүй; хэзээ ч дуусахгүй). Зөвхөн серверт.
 	Decoy bool `json:"decoy,omitempty"`
+	// ttl — save-ийн хугацаа (start хариуны expiresIn / cookie); хадгалагдахгүй.
+	ttl time.Duration
 }
 
 // Store — төлөвийн сан. Анхдагч NewMemoryStore (нэг процесс); олон instance бол Redis г.м.
@@ -255,7 +257,9 @@ type Config struct {
 	// DisplayText — утсанд харагдах текст (≤60). Анхдагч «<RPName>-д нэвтрэх».
 	DisplayText      string
 	CertificateLevel eid.CertificateLevel
-	// TTL — нэвтрэлтийн хугацаа (анхдагч 2 мин). Poll — status-ийн нэг дуудлагад eID-ийг хүлээх (анхдагч 1 с).
+	// TTL — нэвтрэлтийн хугацаа (анхдагч 2 мин). CA-ийн session-оос урт байхгүй: QR/web2app-д min(TTL, CA-ийн
+	// expiresAt − одоо); push-д (бодит ба decoy ижил) min(TTL, discovery-ийн sessionTtl.auth) — decoy-д CA хариу байхгүй
+	// тул хугацааны зөрүү бүртгэлтэй эсэхийн oracle болохгүй. Poll — status-ийн нэг дуудлагад eID-ийг хүлээх (анхдагч 1 с).
 	TTL, Poll time.Duration
 	Store     Store
 	// CookieName (анхдагч eid_login), CookiePath (анхдагч /), CookieDomain. InsecureCookie — зөвхөн http dev-д.
@@ -318,9 +322,60 @@ type Handler struct {
 	floor      time.Duration
 	revocation eid.RevocationChecker
 	auditKey   []byte
+	// caTTL — CA-ийн нэвтрэлтийн session-ий хугацаа (discovery sessionTtl.auth; хуучин CA-д бодит push-ээс ажигласан),
+	// caTTLNext хүртэл кэштэй. 0 = мэдэгдэхгүй.
+	ttlMu     sync.Mutex
+	caTTL     time.Duration
+	caTTLNext time.Time
 	// now, sleep — PushFloor ба decoy poll-ын цаг (тестэд солино).
 	now   func() time.Time
 	sleep func(ctx context.Context, d time.Duration)
+}
+
+// authTTLRefresh — discovery-ийн sessionTtl.auth-ийн кэш; authTTLRetry — татаж чадаагүй бол дахин оролдох.
+const (
+	authTTLRefresh = 10 * time.Minute
+	authTTLRetry   = time.Minute
+)
+
+// authTTL — CA-ийн нэвтрэлтийн session-ий хугацаа (discovery sessionTtl.auth, кэштэй). Татаж чадахгүй / хуучин CA бол
+// өмнөх утга (бодит push-ээс ажигласан ч байж болно), эсвэл 0. Бодит ба decoy push хоёулаа дууддаг — ижил хоцрол.
+func (h *Handler) authTTL(ctx context.Context) time.Duration {
+	h.ttlMu.Lock()
+	defer h.ttlMu.Unlock()
+	if now := time.Now(); now.After(h.caTTLNext) {
+		h.caTTLNext = now.Add(authTTLRetry)
+		fctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		st, err := h.cfg.Client.Auth.SessionTTL(fctx)
+		cancel()
+		switch {
+		case err != nil:
+			h.log.Warn("eidlogin: discovery sessionTtl", "err", err)
+		case st.Auth > 0:
+			h.caTTL, h.caTTLNext = st.Auth, now.Add(authTTLRefresh)
+		default:
+			h.caTTLNext = now.Add(authTTLRefresh) // хуучин CA — observeAuthTTL-ээр
+		}
+	}
+	return h.caTTL
+}
+
+// observeAuthTTL — хуучин CA (discovery-д sessionTtl алга): бодит push-ийн expiresAt − илгээсэн мөчөөс CA-ийн TTL-ийг
+// тэмдэглэнэ — дараагийн decoy ижил хугацаа авна (expiresAt секундээр таслагддаг тул ±1 с). Discovery утга байвал
+// хөндөхгүй.
+func (h *Handler) observeAuthTTL(sent, expiresAt time.Time) {
+	if expiresAt.IsZero() {
+		return
+	}
+	d := expiresAt.Sub(sent).Round(time.Second)
+	if d <= 0 {
+		return
+	}
+	h.ttlMu.Lock()
+	defer h.ttlMu.Unlock()
+	if h.caTTL == 0 {
+		h.caTTL = d
+	}
 }
 
 // sleepCtx — d хүлээнэ, эсвэл хүсэлт тасрах хүртэл.
@@ -686,7 +741,14 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		lang = "eng"
 	}
 	began := h.now()
-	tx, binding, appLink, err := h.begin(r, b.Mode, idCode, lang)
+	ttl := h.cfg.TTL
+	if b.Mode == ModePush {
+		// Бодит ба decoy push ижил хугацаа авна — CA-ийн хариунаас биш (decoy-д байхгүй), discovery-оос.
+		if ca := h.authTTL(r.Context()); ca > 0 {
+			ttl = min(ttl, ca)
+		}
+	}
+	tx, binding, appLink, err := h.begin(r, b.Mode, idCode, lang, ttl)
 	decoy := false
 	if err != nil && b.Mode == ModePush && !h.cfg.DisableDecoy && isRefusal(err) {
 		// eID дугаарыг татгалзсан (танихгүй / ашиглах боломжгүй): ялгаатай хариу нь «энэ регистр бүртгэлтэй эсэх»-ийн
@@ -695,7 +757,7 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		var ae *eid.APIError
 		errors.As(err, &ae)
 		h.log.Warn("eidlogin: eID push-ийг татгалзсан; decoy session-оор хариулав", "status", ae.Status, "code", ae.Code)
-		tx, binding, err = h.startDecoy(r.Context())
+		tx, binding, err = h.startDecoy(r.Context(), ttl)
 		decoy = true
 	}
 	if b.Mode == ModePush && h.floor > 0 {
@@ -719,7 +781,8 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusBadGateway, "eid_unavailable")
 		return
 	}
-	h.setCookie(w, tx.SessionID+"."+binding, int(h.cfg.TTL/time.Second))
+	expiresIn := int(tx.ttl / time.Second)
+	h.setCookie(w, tx.SessionID+"."+binding, expiresIn)
 	if b.Mode == ModePush {
 		h.event(r.Context(), EventPushSent, tx.SessionID, map[string]any{"mode": string(b.Mode), "pushKey": h.pushKey(idCode), "decoy": decoy})
 	}
@@ -730,15 +793,18 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, appLink, http.StatusFound)
 		return
 	}
-	out := map[string]any{"mode": b.Mode, "vc": tx.VC, "expiresIn": int(h.cfg.TTL / time.Second)}
+	out := map[string]any{"mode": b.Mode, "vc": tx.VC, "expiresIn": expiresIn}
 	if q := h.qrLink(tx); q != "" {
 		out["qr"] = q
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string) (*Tx, string, string, error) {
+// begin — eID session эхлүүлж tx-ийг хадгална. ttl — push-д discovery-оор таслагдсан хугацаа; QR/web2app-д CA-ийн
+// expiresAt-аар дахин таслагдана.
+func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string, ttl time.Duration) (*Tx, string, string, error) {
 	ctx := r.Context()
+	sent := time.Now()
 	o := &eid.AuthOptions{CertificateLevel: h.cfg.CertificateLevel}
 	tx := &Tx{Mode: mode}
 	appLink := ""
@@ -748,6 +814,7 @@ func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string) (*Tx, s
 			return nil, "", "", err
 		}
 		tx.SessionID, tx.VC, tx.ACSP = s.SessionID, s.VC, s.ACSP
+		h.observeAuthTTL(sent, s.ExpiresAt)
 	} else {
 		if mode == ModeWeb2App {
 			o.CallbackURL = WithReturnHint(h.cfg.CallbackURL, r.UserAgent())
@@ -760,6 +827,9 @@ func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string) (*Tx, s
 			return nil, "", "", errors.New("eID хариунд device link талбар дутуу")
 		}
 		tx.SessionID, tx.VC, tx.ACSP = s.SessionID, s.VC, s.ACSP
+		if !s.ExpiresAt.IsZero() {
+			ttl = min(ttl, time.Until(s.ExpiresAt).Truncate(time.Second))
+		}
 		tx.Link = &Link{Base: s.DeviceLinkBase, Token: s.SessionToken, Secret: s.SessionSecret, ReceivedAt: s.ReceivedAt, Lang: lang}
 		if mode == ModeWeb2App {
 			appLink, err = eid.BuildDeviceLink(eid.DeviceLinkInput{
@@ -776,32 +846,36 @@ func (h *Handler) begin(r *http.Request, mode Mode, idCode, lang string) (*Tx, s
 	if !uuidRe.MatchString(tx.SessionID) {
 		return nil, "", "", fmt.Errorf("eID sessionID хэлбэр буруу")
 	}
-	binding, err := h.save(ctx, tx)
+	if ttl < time.Second {
+		return nil, "", "", errors.New("eID session-ий хугацаа дууссан (expiresAt)")
+	}
+	binding, err := h.save(ctx, tx, ttl)
 	if err != nil {
 		return nil, "", "", err
 	}
 	return tx, binding, appLink, nil
 }
 
-// save — cookie binding үүсгэж tx-ийг TTL-тэй хадгална.
-func (h *Handler) save(ctx context.Context, tx *Tx) (string, error) {
+// save — cookie binding үүсгэж tx-ийг ttl-тэй хадгална.
+func (h *Handler) save(ctx context.Context, tx *Tx, ttl time.Duration) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("binding: %w", err)
 	}
 	binding := base64.RawURLEncoding.EncodeToString(raw)
 	tx.BindingHash = sha256hex(binding)
-	tx.ExpiresAt = time.Now().Add(h.cfg.TTL)
-	if err := h.cfg.Store.Set(ctx, tx, h.cfg.TTL); err != nil {
+	tx.ExpiresAt = time.Now().Add(ttl)
+	tx.ttl = ttl
+	if err := h.cfg.Store.Set(ctx, tx, ttl); err != nil {
 		return "", fmt.Errorf("store: %w", err)
 	}
 	return binding, nil
 }
 
 // startDecoy — eID-д байхгүй, хэзээ ч дуусахгүй push session: санамсаргүй UUID v4 sessionID, eID-тэй ижил 5 оронтой
-// vc (CA: %05d), бодит push-ийн TTL. Status нь Poll-ийн хугацаанд барьж PENDING, TTL-ийн дараа EXPIRED — утсаа
+// vc (CA: %05d), бодит push-ийн ttl (min(TTL, discovery sessionTtl.auth)). Status нь Poll-ийн хугацаанд барьж PENDING, TTL-ийн дараа EXPIRED — утсаа
 // аваагүй иргэнтэй ижил.
-func (h *Handler) startDecoy(ctx context.Context) (*Tx, string, error) {
+func (h *Handler) startDecoy(ctx context.Context, ttl time.Duration) (*Tx, string, error) {
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
 		return nil, "", fmt.Errorf("decoy: %w", err)
@@ -817,7 +891,7 @@ func (h *Handler) startDecoy(ctx context.Context) (*Tx, string, error) {
 		SessionID: h16[0:8] + "-" + h16[8:12] + "-" + h16[12:16] + "-" + h16[16:20] + "-" + h16[20:32],
 		Mode:      ModePush, VC: fmt.Sprintf("%05d", n.Int64()), Decoy: true,
 	}
-	binding, err := h.save(ctx, tx)
+	binding, err := h.save(ctx, tx, ttl)
 	if err != nil {
 		return nil, "", err
 	}

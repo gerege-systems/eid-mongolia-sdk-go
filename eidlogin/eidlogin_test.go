@@ -43,6 +43,9 @@ type fakeEID struct {
 	// "proxy400" = JSON бус 4xx (proxy); "500" — eID 5xx; "401" — RP-ийн нууц буруу.
 	refuse      string
 	polledOther bool
+	// ttlAuth — discovery-ийн sessionTtl.auth (сек; 0 = талбар алга, хуучин CA); exp — start хариуны expiresAt (0 = алга).
+	ttlAuth int
+	exp     time.Duration
 }
 
 const sid = "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
@@ -75,12 +78,20 @@ func (f *fakeEID) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
+	exp := func(m map[string]any) map[string]any {
+		if f.exp > 0 {
+			m["expiresAt"] = time.Now().Add(f.exp).Format(time.RFC3339)
+		}
+		return m
+	}
 	switch {
+	case r.URL.Path == "/.well-known/eid" && f.ttlAuth > 0:
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "v3", "sessionTtl": map[string]int{"auth": f.ttlAuth, "sign": 600}})
 	case r.URL.Path == "/authentication/device-link/anonymous":
 		f.path = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&f.req)
-		_ = json.NewEncoder(w).Encode(map[string]any{"sessionID": sid, "sessionToken": "tok_ABC-123",
-			"sessionSecret": base64.StdEncoding.EncodeToString(make([]byte, 32)), "deviceLinkBase": "https://ca.eidmongolia.mn/dl", "vc": "12345"})
+		_ = json.NewEncoder(w).Encode(exp(map[string]any{"sessionID": sid, "sessionToken": "tok_ABC-123",
+			"sessionSecret": base64.StdEncoding.EncodeToString(make([]byte, 32)), "deviceLinkBase": "https://ca.eidmongolia.mn/dl", "vc": "12345"}))
 	case strings.HasPrefix(r.URL.Path, "/authentication/notification/etsi/") && f.refuse != "":
 		f.path = r.URL.EscapedPath()
 		switch f.refuse {
@@ -105,7 +116,7 @@ func (f *fakeEID) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/authentication/notification/etsi/"):
 		f.path = r.URL.EscapedPath()
 		_ = json.NewDecoder(r.Body).Decode(&f.req)
-		_ = json.NewEncoder(w).Encode(map[string]any{"sessionID": sid, "vc": map[string]string{"type": "alphaNumeric4", "value": "54321"}})
+		_ = json.NewEncoder(w).Encode(exp(map[string]any{"sessionID": sid, "vc": map[string]string{"type": "alphaNumeric4", "value": "54321"}}))
 	case r.URL.Path == "/session/"+sid:
 		if f.end == "" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"state": "RUNNING"})

@@ -767,3 +767,18 @@ func TestMaskPathAllRoutes(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestAuthSessionTTL(t *testing.T) {
+	c, rc := server(t, jsonReply(200, `{"version":"v3","sessionTtl":{"auth":300,"sign":600}}`))
+	st, err := c.Auth.SessionTTL(context.Background())
+	if err != nil || st.Auth != 300*time.Second || st.Sign != 600*time.Second {
+		t.Fatal(st, err)
+	}
+	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" {
+		t.Fatal(r.URL.Path)
+	}
+	old, _ := server(t, jsonReply(200, `{"version":"v3"}`))
+	if st, err := old.Auth.SessionTTL(context.Background()); err != nil || st.Auth != 0 || st.Sign != 0 {
+		t.Fatal(st, err)
+	}
+}

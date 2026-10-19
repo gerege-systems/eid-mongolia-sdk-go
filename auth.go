@@ -184,3 +184,32 @@ func orDefault[T ~string](v, def T) T {
 	}
 	return v
 }
+
+// SessionTTL — discovery (/.well-known/eid)-ийн sessionTtl: CA-ийн нэвтрэлт / гарын үсгийн session-ий амьдрах хугацаа
+// (CA-ийн «Системийн тохиргоо»-оос амьд). Хуучин CA-д (талбар алга) 0.
+type SessionTTL struct {
+	Auth, Sign time.Duration
+}
+
+// SessionTTL — discovery-ийн sessionTtl ({"auth": сек, "sign": сек}). Талбар алга бол тэг утгатай SessionTTL.
+func (a *AuthService) SessionTTL(ctx context.Context) (*SessionTTL, error) {
+	var d struct {
+		SessionTTL *struct {
+			Auth int64 `json:"auth"`
+			Sign int64 `json:"sign"`
+		} `json:"sessionTtl"`
+	}
+	if err := a.h.getJSON(ctx, discoveryPath, 0, &d); err != nil {
+		return nil, err
+	}
+	out := &SessionTTL{}
+	if d.SessionTTL != nil {
+		if d.SessionTTL.Auth > 0 {
+			out.Auth = time.Duration(d.SessionTTL.Auth) * time.Second
+		}
+		if d.SessionTTL.Sign > 0 {
+			out.Sign = time.Duration(d.SessionTTL.Sign) * time.Second
+		}
+	}
+	return out, nil
+}
