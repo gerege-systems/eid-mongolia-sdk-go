@@ -684,6 +684,10 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
 - Координат — pt, хуудасны CropBox (байхгүй бол MediaBox)-ийн **дэлгэцэнд харагдах** (`/Rotate`-ийн дараах) зүүн доод
   булангаас; `/Rotate` 0/90/180/270 бүгд дэмжигдэнэ (дүрслэл босоо харагдана). 0.01 pt хүртэл тойрно.
 - `Page` нь Prepare-д өгсөн баримтын хуудас (1-ээс; энэ удаа нэмэх verify хуудас тооцогдохгүй).
+- `X, Y` нь хүссэн байрлал: тэр хэсэгт хуудасны агуулга (бичвэр, хүснэгтийн зураас, зураг, өмнөх гарын үсэг) байвал
+  дүрслэл чөлөөт зай руу шилжинэ — эхлээд толин тусгал багана (баруун доод → зүүн доод), дараа нь 12 pt-ээр дээш.
+  Үр дүн: `Prepared.Placement` (`Status`: `requested` | `moved` | `overlap` — чөлөөт зай алга, хүссэн байрлалд
+  | `unscanned` — хуудсыг хязгаарт багтааж уншиж чадсангүй). Дэлгэрэнгүй: [PLACEMENT_SPEC.md](pades/PLACEMENT_SPEC.md).
 - Өндөр ≥ 45 pt (QR модуль ≥ 1 pt), бичвэр багтахгүй (нэр 7 pt, бусад 5 pt хүртэл жижгэрнэ), хуудаснаас гарсан, хуудас
   алга, `/Name` бичигдэхгүй нэр, docID тодорхойгүй → `REQUEST_INVALID`. Огноо нь мэдүүлсэн SigningTime (TSA-ийн цаг prepare-д
   мэдэгдэхгүй).
@@ -738,7 +742,7 @@ for _, s := range rep.Signatures {
 
 Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verify`-тэй, backend-д); TS / Swift / Kotlin / C# native SDK-ууд гарын
 үсгийн замыг ([PROFILE.md](pades/PROFILE.md), [PAGE_SPEC.md](pades/PAGE_SPEC.md), [PRECHECKS.md](pades/PRECHECKS.md),
-[WIRE.md](pades/WIRE.md), [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
+[WIRE.md](pades/WIRE.md), [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md), [PLACEMENT_SPEC.md](pades/PLACEMENT_SPEC.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
 хоорондын байт-ижил байдалд.
 
 Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v4`) — native SDK бүрийн CI тулгана; энэ репогийн CI

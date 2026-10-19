@@ -54,11 +54,15 @@ jobs:
         with:
           go-version: stable
       - run: go test ./pades/ -run '^$' -fuzz '^FuzzValidatePDF$' -fuzztime=30s
+      # Stamp placement content-stream scanner (PLACEMENT_SPEC.md).
+      - run: go test ./pades/internal/core/ -run '^$' -fuzz '^FuzzOccupancy$' -fuzztime=30s
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-failure
-          path: pades/testdata/fuzz/
+          path: |
+            pades/testdata/fuzz/
+            pades/internal/core/testdata/fuzz/
   # Golden гаралтыг Go-оос хамааралгүй гадны хэрэгслээр шалгана: qpdf (бүтэц) ба pyHanko (INTACT/VALID/TRUSTED,
   # цуцлалт зөвхөн DSS-ээс = LT, timestamp, өөрчлөлтийн ангилал, харагдах widget). Native SDK-ууд эдгээр гаралтыг
   # байт-ижил давтдаг тул энэ нь бүх SDK-ийн гаралтын нийцлийг батална.
