@@ -1,5 +1,99 @@
 # Changelog
 
+## v0.8.0 — 2026-10-19
+
+### Fixed — `pades`: trailer-ийн шууд `/Encrypt << … >>` толь `PDF_ENCRYPTED`
+
+- **Юу:** digitorus баримтыг нээж чадахгүй үед (ж: AES-256, буруу /U) хэрэглэдэг байт-regex нь зөвхөн `/Encrypt N G R`
+  лавлагааг таньдаг байсан тул шууд толь (`/Encrypt << … >>`, `/Encrypt<<`)-той баримт `PDF_INVALID` болдог байв —
+  одоо `PDF_ENCRYPTED`. Regex `/Encrypt(?:\s+\d+\s+\d+\s+R|\s*<<)` (CA !382-тэй ижил); `/EncryptMetadata` тооцогдохгүй.
+- **Хаана:** `pades/prepare.go` (`encryptKey`), `pades/internal/validate/extract.go` (`encryptRef`), `pades/PRECHECKS.md` #4.
+- **Шалгасан:** `TestEncryptDirectDict` (AES-256 шууд толь, RC4 `/Encrypt<<`, лавлагаа, `/EncryptMetadata` → encrypted
+  биш) — хуучин regex-ээр AES-256/RC4 тохиолдол унахыг баталсан.
+### Tests — PRECHECKS #2b: хууль ёсны ObjStm баримтын хуурамч татгалзлын хамгаалалт
+
+- **Юу:** `pades/testdata/objstm/` (qpdf 12.4.2 `--object-streams=generate`): Chrome 155 «Save as PDF» гаралт,
+  linearized + ObjStm, гарын үсэгтэй хоёр (pdfcpu stamp, macOS-ийн eID гарын үсэгтэй баримт; бүтнээр дахин бичсэн тул
+  зөвхөн бүтцийн шалгалтад). `TestObjStmLegitAccepted` — эдгээр ба `golden/input/{quartz,desktop}-objstm.pdf`-д
+  `CheckStructure` зөвшөөрнө; гарын үсэггүйд `ValidatePDF` → `PDF_NO_SIGNATURE`, `Prepare` амжилттай. Шинэ файлууд
+  `FuzzValidatePDF`-ийн seed болно.
+- **Яагаад:** #2b-ийн ObjStm мөчлөгийн дүрэм бодит ObjStm-тэй баримтыг татгалзахгүйг батлах.
+- **Шалгасан:** 6 файл бүгд ObjStm агуулагчийн шалгалтын замаар явсныг (түр `len(containers) > 0 → ErrStructure`
+  болгоход 6 бүгд унасан) баталсан; дүрэм өөрчлөгдөөгүй; fuzz 2.5 мин олдворгүй.
+### Security — `pades`: цуцлалтын нотолгооны тохирол/шинэлэг байдал, revoked = хатуу алдаа, гүн давхарласан PDF (v0.7.2)
+
+- **Юу (зан төлөвийн өөрчлөлт — аюулгүй байдлын засвар):**
+  - `ValidatePDF` / `Verify` (DSS ба онлайн): OCSP нь ЭНЭ гэрчилгээнийх байх ёстой — CertID = гинжийн олгогчийн
+    нэр/түлхүүрийн hash + serial (өмнө нь зөвхөн serial, аль ч eID олгогчийн гарын үсэгтэй хариу тооцогддог байв). CRL нь
+    гэрчилгээний олгогчийнх (нэр = олгогчийн subject, AKI = SKI, гарын үсэг) — өмнө нь өөр eID олгогчийн (05) serial-ийг
+    агуулаагүй CRL «good» болдог байв. «good» нотолгоо шалгах цагт (цагийн тэмдгийн цаг, эс бөгөөс `Time`/одоо) шинэлэг
+    байх ёстой: thisUpdate ≤ одоо+5 мин, nextUpdate ≥ шалгах цаг−5 мин, thisUpdate ≥ шалгах цаг−24 ц эсвэл
+    thisUpdate…nextUpdate нь шалгах цагийг хамарна (`validate.FreshAt`, `RevocationMaxAge`, `RevocationClockSkew`) — өмнө
+    нь DSS-ийн 400 хоногийн өмнөх OCSP `valid` өгдөг байв. Олгогчийн гарын үсэгтэй «revoked» (OCSP/CRL, онлайн/DSS) нь
+    «good»-ийг үргэлж давна (өмнө нь DSS-д good OCSP + revoked CRL → `valid`; онлайн good нь DSS-ийн revoked-ийг дардаг байв).
+    **Өмнө `valid` байсан зарим баримт одоо `indeterminate` (`revocation_unavailable`) эсвэл `invalid` (`revoked`).**
+  - `Complete`: OCSP «revoked» эсвэл гэрчилгээг агуулсан CRL → тэр дор нь `LTV_UNAVAILABLE` + `errors.Is(err,
+    pades.ErrCertificateRevoked)`, дахин оролдохгүй (өмнө нь revoked OCSP-г алгасаад CRL-ээр DSS угсарч амжилттай
+    дуусдаг байв). OCSP/CRL-д мөн CertID/олгогч/шинэлэг байдлын дүрэм.
+  - `Prepare` / `ValidatePDF` / `Verify` / `Complete`: задлахын өмнө массив/толийн давхарлалт > 256 → `PDF_INVALID`
+    (`Complete` — `STATE_INVALID`), `errors.Is(err, pades.ErrPDFStructure)` — өмнө нь ~2 MB `[[[…` баримт digitorus/pdf-ийн
+    рекурсээр `fatal error: stack overflow` (recover барихгүй) өгч процессыг унагадаг байв.
+- **Шинэ API (нэмэлт):** `pades.ErrCertificateRevoked`, `pades.ErrPDFStructure`.
+- **Яагаад:** 10-15 SDK аудитын олдвор 1–5 (fail-open цуцлалт, crash).
+- **Хаана:** `pades/internal/validate/revocation.go` (FreshAt, OCSPCertIDMatches, CRLFor), `nesting.go` (CheckStructure),
+  `validate.go` (StatusSource-д cert/issuer/цаг), `ltv.go`; `pades/trust.go` (dssStatus), `pades/validatepdf.go`
+  (onlineStatus), `pades/ltv.go` (collectLTV), `pades/complete.go`, `pades/prepare.go`, `pades/errors.go`; README §7.2,
+  PRECHECKS.md #2a. Golden **v4** (`pades/testdata/validate/`, +13: `dss-ocsp-stale`, `-expired`, `-future`,
+  `-other-serial`, `-other-issuer`, `-revoked`, `-revoked-after-signing`, `dss-crl-revoked`, `-wrong-issuer`, `-only`,
+  `dss-no-revocation`, `deep-nesting`, `deep-nesting-objstm`; `issuers`-д тестийн `pki/05.pem`); v3 тохиолдлууд байт-ижил.
+- **Шалгасан:** `go test -race ./...`, `go vet`, gofmt, `GOOS=linux GOARCH=amd64 go build`, staticcheck (шинэ анхааруулга
+  алга), govulncheck (0). Шинэ тестүүдийг v0.7.1-ийн код дээр ажиллуулж унахыг баталсан: golden v4-ийн 8 тохиолдол
+  (stale/expired/future/other-issuer/crl-revoked/crl-wrong-issuer → `valid`, deep-nesting* → `PDF_NO_SIGNATURE`),
+  `TestValidatePDFOnlineRevocationEvidence` (3 дэд), `TestCompleteRevokedIsHardFailure` (2 дэд — хуучин нь амжилттай);
+  3 MB давхарлалт хуучин кодонд `fatal error: stack overflow`.
+- **Үлдсэн:** TS/Swift/Kotlin/.NET port-ууд golden v4-ийг давтах; CA-ийн `validate` хуулбарт ижил дүрэм (LTV хамралтын
+  CertID/CRL/шинэлэг байдал).
+### Security — `pades`: ObjStm мөчлөг ба /Size-аар процесс унах / гацах (fuzz олсон)
+
+- **Юу:** `validate.CheckStructure` (Prepare / ValidatePDF / Verify / Complete-ийн урьдчилсан шалгалт) нь дараахыг
+  `PDF_INVALID` (`Complete` — `STATE_INVALID`), `errors.Is(err, pades.ErrPDFStructure)` болгоно:
+  - ObjStm доторх объектын агуулагч stream нь өөрөө ObjStm-д (өөрийгөө агуулах эсвэл харилцан мөчлөг);
+  - ObjStm-ийн толгойн лавлагаа (`/Length` г.м.) ObjStm доторх объект руу заасан; `/Extends` мөчлөг / > 64 гинж;
+  - trailer эсвэл xref stream-ийн `/Size` > 2 097 152.
+  Өмнө нь ~8 KB баримт digitorus/pdf-ийн мөчлөгийн рекурсээр `fatal error: stack overflow` (recover барихгүй, процесс
+  бүхэлдээ унана), `/Size 10000000000` — хязгааргүй давталт (Linux-д 400 GB хуваарилалт) өгдөг байв.
+- **Яагаад:** `FuzzValidatePDF` эхний 4 секундэд олсон; v0.7.2-ийн давхарлалтын засвартай ижил ангиллын DoS.
+- **Хаана:** `pades/internal/validate/objstm.go` (`checkObjStmGraph` — digitorus-ийн экспортлоогүй xref талбарыг
+  reflect-ээр уншина; бүтэц өөрчлөгдвөл fail-closed), `nesting.go` (`/Size`), `pades/PRECHECKS.md` #2b.
+- **Шалгасан:** `TestCheckStructureObjStmGraph` (хууль ёсны ObjStm + /Size = хязгаар задарна; 4 муу тохиолдол) — шалгалтыг
+  түр унтраахад self / mutual / /Length тохиолдлууд `fatal error: stack overflow`, /Size 10^10 30 с timeout өгснийг
+  баталсан; fuzz crash `pades/testdata/fuzz/FuzzValidatePDF/c8b2f6dc9d5d37bf` regression seed; `TestCheckStructureCorpus`
+  (хуурамч татгалзалгүй).
+- **Үлдсэн:** TS/Swift/Kotlin/.NET port-ууд PRECHECKS #2b-г давтах (задлагч нь мөчлөгт хамгаалалттай бол код л тааруулна).
+### Changed — 10-15 SDK аудитын Low олдворууд: PII-гүй алдаа, https BaseURL, CI-ийн staticcheck/govulncheck/fuzz, devicelink golden drift
+
+- **Юу:**
+  - `maskPath` нь `/linked/{documentNumber}`-ийг ч нууна (`/signature/notification/linked/…`) — өмнө нь баримтын
+    дугаар `NetworkError.Op` / `ResponseTooLargeError` / алдааны текстэд орж болдог байв.
+  - `pades.Complete`-ийн LTV/цуцлалтын алдааны текст иргэний гэрчилгээний CN (овог, нэр)-ийн оронд `serial <hex>`-ээр
+    заана (`pades/ltv.go` `certRef`).
+  - **Зан төлөвийн өөрчлөлт:** `ResolveBaseURL` / `NewClient` нь `http://`-ийг зөвхөн `localhost` / loopback IP
+    (127.0.0.0/8, ::1)-д зөвшөөрнө; бусад `http://` → алдаа (API secret сүлжээгээр нээлттэй явахгүй).
+  - CI: `lint` job (`staticcheck@v0.8.2`, `govulncheck@v1.8.0`, Go stable) ба `fuzz` job (`FuzzValidatePDF`, 30 с).
+    staticcheck-ийн өмнөх 9 олдвор засагдсан (ашиглагдаагүй талбар, `t.Fatal(fmt.Sprintf)`, deprecated
+    `timestamp.CreateResponse` → `CreateResponseWithOpts(…, crypto.SHA256)` (байт-ижил), тестийн U+202E/U+200E →
+    escape, `Catalog` алдааны мөрөнд `//lint:ignore ST1005`).
+  - `testdata/devicelink_golden.json`-ийн sha256-ийг pin хийсэн (`TestDeviceLinkGoldenPinned`); `EID_CA_REPO` (CA
+    репогийн локал clone) өгвөл canonical файлтай байт-ижил эсэхийг мөн шалгана (CA репо private тул CI-д алгасна).
+  - `FuzzValidatePDF` (`pades/fuzz_test.go`): ValidatePDF (offline) + Verify; seed = репогийн бүх тестийн PDF + олдсон
+    crash (`pades/testdata/fuzz/`). Seed-үүд энгийн `go test`-д ажиллана.
+- **Яагаад:** 10-15 SDK аудитын Low олдворууд.
+- **Хаана:** `errors.go`, `client.go`, `pades/ltv.go`, `.github/workflows/ci.yml`, `devicelink_test.go`,
+  `pades/fuzz_test.go`; тест: `TestMaskPathAllRoutes`, `TestResolveBaseURL`, `TestCompleteRevokedIsHardFailure` /
+  `TestCollectLTVRejectsForeignEvidence` (`noSubjectCN`), `TestDeviceLinkGoldenPinned`.
+- **Шалгасан:** gofmt, `go vet`, `go test -race ./...`, `GOOS=linux GOARCH=amd64 go build`, staticcheck v0.8.2 (0),
+  govulncheck v1.8.0 Go 1.27.2-оор (0 дуудагдах эмзэг байдал), fuzz нийт ~10 мин (засварын дараа олдворгүй).
+
 ## v0.7.1 — 2026-10-17
 
 ### Fixed — `pades.ValidatePDF`: шифрлэгдсэн PDF → `PDF_ENCRYPTED` (v0.7.1)
