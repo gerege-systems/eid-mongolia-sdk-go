@@ -7,6 +7,8 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,5 +237,79 @@ func TestPushTimeoutLooksLikeDecoy(t *testing.T) {
 	}
 	if k := e.kinds(); !slices.Equal(k, []EventKind{EventPushSent, EventExpired}) {
 		t.Fatalf("events %v", k)
+	}
+}
+
+func (f *fakeEID) setTTL(auth int, exp time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ttlAuth, f.exp = auth, exp
+}
+
+func maxAge(t *testing.T, h map[string][]string) string {
+	t.Helper()
+	for _, c := range h["Set-Cookie"] {
+		if strings.HasPrefix(c, "eid_login=") {
+			if i := strings.Index(c, "Max-Age="); i >= 0 {
+				return strings.SplitN(c[i+len("Max-Age="):], ";", 2)[0]
+			}
+		}
+	}
+	t.Fatalf("eid_login cookie алга: %v", h["Set-Cookie"])
+	return ""
+}
+
+// Бодит ба decoy push хоёулаа min(TTL, discovery sessionTtl.auth) — CA-ийн expiresAt (decoy-д байхгүй)-аас биш.
+func TestPushTTLFromDiscovery(t *testing.T) {
+	e := setup(t, nil)
+	e.fake.setTTL(60, 59*time.Second+500*time.Millisecond)
+	real := e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ12345678"}`, nil)
+	e.fake.setRefuse("json400")
+	decoy := e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ87654321"}`, nil)
+	if real.body["expiresIn"] != float64(60) || decoy.body["expiresIn"] != float64(60) {
+		t.Fatalf("expiresIn: real %v decoy %v", real.body, decoy.body)
+	}
+	if a, b := maxAge(t, real.header), maxAge(t, decoy.header); a != "60" || b != "60" {
+		t.Fatalf("Max-Age: real %s decoy %s", a, b)
+	}
+
+	// TTL нь discovery-оос богино бол TTL хэвээр.
+	e = setup(t, func(c *Config) { c.TTL = 30 * time.Second })
+	e.fake.setTTL(300, 300*time.Second)
+	if x := e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ12345678"}`, nil); x.body["expiresIn"] != float64(30) {
+		t.Fatalf("TTL < CA: %v", x.body)
+	}
+}
+
+// Хуучин CA (discovery-д sessionTtl алга): бодит push-ийн expiresAt-аас ажигласан хугацааг дараагийн decoy авна.
+func TestPushTTLObservedWithoutDiscovery(t *testing.T) {
+	e := setup(t, func(c *Config) { c.TTL = 10 * time.Minute })
+	e.fake.setTTL(0, 300*time.Second)
+	_ = e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ12345678"}`, nil)
+	e.fake.setRefuse("json400")
+	decoy := e.do(t, "POST", "/auth/eid/start", `{"mode":"push","idCode":"УБ87654321"}`, nil)
+	// expiresAt нь секундээр таслагдсан тул ±1 с (зөвхөн хуучин CA-ийн нөөц зам).
+	if n, _ := decoy.body["expiresIn"].(float64); n < 299 || n > 301 {
+		t.Fatalf("decoy: %v", decoy.body)
+	}
+}
+
+// QR: CA-ийн expiresAt нь TTL-ээс эрт бол түүгээр таслана (cookie, expiresIn, store).
+func TestQRTTLCappedByCAExpiresAt(t *testing.T) {
+	e := setup(t, nil)
+	e.fake.setTTL(0, 45*time.Second)
+	x := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil)
+	n, _ := x.body["expiresIn"].(float64)
+	if n < 43 || n > 45 || maxAge(t, x.header) != strconv.Itoa(int(n)) {
+		t.Fatalf("qr: %v %v", x.body, x.header["Set-Cookie"])
+	}
+	tx, _ := e.h.cfg.Store.Get(context.Background(), sid)
+	if tx == nil || time.Until(tx.ExpiresAt) > 45*time.Second {
+		t.Fatalf("tx: %+v", tx)
+	}
+	// expiresAt алга (хуучин CA) — TTL.
+	e = setup(t, nil)
+	if x := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil); x.body["expiresIn"] != float64(120) {
+		t.Fatalf("qr old CA: %v", x.body)
 	}
 }
