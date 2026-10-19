@@ -144,7 +144,46 @@ func placementGoldenInputs() map[string][]byte {
 		"table-bottom.pdf":     fxPage("/MediaBox [0 0 595.28 841.89] "+res, tbl.String()),
 		"rotated90-footer.pdf": fxPage(letter+" /Rotate 90 "+res, rot),
 		"full-page.pdf":        fxPage(letter+" "+res, full),
+		"two-verify.pdf":       verifyPagesInput(fxPage(letter+" "+res, fxLines(72, 700, 14, 10, 3, "Contract body text")), verifyDocA, verifyDocA),
+		"fake-verify.pdf":      fakeVerifyInput(res),
 	}
+}
+
+// verifyDocA / verifyDocB — docIds of the page-0 golden inputs (PLACEMENT_SPEC §1a).
+const (
+	verifyDocA = "f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182"
+	verifyDocB = "a6b7c8d9-e0f1-4a2b-9c3d-4e5f60718293"
+)
+
+// verifyPagesInput — base + one eID verify page (AppendVerifyPage, incremental) per docID.
+func verifyPagesInput(base []byte, docIDs ...string) []byte {
+	out := base
+	for _, id := range docIDs {
+		pd := PageData{Brand: "eID Mongolia", FileName: "two-verify.pdf", DocumentHash: strings.Repeat("ab", 32), FileSize: int64(len(out)),
+			DocID: id, VerifyURL: "https://ca.eidmongolia.mn/verify/" + id, TrustURL: "https://eidmongolia.mn/trust",
+			CAName: "eID Mongolia Issuing CA", TSAName: "eID Mongolia TSA (tsa.timeserver.mn)", Provider: "ca.eidmongolia.mn"}
+		var err error
+		if out, err = AppendVerifyPage(out, pd); err != nil {
+			panic(err)
+		}
+	}
+	return out
+}
+
+// fakeVerifyInput — two content pages; the last one carries a verify-looking page for another docId (verifyDocB) and
+// a /verify/<docA>/1 link (a stamp-style URL): neither is the document's verify page, so it stays a content page.
+func fakeVerifyInput(res string) []byte {
+	return fxPDF(
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>",
+		"<< /Type /Page /Parent 2 0 R "+letter+" "+res+" /Contents 4 0 R >>",
+		fxStream("", fxLines(72, 700, 14, 10, 3, "Page one body text")),
+		fxHelvetica(),
+		"<< /Type /Page /Parent 2 0 R "+letter+" "+res+" /Contents 7 0 R /Annots [8 0 R 9 0 R] >>",
+		fxStream("", fxLines(72, 700, 14, 10, 3, "Page two body text")),
+		"<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A << /S /URI /URI (https://ca.eidmongolia.mn/verify/"+verifyDocB+") >> >>",
+		"<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://ca.eidmongolia.mn/verify/"+verifyDocA+"/1) >> >>",
+	)
 }
 
 // placementInputs — synthetic inputs that exercise each scanner rule (placement/input).
@@ -530,5 +569,39 @@ func TestSatInt(t *testing.T) {
 		if got := SatInt(in); got != want {
 			t.Errorf("SatInt(%v) = %d, want %d", in, got, want)
 		}
+	}
+}
+
+// TestDefaultStampPage — page 0 skips the document's own verify pages only (PLACEMENT_SPEC §1a).
+func TestDefaultStampPage(t *testing.T) {
+	uri := "https://ca.eidmongolia.mn/verify/" + verifyDocA
+	res := "/Resources << /Font << /F1 5 0 R >> >>"
+	one := fxPage(letter+" "+res, fxLines(72, 700, 14, 10, 1, "x"))
+	for _, tc := range []struct {
+		name    string
+		doc     []byte
+		uri     string
+		page, n int
+	}{
+		{"no verify page", one, uri, 1, 1},
+		{"one verify page", verifyPagesInput(one, verifyDocA), uri, 1, 2},
+		{"two verify pages", verifyPagesInput(one, verifyDocA, verifyDocA), uri, 1, 3},
+		{"other docId", verifyPagesInput(one, verifyDocB), uri, 2, 2},
+		{"fake verify", fakeVerifyInput(res), uri, 2, 2},
+		// Every page is a verify page (the single page links to the verify URL) → the last page.
+		{"only verify pages", fxPage(letter+" "+res+" /Annots [6 0 R]", "",
+			"<< /Type /Annot /Subtype /Link /Rect [0 0 1 1] /A << /S /URI /URI ("+uri+") >> >>"), uri, 1, 1},
+		{"direct annotation", fxPage(letter+" "+res+" /Annots [<< /Subtype /Link /A << /S /URI /URI ("+uri+") >> >>]", ""), uri, 1, 1},
+	} {
+		page, n, err := DefaultStampPage(tc.doc, tc.uri)
+		if err != nil || page != tc.page || n != tc.n {
+			t.Errorf("%s: page %d n %d err %v, want %d %d", tc.name, page, n, err, tc.page, tc.n)
+		}
+	}
+	// Two pages, both verify pages → the last (2).
+	both := verifyPagesInput(fxPage(letter+" "+res+" /Annots [6 0 R]", "",
+		"<< /Type /Annot /Subtype /Link /Rect [0 0 1 1] /A << /S /URI /URI ("+uri+") >> >>"), verifyDocA)
+	if page, n, err := DefaultStampPage(both, uri); page != 2 || n != 2 || err != nil {
+		t.Errorf("all verify: %d %d %v", page, n, err)
 	}
 }

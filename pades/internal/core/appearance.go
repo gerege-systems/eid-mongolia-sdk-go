@@ -390,6 +390,74 @@ func PageCount(doc []byte) (n int, err error) {
 	return n, nil
 }
 
+// DefaultStampPage — `appearance.page` 0 / байхгүй үеийн хуудас (PLACEMENT_SPEC §1a): баримтын (модны дарааллаар)
+// eID verify хуудас БИШ сүүлийн хуудас (1-ээс), мөн хуудасны тоо n. Verify хуудас = /Annots-д `/Subtype /Link`,
+// `/A << /S /URI /URI verifyURI >>` (verifyURI = "https://ca.eidmongolia.mn/verify/" + docId, байт-ижил) annotation-тай
+// хуудас. Бүх хуудас verify бол n. Хуудсыг уншиж чадахгүй бол агуулгын хуудас гэж үзнэ.
+func DefaultStampPage(doc []byte, verifyURI string) (page, n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			page, n, err = 0, 0, fmt.Errorf("%w: %v", ErrPDF, r)
+		}
+	}()
+	inc, err := openIncremental(doc)
+	if err != nil {
+		return 0, 0, err
+	}
+	var pages []pdf.Value
+	var walk func(v pdf.Value, depth int)
+	walk = func(v pdf.Value, depth int) {
+		if depth > maxSerializeDepth || len(pages) > 1<<16 {
+			return
+		}
+		switch v.Key("Type").Name() {
+		case "Page":
+			pages = append(pages, v)
+		case "Pages":
+			kids := v.Key("Kids")
+			for i := range kids.Len() {
+				walk(kids.Index(i), depth+1)
+			}
+		}
+	}
+	walk(inc.root().Key("Pages"), 0)
+	n = len(pages)
+	for i := n - 1; i >= 0; i-- {
+		if !isVerifyPage(pages[i], verifyURI) {
+			return i + 1, n, nil
+		}
+	}
+	return n, n, nil
+}
+
+// maxVerifyAnnots — isVerifyPage-ийн уншиx /Annots-ийн дээд тоо (PLACEMENT_SPEC §3.7-тэй ижил).
+const maxVerifyAnnots = 10000
+
+// isVerifyPage — хуудсын /Annots-д verifyURI руу заасан Link байгаа эсэх (PLACEMENT_SPEC §1a). Уншиж чадахгүй → false.
+func isVerifyPage(page pdf.Value, verifyURI string) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	annots := page.Key("Annots")
+	if annots.Kind() != pdf.Array {
+		return false
+	}
+	for i := range min(annots.Len(), maxVerifyAnnots) {
+		a := annots.Index(i)
+		if a.Kind() != pdf.Dict || a.Key("Subtype").Name() != "Link" {
+			continue
+		}
+		act := a.Key("A")
+		if act.Kind() == pdf.Dict && act.Key("S").Name() == "URI" && act.Key("URI").Kind() == pdf.String &&
+			act.Key("URI").RawString() == verifyURI {
+			return true
+		}
+	}
+	return false
+}
+
 // glyphHex — F1/F2 бичвэрийн `<GGGG…>` (PAGE_SPEC.md §2).
 func (w *pageWriter) glyphHex(id int, s string) string {
 	var b bytes.Buffer

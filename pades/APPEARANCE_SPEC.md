@@ -11,7 +11,7 @@
 ## 1. Оролт ба байршил
 
 ```
-appearance: { page: int (1-ээс; 0/байхгүй = оролтын СҮҮЛИЙН хуудас), x, y, width, height: тоо (pt), lang: "mn"|"en" }
+appearance: { page: int (1-ээс; 0/байхгүй = оролтын eID verify хуудас БИШ сүүлийн хуудас — PLACEMENT_SPEC §1a), x, y, width, height: тоо (pt), lang: "mn"|"en" }
 ```
 
 - **h100** — бүх урт/координат 1/100 pt-ийн бүхэл тоо: `round100(v) = floor(v × 100 + 0.5)` (IEEE-754 double).
@@ -20,8 +20,9 @@ appearance: { page: int (1-ээс; 0/байхгүй = оролтын СҮҮЛИ�
 - Шалгалт (бүгд `REQUEST_INVALID`, PDF задлахаас өмнө): x, y, width, height нь хязгаартай (NaN/Inf биш), `0 ≤ v ≤ 14400`;
   `page ≥ 0`; `lang` ∈ {"", mn, en}; claimedRole-д `Cc`/`Cf` тэмдэгт байхгүй (validator-ийн `validClaimedRole`).
 - `lang` хоосон бол `PrepareOptions.lang`, тэр нь хоосон бол `mn`.
-- **page** нь Prepare-д ӨГСӨН баримтын хуудас (энэ Prepare-ийн нэмэх verify хуудас тооцогдохгүй; өмнөх гарын үсгийн
-  verify хуудас бол энгийн хуудас). Хуудасны тоо = `/Root /Pages` модыг `/Kids`-ээр дарааллаар тоолсон `/Type /Page`
+- **page** нь Prepare-д ӨГСӨН баримтын хуудас (энэ Prepare-ийн нэмэх verify хуудас тооцогдохгүй). Тодорхой дугаар
+  (1…N) өмнөх гарын үсгийн verify хуудас ч байж болно — юуг ч алгасахгүй. `0`/байхгүй бол өмнөх revision-уудын нэмсэн
+  eID verify хуудсуудыг алгасаж, түүнээс өмнөх сүүлийн хуудас (PLACEMENT_SPEC §1a; golden v6-аас). Хуудасны тоо = `/Root /Pages` модыг `/Kids`-ээр дарааллаар тоолсон `/Type /Page`
   (гүн ≤ 32; `/Count`-д итгэхгүй). `page > тоо` → `REQUEST_INVALID`.
 - **Байршил** ([PLACEMENT_SPEC.md](PLACEMENT_SPEC.md)): `x, y` нь хүссэн байрлал; хуудсан дээрх агуулга (бичвэр, зураг,
   зураас, annotation)-тай давхцвал дүрслэл тогтсон дарааллаар чөлөөт байрлал руу шилжинэ. Чөлөөтэй бол байт-ижил.
