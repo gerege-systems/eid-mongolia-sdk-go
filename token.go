@@ -195,7 +195,7 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 // PreviewCertificate — POST /token/certificate {"dryRun": true} (CA 2026-10-19, discovery tokenCertificate.dryRun):
 // IssueCertificate-ийн бүх шалгалт ижил алдааны кодтой, гэхдээ session / утас руу push үүсэхгүй. Урсгал: CSR →
 // PreviewCertificate → Supersedes байвал иргэнд анхааруулж зөвшөөрүүлэх → IssueCertificate (ижил оролт). Хурдны хязгаар
-// (RP, иргэн) 20/мин (push-ийн 3/цагийг зарцуулахгүй). Үр дүн нь шалгасан мөчийнх. Хуучин CA-д 400 (танихгүй талбар).
+// (RP, иргэн) 20/мин + RP нийт 120/10 мин (push-ийн 3/цагийг зарцуулахгүй). Үр дүн нь шалгасан мөчийнх. Хуучин CA-д 400 (танихгүй талбар).
 func (t *TokenService) PreviewCertificate(ctx context.Context, in TokenCertInput) (*TokenCertPreview, error) {
 	req, err := t.certRequest(in)
 	if err != nil {

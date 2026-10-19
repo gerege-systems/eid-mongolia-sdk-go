@@ -507,9 +507,9 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 **dryRun — push-ээс өмнөх шалгалт** (CA 2026-10-19, discovery `tokenCertificate.dryRun: true` —
 `CertificateInfo().DryRun`): `IssueCertificate`-ийн хариунд `Supersedes` ирэх үед утас руу PIN2 push явсан байдаг —
 desktop дээр цуцалсан ч иргэн утсаараа баталбал хуучин токен солигдоно. Тиймээс урсгал: CSR → `c.Token.PreviewCertificate(ctx, in)`
-(бие нь ижил + `"dryRun": true`; бүх шалгалт, ижил алдааны код; session / push / state үүсэхгүй) → `Supersedes` байвал
-анхааруулга, иргэн зөвшөөрөх → `IssueCertificate(ctx, in)`. Хурдны хязгаар (RP, иргэн) 20/мин — push-ийн 3/цагийг
-зарцуулахгүй. Хариунд `dryRun: true` ирээгүй бол `*eid.ValidationError` (хуучин CA танихгүй талбарт 400 буцаана).
+(бие нь ижил + `"dryRun": true`; бүх шалгалт, ижил алдааны код — өөр CSR хостой хүлээгдэж буй олголт
+`409 TOKEN_ISSUANCE_PENDING` ч; session / push / state үүсэхгүй) → `Supersedes` байвал анхааруулга, иргэн зөвшөөрөх →
+`IssueCertificate(ctx, in)`. Хурдны хязгаар (RP, иргэн) 20/мин ба RP нийт 120/10 мин — push-ийн 3/цагийг зарцуулахгүй. Хариунд `dryRun: true` ирээгүй бол `*eid.ValidationError` (хуучин CA танихгүй талбарт 400 буцаана).
 
 **Апп баталгаа (`AppTransaction`, заавал биш)** (CA 2026-10-19, discovery `tokenCertificate.appTransaction:
 "optional"`): macOS App Store build нь StoreKit 2 `AppTransaction`-ийн JWS (compact) мөрийг desktop-оос дамжуулна —
