@@ -47,7 +47,17 @@ type TokenCertInput struct {
 	TokenLabel string
 	// OnBehalfOf — байгууллагын токен (NTRMN-…); "" = хувийн токен.
 	OnBehalfOf string
+	// AppTransaction — заавал биш: macOS App Store build-ийн StoreKit 2 AppTransaction JWS (compact, ≤ 16 KiB;
+	// MaxAppTransactionBytes). "" бол илгээхгүй (Windows — баталгаагүй олголт). Ирсэн бол CA offline шалгана; хүчингүй бол
+	// 400 CodeAppAttestationInvalid, утас руу push явахгүй (CA docs/TOKEN_CERT.md §App Store баталгаа).
+	AppTransaction string
 }
+
+// MaxAppTransactionBytes — TokenCertInput.AppTransaction-ийн дээд хэмжээ (CA-ийн хязгаар, 16 KiB).
+const MaxAppTransactionBytes = 16 << 10
+
+// ErrAppTransactionTooLarge — TokenCertInput.AppTransaction > MaxAppTransactionBytes: SDK CA руу илгээхгүй.
+var ErrAppTransactionTooLarge = errors.New("eid: token: AppTransaction 16 KiB-аас их")
 
 // TokenCertStart — олголтын эхлэлийн хариу: утсанд очсон SIGN session.
 type TokenCertStart struct {
@@ -58,6 +68,15 @@ type TokenCertStart struct {
 	CSRAuthSHA256 string
 	CSRSignSHA256 string
 	ExpiresAt     string
+	// Supersedes — хувийн олголтод, иргэний хувийн токены хязгаар хүрсэн үед: олголт амжилттай болоход AUTH + SIGN нь
+	// superseded (4)-оор автоматаар цуцлагдах өөр serial-тай хувийн токенууд (CA 2026-10-19). Бусад үед nil. Эхлэлийн
+	// мөчийнх — PIN2-оос өмнө иргэнд анхааруул («Таны өмнөх USB токен (…)-ийн гэрчилгээ хүчингүй болно»).
+	Supersedes []TokenSupersede
+}
+
+// TokenSupersede — TokenCertStart.Supersedes-ийн нэг мөр.
+type TokenSupersede struct {
+	TokenSerial string `json:"tokenSerial"`
 }
 
 // TokenCertItem — олгосон нэг гэрчилгээ.
@@ -128,6 +147,14 @@ type tokenCertRequest struct {
 	TokenLabel       string            `json:"tokenLabel,omitempty"`
 	OnBehalfOf       string            `json:"onBehalfOf"`
 	Flow             string            `json:"flow"`
+	AppTransaction   string            `json:"appTransaction,omitempty"`
+	DryRun           bool              `json:"dryRun,omitempty"`
+}
+
+// TokenCertPreview — PreviewCertificate-ийн хариу: бодит олголт эхлэх боломжтой. Supersedes — бодит олголт амжилттай
+// болоход солигдох хувийн токенууд (байхгүй бол nil).
+type TokenCertPreview struct {
+	Supersedes []TokenSupersede
 }
 
 // IssueCertificate — POST /token/certificate: токены AUTH + SIGN гэрчилгээ олголт эхлүүлнэ (иргэн утсаараа батална).
@@ -136,29 +163,21 @@ type tokenCertRequest struct {
 // Сунгалт: ижил TokenSerial дээр энэ иргэний ACTIVE бүртгэл байвал олголт = сунгалт, scope-ийг хадгална — байгууллагын
 // токен зөвхөн тэр байгууллагаар (OnBehalfOf ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол 409
 // CodeTokenScopeChange (override үгүй); scope солих = иргэн eID апп-аас токеноо цуцлаад шинээр олгуулна. Бусад 409:
-// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending.
+// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending. 400 CodeAppAttestationInvalid —
+// AppTransaction ирсэн боловч хүчингүй (аль алхам унасныг CA хэлэхгүй); AppTransaction > 16 KiB бол
+// ErrAppTransactionTooLarge (илгээхгүй).
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
-	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
-		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
-	}
-	// CA DisallowUnknownFields — яг эдгээр талбар.
-	req := tokenCertRequest{
-		RelyingPartyUUID: t.creds.RPUUID,
-		RelyingPartyName: t.creds.RPName,
-		Signer:           map[string]string{"etsi": strings.TrimSpace(in.SignerEtsi)},
-		CSRAuth:          base64.StdEncoding.EncodeToString(in.CSRAuth),
-		CSRSign:          base64.StdEncoding.EncodeToString(in.CSRSign),
-		TokenSerial:      strings.TrimSpace(in.TokenSerial),
-		TokenLabel:       in.TokenLabel,
-		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
-		Flow:             "notification",
+	req, err := t.certRequest(in)
+	if err != nil {
+		return nil, err
 	}
 	var r struct {
-		SessionID     string  `json:"sessionID"`
-		VC            vcValue `json:"vc"`
-		CSRAuthSHA256 string  `json:"csrAuthSha256"`
-		CSRSignSHA256 string  `json:"csrSignSha256"`
-		ExpiresAt     string  `json:"expiresAt"`
+		SessionID     string           `json:"sessionID"`
+		VC            vcValue          `json:"vc"`
+		CSRAuthSHA256 string           `json:"csrAuthSha256"`
+		CSRSignSHA256 string           `json:"csrSignSha256"`
+		ExpiresAt     string           `json:"expiresAt"`
+		Supersedes    []TokenSupersede `json:"supersedes"`
 	}
 	if err := t.h.postJSON(ctx, routeTokenCertificate.expand(), req, &r); err != nil {
 		return nil, err
@@ -169,6 +188,52 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 	return &TokenCertStart{
 		SessionID: r.SessionID, VC: string(r.VC),
 		CSRAuthSHA256: strings.ToLower(r.CSRAuthSHA256), CSRSignSHA256: strings.ToLower(r.CSRSignSHA256), ExpiresAt: r.ExpiresAt,
+		Supersedes: r.Supersedes,
+	}, nil
+}
+
+// PreviewCertificate — POST /token/certificate {"dryRun": true} (CA 2026-10-19, discovery tokenCertificate.dryRun):
+// IssueCertificate-ийн бүх шалгалт ижил алдааны кодтой, гэхдээ session / утас руу push үүсэхгүй. Урсгал: CSR →
+// PreviewCertificate → Supersedes байвал иргэнд анхааруулж зөвшөөрүүлэх → IssueCertificate (ижил оролт). Хурдны хязгаар
+// (RP, иргэн) 20/мин + RP нийт 120/10 мин (push-ийн 3/цагийг зарцуулахгүй). Үр дүн нь шалгасан мөчийнх. Хуучин CA-д 400 (танихгүй талбар).
+func (t *TokenService) PreviewCertificate(ctx context.Context, in TokenCertInput) (*TokenCertPreview, error) {
+	req, err := t.certRequest(in)
+	if err != nil {
+		return nil, err
+	}
+	req.DryRun = true
+	var r struct {
+		DryRun     bool             `json:"dryRun"`
+		Supersedes []TokenSupersede `json:"supersedes"`
+	}
+	if err := t.h.postJSON(ctx, routeTokenCertificate.expand(), req, &r); err != nil {
+		return nil, err
+	}
+	if !r.DryRun {
+		return nil, invalid("token: dryRun хариу биш (CA dryRun-ийг дэмжихгүй)")
+	}
+	return &TokenCertPreview{Supersedes: r.Supersedes}, nil
+}
+
+// certRequest — оролтыг шалгаж POST /token/certificate-ийн биеийг угсарна (CA DisallowUnknownFields — яг эдгээр талбар).
+func (t *TokenService) certRequest(in TokenCertInput) (tokenCertRequest, error) {
+	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
+		return tokenCertRequest{}, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
+	}
+	if len(in.AppTransaction) > MaxAppTransactionBytes {
+		return tokenCertRequest{}, ErrAppTransactionTooLarge
+	}
+	return tokenCertRequest{
+		RelyingPartyUUID: t.creds.RPUUID,
+		RelyingPartyName: t.creds.RPName,
+		Signer:           map[string]string{"etsi": strings.TrimSpace(in.SignerEtsi)},
+		CSRAuth:          base64.StdEncoding.EncodeToString(in.CSRAuth),
+		CSRSign:          base64.StdEncoding.EncodeToString(in.CSRSign),
+		TokenSerial:      strings.TrimSpace(in.TokenSerial),
+		TokenLabel:       in.TokenLabel,
+		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
+		Flow:             "notification",
+		AppTransaction:   strings.TrimSpace(in.AppTransaction),
 	}, nil
 }
 
@@ -337,9 +402,10 @@ const (
 	TokenKindOrganization = "ORGANIZATION"
 )
 
-// Токены олголтын 409 кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
+// Токены олголтын 409 (ба 400 CodeAppAttestationInvalid) кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
 const (
-	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
+	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй). PERSONAL нь CA 2026-10-19-өөс
+	// зөвхөн Limit 0 (хувийн олголт хаалттай) үед — хязгаар хүрсэн хувийн олголт TokenCertStart.Supersedes-тэй 200.
 	CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
 	// CodeTokenInUse — TokenSerial өөр иргэнд хүчинтэй гэрчилгээтэй бүртгэлтэй.
 	CodeTokenInUse = "TOKEN_IN_USE"
@@ -348,6 +414,9 @@ const (
 	CodeTokenScopeChange = "TOKEN_SCOPE_CHANGE"
 	// CodeAccountDeletePending — иргэн «Бүртгэл устгах» хүсэлт (PENDING) өгсөн: токен олгохгүй (CA !377).
 	CodeAccountDeletePending = "ACCOUNT_DELETE_PENDING"
+	// CodeAppAttestationInvalid — 400: TokenCertInput.AppTransaction ирсэн боловч хүчингүй (гинж Apple Root CA - G3 биш,
+	// гарын үсэг, bundleId, орчин Xcode, signedDate > 30 хоног …). Утас руу push явахгүй.
+	CodeAppAttestationInvalid = "APP_ATTESTATION_INVALID"
 )
 
 // TokenCertInfo — discovery (/.well-known/eid)-ийн tokenCertificate блок.
@@ -364,8 +433,16 @@ type TokenCertInfo struct {
 	OnBehalfOf string `json:"onBehalfOf"`
 	// ScopeLockedOnRenewal — true: сунгалт (ижил TokenSerial дээр ACTIVE бүртгэлтэй) scope-ийг хадгална; өөр scope бол
 	// 409 CodeTokenScopeChange. Хуучин CA-д талбар алга → false.
-	ScopeLockedOnRenewal bool            `json:"scopeLockedOnRenewal"`
-	Raw                  json.RawMessage `json:"-"`
+	ScopeLockedOnRenewal bool `json:"scopeLockedOnRenewal"`
+	// AppTransaction — "optional": TokenCertInput.AppTransaction-ийг CA хүлээн авна. Хуучин CA-д "" (талбар илгээвэл 400).
+	AppTransaction string `json:"appTransaction"`
+	// PersonalAutoSupersede — true: хувийн хязгаар хүрсэн үед өөр serial-тай шинэ хувийн токен 409 биш —
+	// TokenCertStart.Supersedes ирж, олголт амжилттай болоход өмнөх хувийн токен солигдоно; 409 TOKEN_LIMIT_REACHED
+	// kind=PERSONAL зөвхөн limit=0 (хувийн олголт хаалттай) үед. Хуучин CA-д false.
+	PersonalAutoSupersede bool `json:"personalAutoSupersede"`
+	// DryRun — true: PreviewCertificate (POST {"dryRun": true}) дэмжигдэнэ. Хуучин CA-д false.
+	DryRun bool            `json:"dryRun"`
+	Raw    json.RawMessage `json:"-"`
 }
 
 // CertificateInfo — discovery-ийн tokenCertificate блок. Блок байхгүй (хуучин CA) бол Enabled false.
