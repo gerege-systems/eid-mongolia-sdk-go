@@ -221,7 +221,7 @@ func TestContractShare(t *testing.T) {
 }
 
 // TestContractTokenCertificate — discovery-ийн tokenCertificate блок TokenCertInfo-д задарч, issue/result нь
-// routes.go-тэй таарна; scopeLockedOnRenewal (CA !373) true.
+// routes.go-тэй таарна; scopeLockedOnRenewal (CA !373) true; appTransaction (CA !390) "optional"; personalAutoSupersede (CA !392) true; dryRun (CA !395) true.
 func TestContractTokenCertificate(t *testing.T) {
 	var d struct {
 		RPAPIBase        string         `json:"rp_api_base"`
@@ -233,7 +233,7 @@ func TestContractTokenCertificate(t *testing.T) {
 		t.Fatal("discovery-д tokenCertificate блок алга")
 	}
 	if i.Issue != d.RPAPIBase+routeTokenCertificate.path || i.Result != d.RPAPIBase+routeTokenCertificateResult.path ||
-		!i.ScopeLockedOnRenewal {
+		!i.ScopeLockedOnRenewal || i.AppTransaction != "optional" || !i.PersonalAutoSupersede || !i.DryRun {
 		t.Fatalf("tokenCertificate блок: %+v", i)
 	}
 }

@@ -476,8 +476,13 @@ st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CS
 // … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
 err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+// push-ээс ӨМНӨ: ижил оролтоор dryRun — session/push үүсэхгүй, алдааны код бодиттой ижил
+pv, err := c.Token.PreviewCertificate(ctx, in) // pv.Supersedes байвал иргэнд анхааруулж зөвшөөрүүлээд ↓
+st, err := c.Token.IssueCertificate(ctx, in)
+// st.Supersedes — хувийн олголтод солигдох өмнөх хувийн токенууд (доор); PIN2-оос өмнө иргэнд анхааруул
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
 // 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
+// 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
 
 // токеноор нэвтрэх (AUTH эрх)
 ch, err := c.Token.AuthChallenge(ctx)
@@ -497,6 +502,27 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 `TokenCertificate.ErrorCode` мөн ийм — override байхгүй. Scope солих = иргэн eID апп-аас токеноо цуцлаад
 (`/v3/mobile/tokens/{tokenSerial}/revoke`) шинээр олгуулна; хэрэглэгчид: «Токены төрлийг (хувийн/байгууллага)
 солихын тулд eID апп-аас токеныг цуцлаад шинээр олгуулна уу».
+
+**Хувийн токены автомат солилт** (CA 2026-10-19, discovery `tokenCertificate.personalAutoSupersede: true`): хувийн
+хязгаар хүрсэн үед өөр `TokenSerial`-тай шинэ хувийн токен 409 биш — `st.Supersedes` (`[]eid.TokenSupersede{TokenSerial}`)
+ирнэ; хувийн токенд шинэ олголт амжилттай болбол (PIN2 + гэрчилгээ) өмнөх хувийн токены AUTH + SIGN superseded (4)-оор
+цуцлагдана. Татгалзсан / хугацаа дууссан олголт өмнөхийг хөндөхгүй. PIN2-оос өмнө: «Таны өмнөх USB токен (EP2003-…)-ийн
+гэрчилгээ хүчингүй болно». 409 `TOKEN_LIMIT_REACHED` `kind=PERSONAL` зөвхөн `limit=0` (хувийн олголт хаалттай) үед;
+байгууллагын токен (`ORGANIZATION`) хатуу хязгаар хэвээр.
+
+**dryRun — push-ээс өмнөх шалгалт** (CA 2026-10-19, discovery `tokenCertificate.dryRun: true` —
+`CertificateInfo().DryRun`): `IssueCertificate`-ийн хариунд `Supersedes` ирэх үед утас руу PIN2 push явсан байдаг —
+desktop дээр цуцалсан ч иргэн утсаараа баталбал хуучин токен солигдоно. Тиймээс урсгал: CSR → `c.Token.PreviewCertificate(ctx, in)`
+(бие нь ижил + `"dryRun": true`; бүх шалгалт, ижил алдааны код — өөр CSR хостой хүлээгдэж буй олголт
+`409 TOKEN_ISSUANCE_PENDING` ч; session / push / state үүсэхгүй) → `Supersedes` байвал анхааруулга, иргэн зөвшөөрөх →
+`IssueCertificate(ctx, in)`. Хурдны хязгаар (RP, иргэн) 20/мин ба RP нийт 120/10 мин — push-ийн 3/цагийг зарцуулахгүй. Хариунд `dryRun: true` ирээгүй бол `*eid.ValidationError` (хуучин CA танихгүй талбарт 400 буцаана).
+
+**Апп баталгаа (`AppTransaction`, заавал биш)** (CA 2026-10-19, discovery `tokenCertificate.appTransaction:
+"optional"`): macOS App Store build нь StoreKit 2 `AppTransaction`-ийн JWS (compact) мөрийг desktop-оос дамжуулна —
+`eid.TokenCertInput{…, AppTransaction: jws}`. CA Apple-ийн сервер рүү дуудахгүй, offline шалгана; ирсэн бол заавал
+хүчинтэй, эс бөгөөс 400 `eid.CodeAppAttestationInvalid` (`APP_ATTESTATION_INVALID`, аль алхам унасныг хэлэхгүй, утас
+руу push явахгүй). `""` (Windows) = баталгаагүй олголт. `eid.MaxAppTransactionBytes` (16 KiB)-аас их бол SDK илгээхгүй,
+`eid.ErrAppTransactionTooLarge` буцаана. Хуучин CA-д (`CertificateInfo().AppTransaction == ""`) талбар илгээвэл 400.
 
 `/token/auth/*` нь `/.well-known/eid`-ийн `endpoints.token.auth_challenge` / `auth_verify`-д жагсаагдсан (AUTH эрх) —
 гэрээний тест бусад route-ийн адил шалгана.
