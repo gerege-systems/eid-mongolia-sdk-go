@@ -78,7 +78,7 @@ var AppearanceLabels = map[string]string{
 }
 
 // Round100 — pt → h100: floor(v × 100 + 0.5) (IEEE-754 double; бүх хэлэнд ижил).
-func Round100(v float64) int { return int(math.Floor(v*100 + 0.5)) }
+func Round100(v float64) int { return SatInt(math.Floor(v*100 + 0.5)) }
 
 // Num100 — h100 → PDF тоо: бүхэл бол «N», эс бөгөөс «N.d» / «N.dd» (төгсгөлийн тэггүй), сөрөгт «-».
 func Num100(v int) string {

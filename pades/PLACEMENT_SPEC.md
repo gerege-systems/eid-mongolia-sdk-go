@@ -47,6 +47,13 @@ Units: h100 = 1/100 pt integers (APPEARANCE_SPEC §1). All scanner arithmetic is
     m.e·n.a + m.f·n.c + n.e,   m.e·n.b + m.f·n.d + n.f ]
   ```
   Point transform `(x, y) × m = (a·x + c·y + e,  b·x + d·y + f)`.
+- **float → integer is saturating, truncating toward zero**: NaN → 0; a value ≥ 2^63 or +∞ → 2^63 − 1; a value
+  < −2^63 or −∞ → −2^63; otherwise the integer part. This applies to every conversion in this document (`/W` CIDs,
+  `/FirstChar`, quantising, `Round100`). Go's plain `int(f)` is **not** conformant — out of range it is
+  platform-dependent (amd64 gives −2^63, arm64 saturates; `/W [0 1e20 100]` assigned nothing on amd64 and every CID on
+  arm64) — the reference uses `SatInt`. JS/Kotlin/Swift/.NET: clamp before converting (Kotlin `toLong()` saturates;
+  Swift `Int(f)` traps out of range; C# `(long)f` is unspecified out of range). Ports that keep the value as a double
+  (JS) must still compare and index with the saturated value. Vector `int-saturate` (§8).
 - **Quantising a box** (float pt → h100 integer box): clamp each coordinate to `[−1e7, 1e7]`, then
   `x0 = floor(minx × 100)`, `y0 = floor(miny × 100)`, `x1 = ceil(maxx × 100)`, `y1 = ceil(maxy × 100)` (outward, so it
   is conservative). A NaN coordinate → unscannable (§5). (Values stay within ±1e9, safe as JS numbers and 32-bit-safe
@@ -64,9 +71,18 @@ as `/Rect`), or *unscannable*. Order = emission order: content stream (§3.2–�
   with one LF (`0x0A`) between elements. Any other kind, or an array element that is not a stream → unscannable.
 - **Stream decoding**: `/Filter` absent with `/DecodeParms` absent; or `/Filter /FlateDecode` with `/DecodeParms` absent;
   or `/Filter [/FlateDecode]` with `/DecodeParms` absent or `[null]`. Anything else (other filters, predictors, filter
-  chains) → unscannable. FlateDecode = zlib (RFC 1950): valid 2-byte header (CM = 8, `(CMF·256 + FLG) mod 31 = 0`,
-  FDICT = 0), raw deflate up to its final block, then the Adler-32 must match; bytes after the checksum are ignored. Any
-  inflate/header/checksum error or truncation → unscannable. Stream data = `/Length` bytes after `stream` EOL (as the
+  chains) → unscannable. FlateDecode = zlib (RFC 1950):
+  - header: CM = 8, `(CMF·256 + FLG) mod 31 = 0`. **FDICT**: when set, the 4-byte DICTID follows; DICTID = 1 (the
+    Adler-32 of the empty dictionary) is accepted and inflation proceeds with no dictionary; any other DICTID →
+    unscannable (vectors `zlib-fdict-empty`, `zlib-fdict-other`).
+  - raw deflate up to its final block, then the 4-byte Adler-32 of the decoded bytes must be present and match. A
+    truncated stream — deflate data ending before the final block, or fewer than 4 checksum bytes — and a wrong
+    Adler-32 → unscannable; bytes after the checksum are ignored (vectors `zlib-truncated-data`, `zlib-no-adler`,
+    `zlib-bad-adler`, `zlib-trailing`).
+  - A decoder that silently accepts truncated input (e.g. .NET `ZLibStream`/`DeflateStream`, which do not report a
+    missing final block or checksum) is not conformant on its own: check the header, that the final block was reached
+    and the Adler-32 yourself.
+  Any inflate/header/checksum error → unscannable. Stream data = `/Length` bytes after `stream` EOL (as the
   SDK's object reader already does).
 - **Byte budget**: the sum of decoded bytes of every stream decoded during the scan (page contents + every form
   *execution*, re-counted when the same form runs again) must stay ≤ 4 194 304 (4 MiB); otherwise unscannable.
@@ -146,7 +162,14 @@ Painting operators (operands: none, else ignored; the path is cleared after a pa
 
 ### 3.4 Fonts and widths
 
-`Tf /Name size` (`/` + n): `font = resolve(/Resources /Font /Name)` (missing → *default*), `Tfs = size`. Kinds:
+`Tf /Name size` (`/` + n): `font = resolve(/Resources /Font /Name)` (missing → *default*), `Tfs = size`.
+
+**Font cache** (fixed behaviour of the reference, not an accident to fix): a font's metrics (the table below) are read
+once per scan and cached under the object number of the **indirect object that contains the font dictionary** — the
+font's own object when `/F1 5 0 R`, otherwise the object the direct dictionary is written in (digitorus `GetPtr`). So
+two fonts written directly inside the same object (e.g. `/Font << /A << … >> /B << … >> >>` inside the page object)
+share one entry: whichever is used first defines the metrics for both. Object number 0 (no containing object) is not
+cached. Vector `fonts-direct` (§8). Kinds:
 
 | font dict | codes | `w0(code)` (glyph units, 1/1000 em) |
 |---|---|---|
@@ -160,7 +183,7 @@ Painting operators (operands: none, else ignored; the path is cleared after a pa
   the inner array; non-number elements are skipped but keep their position); `c1 c2 w` assigns `max(c1, 0) … c2`
   (nothing when `c2 < max(c1,0)`), stopping at 65535; CIDs outside 0…65535 are ignored; **the first assignment of a CID
   wins**; any other shape (a non-number where `c` is expected, a missing element) stops the reading — what was read
-  so far stays. CID numbers are truncated toward zero. Every attempted assignment (inner-array number or range CID,
+  so far stays. CID numbers are converted saturating toward zero (§2); `c + i` past 2^63 − 1 is out of range. Every attempted assignment (inner-array number or range CID,
   assigned or not, in range or not) costs 1 from a budget of 262 144; when it runs out the reading stops.
 - Word spacing applies to the 1-byte code 32 of every 1-byte font **except** the "Type0, other encoding" row.
 - No font program, cmap or system font is ever consulted. Identity-V text is measured as horizontal (documented
@@ -280,7 +303,8 @@ the stamp would need a different appearance stream. The status makes the overlap
   (`null` when unscannable); `x, y` the chosen position (h100). Inputs: the golden inputs plus
   `placement/input/*.pdf` — one per rule (text state, fonts, paths, XObjects/inline image, annotations,
   Flate + Contents array + CropBox + /Rotate 180, /Rotate 270, unsupported filter, form depth, q depth, malformed tokens,
-  2 000 operators). Ports must match `boxes` element-for-element.
+  2 000 operators; zlib trailing bytes / truncated data / missing or wrong Adler-32 / FDICT 1 and other, direct fonts
+  sharing the cache entry, saturating float → int). Ports must match `boxes` element-for-element.
 - Pades golden (`manifest.json`, `output/`): every visible case has `expect.placement`. New cases (golden v5):
 
   | case | input | request | result |
@@ -299,8 +323,10 @@ the stamp would need a different appearance stream. The status makes the overlap
 ## 9. Porting checklist
 
 1. Content lexer (§3.1) — the SDK already parses PDF objects; the content lexer is a separate, smaller tokenizer.
-2. zlib inflate with header + Adler-32 check (platform inflaters: `DecompressionStream('deflate')`/pako, `Inflater`,
-   `ZLibStream`; Swift's `Compression` is raw deflate — check header and Adler-32 yourself).
+2. zlib inflate with header (incl. FDICT/DICTID), truncation and Adler-32 checks (§3.1; platform inflaters:
+   `DecompressionStream('deflate')`/pako, `Inflater`; .NET `ZLibStream` and Swift's `Compression` (raw deflate) do not
+   detect truncation or check the trailer — do it yourself).
+2a. float → int saturating (§2) everywhere; font cache keyed by the containing object (§3.4).
 3. Interpreter (§3.2–§3.6) with the exact evaluation order of §2; fonts (§3.4); annotations (§3.7).
 4. Candidates (§6) reuse the existing `VisibleRect`.
 5. `Prepared.placement` in the public result; `Appearance` input unchanged.

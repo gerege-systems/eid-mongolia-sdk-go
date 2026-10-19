@@ -125,7 +125,22 @@ func quantise(r rect) ([4]int, error) {
 			return [4]int{}, err
 		}
 	}
-	return [4]int{int(math.Floor(v[0] * 100)), int(math.Floor(v[1] * 100)), int(math.Ceil(v[2] * 100)), int(math.Ceil(v[3] * 100))}, nil
+	return [4]int{SatInt(math.Floor(v[0] * 100)), SatInt(math.Floor(v[1] * 100)), SatInt(math.Ceil(v[2] * 100)), SatInt(math.Ceil(v[3] * 100))}, nil
+}
+
+// SatInt — float64 → int, тэг рүү таслах, saturating (PLACEMENT_SPEC §2): NaN → 0, хүрээнээс гарсан / ±Inf →
+// math.MinInt64 / math.MaxInt64. Go-гийн `int(f)` хүрээнээс гарсан утгад платформоос хамаардаг (amd64: MinInt64,
+// arm64: saturating) тул шууд хэрэглэхгүй.
+func SatInt(f float64) int {
+	switch {
+	case math.IsNaN(f):
+		return 0
+	case f >= 9223372036854775807: // 2^63 (float64-д яг дүрслэгдэнэ)
+		return math.MaxInt64
+	case f < -9223372036854775808:
+		return math.MinInt64
+	}
+	return int(f)
 }
 
 // ── Fonts (PLACEMENT_SPEC.md §3.4) ──
@@ -204,7 +219,7 @@ func loadFont(v pdf.Value) *occFont {
 			}
 			if arr := w.Index(i + 1); arr.Kind() == pdf.Array {
 				for j := range min(arr.Len(), occMaxWEntries) {
-					if x, ok := number(arr.Index(j)); ok && !set(int(c0)+j, x) {
+					if x, ok := number(arr.Index(j)); ok && !set(SatInt(c0)+j, x) {
 						break read
 					}
 				}
@@ -216,7 +231,7 @@ func loadFont(v pdf.Value) *occFont {
 			if !ok1 || !ok2 || i+2 >= n {
 				break
 			}
-			for c := max(int(c0), 0); c <= int(c1) && c <= 0xFFFF; c++ {
+			for c := max(SatInt(c0), 0); c <= SatInt(c1) && c <= 0xFFFF; c++ {
 				if !set(c, x) {
 					break read
 				}
@@ -227,7 +242,7 @@ func loadFont(v pdf.Value) *occFont {
 	}
 	f := &occFont{kind: fontSimple, missing: 1000}
 	if fc, ok := number(v.Key("FirstChar")); ok {
-		f.first = int(fc)
+		f.first = SatInt(fc)
 	}
 	ws := v.Key("Widths")
 	for i := range min(ws.Len(), 256) {
