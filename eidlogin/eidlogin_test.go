@@ -172,7 +172,6 @@ type env struct {
 	h      *Handler
 	fake   *fakeEID
 	ids    []*Identity
-	keys   []string
 	server *httptest.Server
 	// sleeps — PushFloor / decoy poll-ын хүлээлт (хуурмаг цаг: бодитоор унтахгүй).
 	sleeps []time.Duration

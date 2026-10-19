@@ -9,8 +9,9 @@ self-validation-д. Алдааны код нь эхний унасан алхм�
 | 1 | `len(pdf) > 10 223 616` (10 MiB − 256 KiB) | `PDF_TOO_LARGE` |
 | 2 | эхний 5 байт `%PDF-` биш | `PDF_INVALID` |
 | 2a | (v4) массив/толийн давхарлалт > 256 — объект задлагдаж эхэлж болох бүх цэгээс (`obj`/`trailer` түлхүүр үгийн дараа, FlateDecode `/Type /ObjStm`-ийн толгойн offset бүрээс) эхний объектын гүн; Go: `validate.CheckStructure` (README «Итгэлгүй PDF»). Задлагч нь давхарлалтыг рекурсгүй/хязгаартай задалдаг native SDK ч ижил кодыг буцаана (golden `deep-nesting*`) | `PDF_INVALID` |
+| 2b | (v0.8.0) xref/ObjStm-ийн бүтэц: trailer эсвэл xref stream-ийн `/Size` > 2 097 152; ObjStm доторх объектын агуулагч stream нь өөрөө ObjStm-д (өөрийгөө агуулах мөчлөг орно); ObjStm-ийн толгойн (`/Length`, `/Filter`, `/DecodeParms`, `/N`, `/First`, `/Extends`) лавлагаа ObjStm доторх объект руу; `/Extends` мөчлөг эсвэл > 64 гинж (ISO 32000-1 §7.5.7 — хууль ёсны баримтад гардаггүй). Go: `validate.CheckStructure` (digitorus-ийн мөчлөгийн рекурс → `fatal error: stack overflow`, /Size → хязгааргүй давталт) | `PDF_INVALID` |
 | 3 | signerCert DER задрахгүй; нийтийн түлхүүр RSA эсвэл ECDSA биш | `SIGNER_INVALID` |
-| 4 | шифрлэлт: trailer (эсвэл xref stream толь)-д `/Encrypt` байна. Задлагч баримтыг нээж чадахгүй үед файлын байтаас `/Encrypt <int> <int> R` (regex `/Encrypt\s+\d+\s+\d+\s+R`) олдвол мөн шифрлэгдсэн | `PDF_ENCRYPTED` |
+| 4 | шифрлэлт: trailer (эсвэл xref stream толь)-д `/Encrypt` байна. Задлагч баримтыг нээж чадахгүй үед файлын байтаас `/Encrypt <int> <int> R` эсвэл шууд толь `/Encrypt <<` (regex `/Encrypt(?:\s+\d+\s+\d+\s+R|\s*<<)`; `/EncryptMetadata` тооцогдохгүй) олдвол мөн шифрлэгдсэн | `PDF_ENCRYPTED` |
 | 5 | задрахгүй (xref/trailer, `/Root` толь биш) | `PDF_INVALID` |
 | 6 | гарын үсгийн объект = сүүлийн revision-ий xref-ээр хүрэх ШУУД БУС объект бүрээс `/ByteRange` **ба** `/Contents` хоёулаа бүхий толь. Тоо = 0 бол шинэ баримт (`revIndex = 1`, verify хуудас нэмэгдэж болно) | — |
 | 7 | тоо ≥ 16 | `PDF_TOO_MANY_SIGNATURES` |

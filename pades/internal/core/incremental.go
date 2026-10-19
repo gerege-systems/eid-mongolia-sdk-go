@@ -226,7 +226,7 @@ func (inc *incremental) catalogCopy(w io.Writer, skip ...string) error {
 		}
 		fmt.Fprintf(w, "  /%s ", escapeName(key))
 		if err := serialize(w, root.Key(key), rp.GetID(), 0); err != nil {
-			return fmt.Errorf("Catalog /%s: %w", key, err)
+			return fmt.Errorf("Catalog /%s: %w", key, err) //lint:ignore ST1005 Catalog = PDF объектын нэр
 		}
 		_, _ = io.WriteString(w, "\n")
 	}

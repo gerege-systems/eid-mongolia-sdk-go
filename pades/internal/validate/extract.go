@@ -45,8 +45,8 @@ const MaxPAdESInputBytes = MaxPDFBytes - 256<<10
 // ажлыг үржүүлэхээс хамгаална).
 const maxSignatures = 16
 
-// encryptRef — trailer / xref stream-ийн /Encrypt лавлагаа (pades.encrypted-тэй ижил).
-var encryptRef = regexp.MustCompile(`/Encrypt\s+\d+\s+\d+\s+R`)
+// encryptRef — trailer / xref stream-ийн /Encrypt: лавлагаа эсвэл шууд толь (pades.encryptKey-тэй ижил).
+var encryptRef = regexp.MustCompile(`/Encrypt(?:\s+\d+\s+\d+\s+R|\s*<<)`)
 
 var (
 	ErrNoSignature   = errors.New("баримтад цахим гарын үсэг алга")

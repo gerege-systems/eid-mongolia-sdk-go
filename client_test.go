@@ -61,6 +61,8 @@ func TestResolveBaseURL(t *testing.T) {
 		"https://rp.eidmongolia.mn/":   "https://rp.eidmongolia.mn",
 		"https://rp.eidmongolia.mn/v3": "https://rp.eidmongolia.mn/v3",
 		"http://localhost:8080/v3":     "http://localhost:8080/v3",
+		"http://127.0.0.1:8080":        "http://127.0.0.1:8080",
+		"http://[::1]:8080":            "http://[::1]:8080",
 	} {
 		if got, err := ResolveBaseURL(in); err != nil || got != want {
 			t.Errorf("%q → %q, %v", in, got, err)
@@ -68,6 +70,11 @@ func TestResolveBaseURL(t *testing.T) {
 	}
 	if _, err := ResolveBaseURL("https://ca.eidmongolia.mn"); err == nil || !strings.Contains(err.Error(), "rp.eidmongolia.mn") {
 		t.Fatal(err)
+	}
+	for _, in := range []string{"http://rp.eidmongolia.mn", "http://10.0.0.5:8080", "http://localhost.example.com"} {
+		if _, err := ResolveBaseURL(in); err == nil || !strings.Contains(err.Error(), "https") {
+			t.Errorf("%s: http зөвшөөрөгдөв (%v)", in, err)
+		}
 	}
 	if _, err := ResolveBaseURL("not a url"); err == nil {
 		t.Fatal("буруу URL зөвшөөрөгдөв")

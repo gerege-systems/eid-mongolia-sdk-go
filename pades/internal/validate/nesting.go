@@ -42,7 +42,10 @@ func CheckStructure(doc []byte) error {
 			}
 		}
 	}
-	return nil
+	if s.bigSize {
+		return ErrStructure
+	}
+	return checkObjStmGraph(doc)
 }
 
 // MaxNesting — PDF объектын массив/толийн давхарлалтын дээд гүн. Жинхэнэ баримтад ~10-аас хэтрэхгүй; digitorus нэг
@@ -52,6 +55,11 @@ const MaxNesting = 256
 const (
 	nestScanFactor = 16       // нийт уншилтын төсөв = 16×len(doc) + 1 MiB (давхацсан объектоор квадрат ажил үүсгэхгүй)
 	maxObjStmBytes = 32 << 20 // бүх ObjStm-ийн задалсан нийт хэмжээ (zip bomb)
+	// maxXrefSize — trailer / xref stream-ийн /Size дээд хязгаар. digitorus нь /Size-аар xref хүснэгтийг шууд
+	// make([]xref, Size) хуваарилж, Extract бүх мөрийг давтдаг тул 200 байтын баримтын /Size 10^10 нь 400 GB хуваарилалт
+	// (Linux-д `fatal error: out of memory`) эсвэл хязгааргүй давталт болно. 10 MiB-ийн хууль ёсны баримтад хэдэн арван
+	// мянгаас хэтрэхгүй.
+	maxXrefSize = 1 << 21
 )
 
 // ErrStructure — PDF-ийн бүтэц хэт гүн давхарласан эсвэл хэт төвөгтэй (CheckStructure).
@@ -61,6 +69,7 @@ type nestScan struct {
 	budget      int
 	inflateLeft int
 	encrypted   bool
+	bigSize     bool // дээд түвшний /Size > maxXrefSize
 }
 
 type nestTok int
@@ -286,6 +295,10 @@ func (s *nestScan) noteScalar(stack []nestFrame, info *objStmInfo, tok nestTok, 
 			}
 		case "N":
 			info.nCount, _ = strconv.ParseInt(val, 10, 64)
+		case "Size":
+			if n, err := strconv.ParseInt(val, 10, 64); tok == tWord && err == nil && n > maxXrefSize {
+				s.bigSize = true
+			}
 		case "First":
 			info.first, _ = strconv.ParseInt(val, 10, 64)
 		}

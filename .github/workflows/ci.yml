@@ -31,6 +31,34 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
+  # Статик шинжилгээ ба мэдэгдэж буй эмзэг байдал — хувилбар pin хийсэн, олдвор бүр улаан. govulncheck нь stdlib-ийн
+  # эмзэг байдлыг ч тоолдог тул сүүлийн patch Go (stable) дээр ажиллана.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+  # Дайсагнасан PDF: FuzzValidatePDF-ийн seed-үүд `go test`-д unit болж ажилладаг (тогтвортой); энд 30 с mutation
+  # нэмнэ. Олдвол pades/testdata/fuzz/-ийн оролтыг artifact болгож хадгална — тэр файлыг commit хийвэл regression seed.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test ./pades/ -run '^$' -fuzz '^FuzzValidatePDF$' -fuzztime=30s
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failure
+          path: pades/testdata/fuzz/
   # Golden гаралтыг Go-оос хамааралгүй гадны хэрэгслээр шалгана: qpdf (бүтэц) ба pyHanko (INTACT/VALID/TRUSTED,
   # цуцлалт зөвхөн DSS-ээс = LT, timestamp, өөрчлөлтийн ангилал, харагдах widget). Native SDK-ууд эдгээр гаралтыг
   # байт-ижил давтдаг тул энэ нь бүх SDK-ийн гаралтын нийцлийг батална.

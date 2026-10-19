@@ -189,7 +189,7 @@ func (p *PKI) TSAServer(t testing.TB, fail *atomic.Bool) string {
 			Time: time.Now().UTC().Truncate(time.Second), Policy: asn1.ObjectIdentifier{2, 16, 496, 1, 101, 1, 2, 8},
 			Nonce: req.Nonce, AddTSACertificate: true, Certificates: p.Chain(), Accuracy: time.Second,
 		}
-		resp, err := ts.CreateResponse(p.TSA.Cert, p.TSA.Key)
+		resp, err := ts.CreateResponseWithOpts(p.TSA.Cert, p.TSA.Key, crypto.SHA256)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

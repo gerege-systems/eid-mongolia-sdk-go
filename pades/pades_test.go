@@ -153,7 +153,7 @@ func TestPrepareRejects(t *testing.T) {
 		"encrypted": {doc: readInput(t, "encrypted.pdf"), code: CodePDFEncrypted},
 		"stamped":   {doc: readInput(t, "stamped.pdf"), code: CodePDFForeignSignature},
 		"bad docId": {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.DocID = "NOT-A-UUID" }, code: CodeRequestInvalid},
-		"no file":   {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.FileName = " ‮ " }, code: CodeRequestInvalid},
+		"no file":   {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.FileName = " \u202e " }, code: CodeRequestInvalid},
 		"bad cert":  {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.SignerCert = []byte{1} }, code: CodeSignerInvalid},
 		"long role": {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.ClaimedRole = strings.Repeat("я", 901) }, code: CodeRequestInvalid},
 		"bad lang":  {doc: readInput(t, "quartz-pdf13.pdf"), opts: func(o *PrepareOptions) { o.Lang = "de" }, code: CodeRequestInvalid},
@@ -380,7 +380,7 @@ func TestAppearanceRejects(t *testing.T) {
 		"NaN":                  vis(Appearance{X: math.NaN(), Y: 36, Width: 220, Height: 64}),
 		"хэл":                  vis(Appearance{X: 36, Y: 36, Width: 220, Height: 64, Lang: "de"}),
 		"/Name бичигдэхгүй":    func(o *PrepareOptions) { vis(ok)(o); o.SignerName = "a stream b" },
-		"role удирдах тэмдэгт": func(o *PrepareOptions) { vis(ok)(o); o.ClaimedRole = "a‎b" },
+		"role удирдах тэмдэгт": func(o *PrepareOptions) { vis(ok)(o); o.ClaimedRole = "a\u200eb" },
 	}
 	for name, f := range cases {
 		o := testOpts(p, p.citizen.cert)

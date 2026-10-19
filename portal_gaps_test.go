@@ -745,3 +745,25 @@ func TestRightTypeSourceLabel(t *testing.T) {
 		t.Fatalf("хоосон label omitempty биш: %s", b)
 	}
 }
+
+// TestMaskPathAllRoutes — хувь хүний таних тэмдэгтэй RP-API зам бүр (session ID-аас бусад) maskPath-аар нуугдана;
+// шинэ зам нэмэгдээд regex-д ороогүй бол энд унана.
+func TestMaskPathAllRoutes(t *testing.T) {
+	const id = "PNOMN-12345678-ABCD-Q"
+	for _, r := range rpRoutes {
+		n := strings.Count(r.path, "{")
+		if n == 0 || strings.Contains(strings.ToLower(r.path), "{session") {
+			continue
+		}
+		args := make([]string, n)
+		for i := range args {
+			args[i] = id
+		}
+		if got := maskPath(r.expand(args...) + "?x=" + id); strings.Contains(got, "12345678") {
+			t.Errorf("%s → %q", r.path, got)
+		}
+	}
+	if got := maskPath("/signature/notification/linked/PNOMN-1"); got != "/signature/notification/linked/…" {
+		t.Fatal(got)
+	}
+}

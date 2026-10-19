@@ -298,7 +298,7 @@ func (p *goldenPKI) liveResponder(_ *testing.T) http.Handler {
 			ts := &timestamp.Timestamp{HashAlgorithm: req.HashAlgorithm, HashedMessage: req.HashedMessage,
 				Time: goldenTime.Add(time.Second).UTC(), Policy: asn1.ObjectIdentifier{2, 16, 496, 1, 101, 1, 2, 8},
 				Nonce: req.Nonce, AddTSACertificate: true, Certificates: p.chain()}
-			out, err := ts.CreateResponse(p.tsa.cert, p.tsa.key)
+			out, err := ts.CreateResponseWithOpts(p.tsa.cert, p.tsa.key, crypto.SHA256)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
