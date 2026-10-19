@@ -8,6 +8,7 @@ self-validation-д. Алдааны код нь эхний унасан алхм�
 |---|---|---|
 | 1 | `len(pdf) > 10 223 616` (10 MiB − 256 KiB) | `PDF_TOO_LARGE` |
 | 2 | эхний 5 байт `%PDF-` биш | `PDF_INVALID` |
+| 2a | (v4) массив/толийн давхарлалт > 256 — объект задлагдаж эхэлж болох бүх цэгээс (`obj`/`trailer` түлхүүр үгийн дараа, FlateDecode `/Type /ObjStm`-ийн толгойн offset бүрээс) эхний объектын гүн; Go: `validate.CheckStructure` (README «Итгэлгүй PDF»). Задлагч нь давхарлалтыг рекурсгүй/хязгаартай задалдаг native SDK ч ижил кодыг буцаана (golden `deep-nesting*`) | `PDF_INVALID` |
 | 3 | signerCert DER задрахгүй; нийтийн түлхүүр RSA эсвэл ECDSA биш | `SIGNER_INVALID` |
 | 4 | шифрлэлт: trailer (эсвэл xref stream толь)-д `/Encrypt` байна. Задлагч баримтыг нээж чадахгүй үед файлын байтаас `/Encrypt <int> <int> R` (regex `/Encrypt\s+\d+\s+\d+\s+R`) олдвол мөн шифрлэгдсэн | `PDF_ENCRYPTED` |
 | 5 | задрахгүй (xref/trailer, `/Root` толь биш) | `PDF_INVALID` |

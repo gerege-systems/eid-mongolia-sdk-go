@@ -101,7 +101,9 @@ type fakeStatus struct {
 	err error
 }
 
-func (f fakeStatus) CertStatus(*big.Int) (CertStatus, error) { return f.st, f.err }
+func (f fakeStatus) CertStatus(_, _ *x509.Certificate, _ time.Time) (CertStatus, error) {
+	return f.st, f.err
+}
 
 func (p *pki) validator(st StatusSource) *Validator {
 	roots := x509.NewCertPool()

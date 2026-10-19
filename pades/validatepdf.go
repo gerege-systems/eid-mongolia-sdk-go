@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"math/big"
 	"net/http"
 	"time"
 
@@ -77,7 +76,7 @@ func ValidatePDF(ctx context.Context, doc []byte, o ValidateOptions) (*Report, e
 	}
 	v := newValidator(roots, inter, extraIssuers, now, raws)
 	if !o.Offline {
-		v.Status = newOnlineStatus(ctx, newFetcher(o.HTTPClient), raws, v.Issuers, v.Status, o.Time)
+		v.Status = newOnlineStatus(ctx, newFetcher(o.HTTPClient), v.Status, o.Time)
 	}
 	rep, err := v.ValidatePDF(ctx, doc)
 	if err != nil {
@@ -110,66 +109,36 @@ func keyMedium(s *SignatureReport) string {
 }
 
 // onlineStatus — validate.StatusSource: eID олгогчийн гаргасан гэрчилгээний ОДООГИЙН төлвийг (CA өөрийн бүртгэлээс
-// уншдагтай ижил утга) AIA OCSP, эс бөгөөс CDP CRL-ээс; хариугүй бол fallback (баримтын DSS).
+// уншдагтай ижил утга) AIA OCSP, эс бөгөөс CDP CRL-ээс; хариугүй бол fallback (баримтын DSS). Онлайн «good» байсан ч
+// fallback-д (DSS) олгогчийн гарын үсэгтэй цуцалсан нотолгоо байвал revoked (цуцлалт буцахгүй).
 type onlineStatus struct {
 	ctx      context.Context
 	f        *fetcher
-	leaves   map[string]leafIssuer // serial (hex) → гэрчилгээ + олгогч
 	fallback validate.StatusSource
-	cache    map[string]validate.CertStatus
-	at       time.Time // шалгах цаг (тэг бол одоо): хариуны хүчинтэй хугацааг үүгээр
+	cache    map[string]validate.CertStatus // cert.Raw ‖ issuer.Raw → төлөв
+	at       time.Time                      // шалгах цаг (тэг бол одоо): хариуны хүчинтэй хугацааг үүгээр
 }
 
-type leafIssuer struct {
-	leaf, issuer *x509.Certificate
-	ambiguous    bool // ижил serial-тэй өөр гэрчилгээ — төлөв тогтоохгүй (fail-closed)
+func newOnlineStatus(ctx context.Context, f *fetcher, fallback validate.StatusSource, at time.Time) *onlineStatus {
+	return &onlineStatus{ctx: ctx, f: f, fallback: fallback, cache: map[string]validate.CertStatus{}, at: at}
 }
 
-func newOnlineStatus(ctx context.Context, f *fetcher, raws []validate.RawSignature, issuers []*x509.Certificate, fallback validate.StatusSource, at time.Time) *onlineStatus {
-	s := &onlineStatus{ctx: ctx, f: f, leaves: map[string]leafIssuer{}, fallback: fallback, cache: map[string]validate.CertStatus{}, at: at}
-	for _, r := range raws {
-		leaf, err := x509.ParseCertificate(r.Leaf)
-		if err != nil {
-			continue
-		}
-		key := leaf.SerialNumber.Text(16)
-		if prev, ok := s.leaves[key]; ok {
-			if !bytes.Equal(prev.leaf.Raw, leaf.Raw) {
-				prev.ambiguous = true
-				s.leaves[key] = prev
-			}
-			continue
-		}
-		for _, is := range issuers {
-			if bytes.Equal(leaf.RawIssuer, is.RawSubject) && leaf.CheckSignatureFrom(is) == nil {
-				s.leaves[key] = leafIssuer{leaf: leaf, issuer: is}
-				break
-			}
-		}
-	}
-	return s
-}
-
-func (s *onlineStatus) CertStatus(serial *big.Int) (validate.CertStatus, error) {
-	key := serial.Text(16)
+func (s *onlineStatus) CertStatus(cert, issuer *x509.Certificate, at time.Time) (validate.CertStatus, error) {
+	key := string(cert.Raw) + string(issuer.Raw)
 	if st, ok := s.cache[key]; ok {
 		return st, nil
 	}
-	li, ok := s.leaves[key]
-	if !ok || li.ambiguous {
-		return validate.CertStatus{}, nil
-	}
-	st, ok := s.ocsp(li)
+	st, ok := s.ocsp(cert, issuer)
 	if !ok {
-		st, ok = s.crl(li)
+		st, ok = s.crl(cert, issuer)
 	}
-	if !ok {
-		if s.fallback == nil {
-			return validate.CertStatus{}, nil
-		}
-		var err error
-		if st, err = s.fallback.CertStatus(serial); err != nil {
+	if s.fallback != nil && (!ok || !st.Revoked) {
+		fst, err := s.fallback.CertStatus(cert, issuer, at)
+		if err != nil {
 			return validate.CertStatus{}, err
+		}
+		if !ok || fst.Revoked {
+			st = fst
 		}
 	}
 	s.cache[key] = st
@@ -183,40 +152,35 @@ func (s *onlineStatus) now() time.Time {
 	return time.Now()
 }
 
-const (
-	onlineOCSPMaxBytes = 16 << 10
-	onlineClockSkew    = 5 * time.Minute
-)
+const onlineOCSPMaxBytes = 16 << 10
 
-// ocsp — AIA responder бүрээс; олгогч эсвэл олгогчийн id-kp-OCSPSigning responder зурсан, энэ serial, thisUpdate
-// ирээдүйд биш, nextUpdate өнгөрөөгүй. unknown → Issued=false (олгогч энэ serial-ийг мэдэхгүй).
-func (s *onlineStatus) ocsp(li leafIssuer) (validate.CertStatus, bool) {
-	req, err := ocsp.CreateRequest(li.leaf, li.issuer, nil)
+// ocsp — AIA responder бүрээс; олгогч эсвэл олгогчийн id-kp-OCSPSigning responder зурсан, CertID = энэ гэрчилгээ +
+// олгогч. revoked — шууд; good — одоо шинэлэг (validate.FreshAt); unknown → Issued=false (олгогч энэ serial-ийг мэдэхгүй).
+func (s *onlineStatus) ocsp(cert, issuer *x509.Certificate) (validate.CertStatus, bool) {
+	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
 		return validate.CertStatus{}, false
 	}
 	now := s.now()
-	for _, u := range li.leaf.OCSPServer {
+	for _, u := range cert.OCSPServer {
 		der, err := s.f.do(s.ctx, http.MethodPost, u, "application/ocsp-request", req)
 		if err != nil || len(der) > onlineOCSPMaxBytes {
 			continue
 		}
-		resp, err := parseOCSPFrom(der, li.leaf, li.issuer)
-		if err != nil || resp.SerialNumber == nil || resp.SerialNumber.Cmp(li.leaf.SerialNumber) != 0 {
+		resp, ok := ocspFor(der, cert, issuer)
+		if !ok {
 			continue
 		}
-		if rc := resp.Certificate; rc != nil && !sameCertKey(rc, li.issuer) &&
-			(!responderOK(resp, li.issuer) || now.Before(rc.NotBefore) || now.After(rc.NotAfter)) {
+		if rc := resp.Certificate; rc != nil && !sameCertKey(rc, issuer) && (now.Before(rc.NotBefore) || now.After(rc.NotAfter)) {
 			continue
 		}
-		if resp.ThisUpdate.After(now.Add(onlineClockSkew)) || !resp.NextUpdate.IsZero() && resp.NextUpdate.Before(now) {
-			continue
-		}
-		switch resp.Status {
-		case ocsp.Good:
-			return validate.CertStatus{Issued: true}, true
-		case ocsp.Revoked:
+		switch {
+		case resp.Status == ocsp.Revoked:
 			return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: resp.RevokedAt}, true
+		case !validate.FreshAt(resp.ThisUpdate, resp.NextUpdate, now, now):
+			continue
+		case resp.Status == ocsp.Good:
+			return validate.CertStatus{Issued: true}, true
 		default:
 			return validate.CertStatus{}, true
 		}
@@ -224,25 +188,25 @@ func (s *onlineStatus) ocsp(li leafIssuer) (validate.CertStatus, bool) {
 	return validate.CertStatus{}, false
 }
 
-// crl — CDP-ийн CRL: олгогчийн гарын үсэгтэй, nextUpdate өнгөрөөгүй.
-func (s *onlineStatus) crl(li leafIssuer) (validate.CertStatus, bool) {
+// crl — CDP-ийн CRL: олгогчийн нэр/AKI, олгогчийн гарын үсэг; serial жагсаалтад байвал revoked, эс бөгөөс одоо
+// шинэлэг (validate.FreshAt) бол good.
+func (s *onlineStatus) crl(cert, issuer *x509.Certificate) (validate.CertStatus, bool) {
 	now := s.now()
-	for _, u := range li.leaf.CRLDistributionPoints {
+	for _, u := range cert.CRLDistributionPoints {
 		der, err := s.f.do(s.ctx, http.MethodGet, u, "", nil)
 		if err != nil {
 			continue
 		}
 		crl, err := x509.ParseRevocationList(der)
-		if err != nil || !bytes.Equal(crl.RawIssuer, li.issuer.RawSubject) || crl.CheckSignatureFrom(li.issuer) != nil ||
-			!crl.NextUpdate.IsZero() && crl.NextUpdate.Before(now) {
+		if err != nil || !validate.CRLFor(crl, cert, issuer) {
 			continue
 		}
-		for _, e := range crl.RevokedCertificateEntries {
-			if e.SerialNumber.Cmp(li.leaf.SerialNumber) == 0 {
-				return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: e.RevocationTime}, true
-			}
+		if t, listed := validate.CRLListed(crl, cert); listed {
+			return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: t}, true
 		}
-		return validate.CertStatus{Issued: true}, true
+		if validate.FreshAt(crl.ThisUpdate, crl.NextUpdate, now, now) {
+			return validate.CertStatus{Issued: true}, true
+		}
 	}
 	return validate.CertStatus{}, false
 }

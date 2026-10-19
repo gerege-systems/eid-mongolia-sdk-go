@@ -683,6 +683,16 @@ for _, s := range rep.Signatures {
 - Цуцлалт (eID-ийн 04/05-аас гарсан гэрчилгээнд): онлайн — AIA OCSP, эс бөгөөс CDP CRL (олгогчийн гарын үсэгтэй); хариугүй
   эсвэл `Offline: true` бол баримтын DSS. Аль нь ч үгүй → `revocation_unavailable` (indeterminate). Цагийн тэмдгээс хойш
   цуцлагдсан → `revoked_after_signing` (хүчинтэй хэвээр). Сүлжээгээр зөвхөн гэрчилгээний serial (OCSP) явна, баримт биш.
+- Цуцлалтын нотолгооны дүрэм (v0.7.2): OCSP нь ЭНЭ гэрчилгээнийх (CertID = гинжийн олгогчийн нэр/түлхүүрийн hash +
+  serial), CRL нь олгогчийнх (нэр, AKI, гарын үсэг). «good» нь шалгах цагт шинэлэг байх ёстой: thisUpdate ирээдүйд биш
+  (5 мин хүлцэл), nextUpdate өнгөрөөгүй, thisUpdate ≤ 24 цагийн өмнө эсвэл thisUpdate…nextUpdate нь шалгах цагийг хамарна
+  (шалгах цаг = итгэмжлэгдсэн цагийн тэмдгийн цаг, эс бөгөөс `Time`/одоо). Эс бөгөөс тооцохгүй → `revocation_unavailable`.
+  Олгогчийн гарын үсэгтэй «revoked» нотолгоо (OCSP эсвэл CRL, онлайн эсвэл DSS) нь «good»-ийг үргэлж давна.
+- **Итгэлгүй PDF.** `Prepare`/`ValidatePDF`/`Verify`/`Complete` задлахын өмнө массив/толийн давхарлалтыг
+  (`> 256` → `PDF_INVALID`, `errors.Is(err, pades.ErrPDFStructure)`) шалгадаг (v0.7.2; өмнө нь ~2 MB `[[[…` баримт
+  `fatal error: stack overflow`-оор процессыг бүхэлд нь унагадаг байв). Энэ нь хамгаалалтын нэг давхарга л — гаднаас ирсэн
+  PDF-ийг итгэлгүй оролт гэж үзэж хэмжээг хязгаарла (≤ 10 MiB), хүсэлт бүрд timeout тавь, боломжтой бол тусдаа
+  процесс/контейнерт (CPU/санах ойн хязгаартай) задал.
 - `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown` (CA бүртгэлээсээ `token` ч
   тогтооно). `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` нь CA-ийн бүртгэлээс — SDK-д байхгүй.
 - Шифрлэгдсэн PDF (`/Encrypt` — RC4, AES-128, AES-256, хоосон хэрэглэгчийн нууц үгтэй ч) → `PDF_ENCRYPTED` (v0.7.1;
@@ -695,7 +705,7 @@ Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verif
 [WIRE.md](pades/WIRE.md), [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
 хоорондын байт-ижил байдалд.
 
-Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v3`) — native SDK бүрийн CI тулгана; энэ репогийн CI
+Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v4`) — native SDK бүрийн CI тулгана; энэ репогийн CI
 гаралт бүрийг qpdf (`--check`) ба pyHanko-оор (INTACT/VALID/TRUSTED, DSS-ээс LT, харагдах эсэх) бие даан шалгана.
 
 ## Хөгжүүлэлт
@@ -770,6 +780,11 @@ standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/tex
   — same JSON report as `/v3/validate/pdf`, online OCSP/CRL with DSS fallback, `certificate_level`). Derived from the CA writer
   (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
   PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
+  Revocation evidence (v0.7.2) counts only if it is for this certificate and its chain issuer (OCSP CertID, CRL issuer/AKI/
+  signature) and fresh at the validation time (timestamp time, else now; ±5 min skew, 24 h max age unless the
+  thisUpdate…nextUpdate window covers it); a signed "revoked" always wins. PDFs nested deeper than 256 levels are
+  rejected (`PDF_INVALID`, `ErrPDFStructure`) before parsing — still treat untrusted PDFs as hostile input (size limit,
+  timeouts, ideally an isolated process).
 - Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
 
 License: MIT.

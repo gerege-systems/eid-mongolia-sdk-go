@@ -136,6 +136,10 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 			CorpusHook(doc, p == profileBroad, nil, nil, "", err)
 		}
 	}()
+	// digitorus-ийн рекурс хязгааргүй — гүн давхарласан баримт stack overflow (recover барихгүй) өгнө.
+	if err := CheckStructure(doc); err != nil {
+		return nil, err
+	}
 	rdr, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
 		// digitorus нь AES-256 / хэрэглэгчийн нууц үгтэй баримтыг нээхгүй — trailer/xref stream-ийн /Encrypt түлхүүрээр.

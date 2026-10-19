@@ -97,9 +97,11 @@ type CertStatus struct {
 	RevokedAt time.Time
 }
 
-// StatusSource — манай issuing CA-аас гарсан гэрчилгээний цуцлалтыг serial-аар өгнө.
+// StatusSource — манай issuing CA-аас гарсан гэрчилгээний цуцлалтыг өгнө. cert — шалгах гэрчилгээ, issuer — гинжийн
+// (гарын үсгээр баталгаажсан) олгогч: нотолгоо (OCSP CertID, CRL issuer/гарын үсэг) энэ хосынх байх ёстой. at — шалгах
+// цаг (цагийн тэмдгийн цаг эсвэл одоо): «good» нотолгоо at-д шинэлэг байх ёстой (FreshAt).
 type StatusSource interface {
-	CertStatus(serial *big.Int) (CertStatus, error)
+	CertStatus(cert, issuer *x509.Certificate, at time.Time) (CertStatus, error)
 }
 
 // Validator — шалгагч. Roots нь үндэсний Root CA; Intermediates нь манай завсрын CA-ууд
@@ -277,7 +279,7 @@ func (v *Validator) ValidateCertificate(cert *x509.Certificate) CertReport {
 	chain, trusted := v.verifyChain(cert, nil, now)
 	rep.ChainTrusted = trusted
 	rep.Chain = chainNames(cert, chain)
-	info := v.certInfo(cert, chain)
+	info := v.certInfo(cert, chain, now)
 	rep.Certificate = info
 	if !trusted {
 		rep.Problems = append(rep.Problems, ProblemUntrusted)
@@ -435,7 +437,7 @@ func (v *Validator) evaluateSignature(r RawSignature) SignatureReport {
 	chain, trusted := v.verifyChain(leaf, parseCerts(r.Certs), at)
 	s.ChainTrusted = trusted
 	s.Chain = chainNames(leaf, chain)
-	info := v.certInfo(leaf, chain)
+	info := v.certInfo(leaf, chain, at)
 	s.Certificate = &info
 	if !trusted {
 		s.Problems = append(s.Problems, ProblemUntrusted)
@@ -475,7 +477,7 @@ func (v *Validator) evaluateSignature(r RawSignature) SignatureReport {
 		s.Problems = append(s.Problems, ProblemModifiedAfter)
 	}
 	if trusted {
-		s.LTV = ltvCoverage(r.DSS, at, chain, tsChain)
+		s.LTV = ltvCoverage(r.DSS, at, v.now(), chain, tsChain)
 	}
 	if cades {
 		switch {
@@ -552,7 +554,7 @@ func (v *Validator) verifyChain(leaf *x509.Certificate, extra []*x509.Certificat
 	return nil, false
 }
 
-func (v *Validator) certInfo(c *x509.Certificate, chain []*x509.Certificate) CertInfo {
+func (v *Validator) certInfo(c *x509.Certificate, chain []*x509.Certificate, at time.Time) CertInfo {
 	info := CertInfo{
 		CommonName: c.Subject.CommonName,
 		Subject:    nameString(c.Subject),
@@ -570,7 +572,7 @@ func (v *Validator) certInfo(c *x509.Certificate, chain []*x509.Certificate) Cer
 	if v.Status == nil {
 		return info
 	}
-	st, err := v.Status.CertStatus(c.SerialNumber)
+	st, err := v.Status.CertStatus(c, chain[1], at)
 	switch {
 	case err != nil, !st.Issued:
 		// DB алдаа эсвэл бүртгэлгүй serial — «good» гэж таамаглахгүй (OCSP-тэй адил fail-closed).

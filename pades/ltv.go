@@ -15,11 +15,14 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
+	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
 )
 
 // DSS (B-LT) цуглуулалт — CA-ийн service/memory/pades_ltv.go padesLTV-ийн сүлжээний хувилбар: CA in-process
 // responder/кэшээс уншдаг бол энд гэрчилгээ бүрийн AIA OCSP (SHA-1 CertID) ба CDP CRL-ийг татна. Гарын үсэг/олгогч,
-// good, nextUpdate-ийг шалгана; аль нэг гэрчилгээнд хүчинтэй мэдээлэл алга бол алдаа (fail-closed).
+// CertID, шинэлэг байдал (validate.FreshAt, одоогийн цагаар) шалгана; аль нэг гэрчилгээнд хүчинтэй мэдээлэл алга бол
+// алдаа (fail-closed). Олгогчийн гарын үсэгтэй «revoked» хариу (OCSP эсвэл CRL) — ErrCertificateRevoked, тэр дор нь
+// зогсоно (өөр URL/CRL-ээр «good» хайхгүй, дахин оролдохгүй).
 
 var (
 	errLTV      = errors.New("LTV өгөгдөл бүрэн биш")
@@ -117,6 +120,9 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 			}
 			for _, u := range c.OCSPServer {
 				der, resp, err := fetchOCSP(ctx, f, u, c, issuer, now, fresh)
+				if errors.Is(err, ErrCertificateRevoked) {
+					return core.DSS{}, fmt.Errorf("%w: %s", err, c.Subject.CommonName)
+				}
 				if errors.Is(err, errNotFresh) {
 					freshErr = err
 				}
@@ -132,7 +138,14 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 			}
 			for _, u := range c.CRLDistributionPoints {
 				der, err := f.do(ctx, http.MethodGet, u, "", nil)
-				if err == nil && crlCovers(der, c, issuer, now) {
+				if err != nil {
+					continue
+				}
+				covers, err := crlCovers(der, c, issuer, now)
+				if err != nil {
+					return core.DSS{}, fmt.Errorf("%w: %s", err, c.Subject.CommonName)
+				}
+				if covers {
 					add(&d.CRLs, der)
 					ok = true
 				}
@@ -154,15 +167,15 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 
 func hasFreshOCSP(list [][]byte, c, issuer *x509.Certificate, after time.Time) bool {
 	for _, der := range list {
-		if r, err := ocsp.ParseResponseForCert(der, c, issuer); err == nil && r.ThisUpdate.After(after) {
+		if r, err := ocsp.ParseResponseForCert(der, c, issuer); err == nil && r.ThisUpdate.After(after) && validate.OCSPCertIDMatches(der, c, issuer) {
 			return true
 		}
 	}
 	return false
 }
 
-// fetchOCSP — CA padesOCSP: SHA-1 CertID (RFC 5019), олгогч (эсвэл delegated) зурсан, good, nextUpdate өнгөрөөгүй,
-// after тэг биш бол thisUpdate > after.
+// fetchOCSP — CA padesOCSP: SHA-1 CertID (RFC 5019) = энэ гэрчилгээ + олгогч, олгогч (эсвэл delegated) зурсан, good,
+// одоо шинэлэг (validate.FreshAt), after тэг биш бол thisUpdate > after. revoked → ErrCertificateRevoked.
 func fetchOCSP(ctx context.Context, f *fetcher, url string, c, issuer *x509.Certificate, now, after time.Time) ([]byte, *ocsp.Response, error) {
 	req, err := ocsp.CreateRequest(c, issuer, &ocsp.RequestOptions{Hash: stdcrypto.SHA1})
 	if err != nil {
@@ -179,7 +192,13 @@ func fetchOCSP(ctx context.Context, f *fetcher, url string, c, issuer *x509.Cert
 	if !responderOK(resp, issuer) {
 		return nil, nil, errors.New("OCSP responder-ийн EKU OCSPSigning биш")
 	}
-	if resp.Status != ocsp.Good || !resp.NextUpdate.IsZero() && resp.NextUpdate.Before(now) {
+	if !validate.OCSPCertIDMatches(der, c, issuer) {
+		return nil, nil, errors.New("OCSP CertID энэ гэрчилгээ/олгогчийнх биш")
+	}
+	if resp.Status == ocsp.Revoked {
+		return nil, nil, ErrCertificateRevoked
+	}
+	if resp.Status != ocsp.Good || !validate.FreshAt(resp.ThisUpdate, resp.NextUpdate, now, now) {
 		return nil, nil, fmt.Errorf("OCSP %s: status %d", c.Subject.CommonName, resp.Status)
 	}
 	if !after.IsZero() && !resp.ThisUpdate.After(after) {
@@ -188,16 +207,15 @@ func fetchOCSP(ctx context.Context, f *fetcher, url string, c, issuer *x509.Cert
 	return der, resp, nil
 }
 
-// crlCovers — CA-тай ижил: der нь c-ийн олгогчийн (гарын үсгийг шалгасан) CRL, nextUpdate өнгөрөөгүй, c-г агуулаагүй.
-func crlCovers(der []byte, c, issuer *x509.Certificate, now time.Time) bool {
+// crlCovers — der нь c-ийн олгогчийн (нэр/AKI, гарын үсэг шалгасан) CRL, nextUpdate-тэй, одоо шинэлэг
+// (validate.FreshAt), c-г агуулаагүй. c жагсаалтад байвал ErrCertificateRevoked.
+func crlCovers(der []byte, c, issuer *x509.Certificate, now time.Time) (bool, error) {
 	crl, err := x509.ParseRevocationList(der)
-	if err != nil || !bytes.Equal(crl.RawIssuer, c.RawIssuer) || crl.CheckSignatureFrom(issuer) != nil {
-		return false
+	if err != nil || !validate.CRLFor(crl, c, issuer) {
+		return false, nil
 	}
-	if crl.NextUpdate.IsZero() || crl.NextUpdate.Before(now) {
-		return false
+	if _, listed := validate.CRLListed(crl, c); listed {
+		return false, ErrCertificateRevoked
 	}
-	return !slices.ContainsFunc(crl.RevokedCertificateEntries, func(e x509.RevocationListEntry) bool {
-		return e.SerialNumber.Cmp(c.SerialNumber) == 0
-	})
+	return !crl.NextUpdate.IsZero() && validate.FreshAt(crl.ThisUpdate, crl.NextUpdate, now, now), nil
 }

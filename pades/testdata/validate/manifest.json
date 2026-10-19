@@ -5,7 +5,8 @@
     "golden/pki/root.pem"
   ],
   "issuers": [
-    "golden/pki/04.pem"
+    "golden/pki/04.pem",
+    "validate/pki/05.pem"
   ],
   "cases": [
     {
@@ -1628,6 +1629,710 @@
       "offline": true,
       "expect": {
         "error": "PDF_ENCRYPTED"
+      }
+    },
+    {
+      "name": "dss-ocsp-stale",
+      "input": "validate/input/dss-ocsp-stale.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-expired",
+      "input": "validate/input/dss-ocsp-expired.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-future",
+      "input": "validate/input/dss-ocsp-future.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-other-serial",
+      "input": "validate/input/dss-ocsp-other-serial.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-other-issuer",
+      "input": "validate/input/dss-ocsp-other-issuer.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-revoked",
+      "input": "validate/input/dss-ocsp-revoked.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "invalid",
+        "signatures": [
+          {
+            "indication": "invalid",
+            "problems": [
+              "revoked"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "revoked",
+                "revoked_at": "2026-10-14T03:00:00Z"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-LT",
+            "ltv": {
+              "complete": true,
+              "missing": []
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-ocsp-revoked-after-signing",
+      "input": "validate/input/dss-ocsp-revoked-after-signing.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "valid",
+        "signatures": [
+          {
+            "indication": "valid",
+            "problems": [
+              "revoked_after_signing"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "revoked",
+                "revoked_at": "2026-10-14T04:00:03Z"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-crl-revoked",
+      "input": "validate/input/dss-crl-revoked.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "invalid",
+        "signatures": [
+          {
+            "indication": "invalid",
+            "problems": [
+              "revoked"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "revoked",
+                "revoked_at": "2026-10-14T02:00:00Z"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-LT",
+            "ltv": {
+              "complete": true,
+              "missing": []
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-crl-wrong-issuer",
+      "input": "validate/input/dss-crl-wrong-issuer.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-crl-only",
+      "input": "validate/input/dss-crl-only.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "valid",
+        "signatures": [
+          {
+            "indication": "valid",
+            "problems": [],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "good"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-LT",
+            "ltv": {
+              "complete": true,
+              "missing": []
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dss-no-revocation",
+      "input": "validate/input/dss-no-revocation.pdf",
+      "offline": true,
+      "expect": {
+        "indication": "indeterminate",
+        "signatures": [
+          {
+            "indication": "indeterminate",
+            "problems": [
+              "revocation_unavailable"
+            ],
+            "signer_name": "GOLDEN TESTOV",
+            "claimed_name": "GOLDEN TESTOV",
+            "signer_name_source": "certificate",
+            "claimed_time": "2026-10-14T04:00:00Z",
+            "signing_time": "2026-10-14T04:00:01Z",
+            "timestamp": {
+              "time": "2026-10-14T04:00:01Z",
+              "serial": "90B53EF0EBCCE5B417F4A0A36266E4AB85A16394",
+              "tsa": "TEST ONLY Golden TSA",
+              "trusted": true
+            },
+            "covers_whole_document": false,
+            "extended_by_signatures_only": true,
+            "later_signatures": 0,
+            "visible_later_signature": false,
+            "visible": false,
+            "chain_trusted": true,
+            "chain": [
+              "TESTOV GOLDEN",
+              "TEST ONLY Golden eID Mongolia Issuing CA",
+              "TEST ONLY Golden Gerege Issuing CA",
+              "TEST ONLY Golden National Issuing CA",
+              "TEST ONLY Golden National Root CA"
+            ],
+            "certificate": {
+              "common_name": "TESTOV GOLDEN",
+              "subject": "SERIALNUMBER=PNOMN-00000000000,CN=TESTOV GOLDEN,C=MN,2.5.4.4=#1306544553544f56,2.5.4.42=#1306474f4c44454e",
+              "issuer": "CN=TEST ONLY Golden eID Mongolia Issuing CA,C=MN",
+              "serial": "3ED",
+              "not_before": "2026-01-01T00:00:00Z",
+              "not_after": "2030-01-01T00:00:00Z",
+              "usage": "sign",
+              "issued_by_eid": true,
+              "revocation": {
+                "status": "unknown"
+              }
+            },
+            "civil_id": "00000000000",
+            "key_medium": "unknown",
+            "signature_level": "PAdES-BASELINE-T",
+            "ltv": {
+              "complete": false,
+              "missing": [
+                "TESTOV GOLDEN"
+              ]
+            },
+            "certificate_level": "ADVANCED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "deep-nesting",
+      "input": "validate/input/deep-nesting.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_INVALID"
+      }
+    },
+    {
+      "name": "deep-nesting-objstm",
+      "input": "validate/input/deep-nesting-objstm.pdf",
+      "offline": true,
+      "expect": {
+        "error": "PDF_INVALID"
       }
     }
   ]
