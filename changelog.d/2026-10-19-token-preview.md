@@ -6,5 +6,5 @@
 - **Яагаад:** `Supersedes` бодит эхлэлийн хариунд ирэх үед PIN2 push явсан байдаг; RP push-ээс өмнө иргэнд анхааруулах
   хэрэгтэй (CA MR feat/token-cert-dryrun).
 - **Хаана:** `token.go`, README §3.7, `portal_gaps_test.go` (`TestTokenCertificatePreview`), `contract_test.go`
-  (`dryRun` CA deploy болтол лог, дараа нь шаардлага).
+  (live discovery-д `tokenCertificate.dryRun: true` — CA d3e071f7 прод).
 - **Шалгасан:** `gofmt`, `go vet`, `go test ./...`, contract тест live discovery-д.
