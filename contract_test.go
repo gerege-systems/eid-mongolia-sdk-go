@@ -232,6 +232,9 @@ func TestContractTokenCertificate(t *testing.T) {
 	if i == nil {
 		t.Fatal("discovery-д tokenCertificate блок алга")
 	}
+	if !i.DryRun { // CA dryRun deploy болтол (MR feat/token-cert-dryrun) — дараа нь шаардлага болгоно
+		t.Logf("tokenCertificate.dryRun алга (CA deploy хүлээгдэж байна)")
+	}
 	if i.Issue != d.RPAPIBase+routeTokenCertificate.path || i.Result != d.RPAPIBase+routeTokenCertificateResult.path ||
 		!i.ScopeLockedOnRenewal || i.AppTransaction != "optional" || !i.PersonalAutoSupersede {
 		t.Fatalf("tokenCertificate блок: %+v", i)

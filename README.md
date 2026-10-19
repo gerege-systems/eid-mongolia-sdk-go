@@ -470,6 +470,9 @@ st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CS
 // … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
 err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+// push-ээс ӨМНӨ: ижил оролтоор dryRun — session/push үүсэхгүй, алдааны код бодиттой ижил
+pv, err := c.Token.PreviewCertificate(ctx, in) // pv.Supersedes байвал иргэнд анхааруулж зөвшөөрүүлээд ↓
+st, err := c.Token.IssueCertificate(ctx, in)
 // st.Supersedes — хувийн олголтод солигдох өмнөх хувийн токенууд (доор); PIN2-оос өмнө иргэнд анхааруул
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
 // 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
@@ -500,6 +503,13 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 цуцлагдана. Татгалзсан / хугацаа дууссан олголт өмнөхийг хөндөхгүй. PIN2-оос өмнө: «Таны өмнөх USB токен (EP2003-…)-ийн
 гэрчилгээ хүчингүй болно». 409 `TOKEN_LIMIT_REACHED` `kind=PERSONAL` зөвхөн `limit=0` (хувийн олголт хаалттай) үед;
 байгууллагын токен (`ORGANIZATION`) хатуу хязгаар хэвээр.
+
+**dryRun — push-ээс өмнөх шалгалт** (CA 2026-10-19, discovery `tokenCertificate.dryRun: true` —
+`CertificateInfo().DryRun`): `IssueCertificate`-ийн хариунд `Supersedes` ирэх үед утас руу PIN2 push явсан байдаг —
+desktop дээр цуцалсан ч иргэн утсаараа баталбал хуучин токен солигдоно. Тиймээс урсгал: CSR → `c.Token.PreviewCertificate(ctx, in)`
+(бие нь ижил + `"dryRun": true`; бүх шалгалт, ижил алдааны код; session / push / state үүсэхгүй) → `Supersedes` байвал
+анхааруулга, иргэн зөвшөөрөх → `IssueCertificate(ctx, in)`. Хурдны хязгаар (RP, иргэн) 20/мин — push-ийн 3/цагийг
+зарцуулахгүй. Хариунд `dryRun: true` ирээгүй бол `*eid.ValidationError` (хуучин CA танихгүй талбарт 400 буцаана).
 
 **Апп баталгаа (`AppTransaction`, заавал биш)** (CA 2026-10-19, discovery `tokenCertificate.appTransaction:
 "optional"`): macOS App Store build нь StoreKit 2 `AppTransaction`-ийн JWS (compact) мөрийг desktop-оос дамжуулна —

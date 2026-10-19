@@ -321,12 +321,12 @@ func TestTokenCertificate(t *testing.T) {
 func TestTokenCertificateInfo(t *testing.T) {
 	c, rc := server(t, jsonReply(200, `{"version":"v3","tokenCertificate":{"certificateLevel":"ADVANCED","enabled":true,
 		"issue":"https://rp.eidmongolia.mn/token/certificate","keyAlgorithm":"EC P-256 (ecdsa-with-SHA256)","onBehalfOf":"optional",
-		"permission":"TOKEN_ISSUE","result":"https://rp.eidmongolia.mn/token/certificate/{sessionID}","scopeLockedOnRenewal":true,"appTransaction":"optional","personalAutoSupersede":true}}`))
+		"permission":"TOKEN_ISSUE","result":"https://rp.eidmongolia.mn/token/certificate/{sessionID}","scopeLockedOnRenewal":true,"appTransaction":"optional","personalAutoSupersede":true,"dryRun":true}}`))
 	i, err := c.Token.CertificateInfo(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" || !i.Enabled || !i.ScopeLockedOnRenewal || i.Permission != "TOKEN_ISSUE" || i.OnBehalfOf != "optional" || i.AppTransaction != "optional" || !i.PersonalAutoSupersede || len(i.Raw) == 0 {
+	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" || !i.Enabled || !i.ScopeLockedOnRenewal || i.Permission != "TOKEN_ISSUE" || i.OnBehalfOf != "optional" || i.AppTransaction != "optional" || !i.PersonalAutoSupersede || !i.DryRun || len(i.Raw) == 0 {
 		t.Fatalf("%+v", i)
 	}
 	old, _ := server(t, jsonReply(200, `{"version":"v3"}`))
@@ -383,6 +383,43 @@ func TestTokenCertificateAppTransaction(t *testing.T) {
 	var api *APIError
 	if !errors.As(err, &api) || api.Status != 400 || api.Code != CodeAppAttestationInvalid || api.Retryable() {
 		t.Fatal(err)
+	}
+}
+
+// TestTokenCertificatePreview — dryRun (CA 2026-10-19): ижил бие + dryRun:true, supersedes, алдаа дамжина, dryRun биш хариу
+// → *ValidationError.
+func TestTokenCertificatePreview(t *testing.T) {
+	ctx := context.Background()
+	csrA, _ := tokenKeys(t, "PNOMN-12345678")
+	csrS, _ := tokenKeys(t, "PNOMN-12345678")
+	in := TokenCertInput{SignerEtsi: "PNOMN-12345678", CSRAuth: csrA, CSRSign: csrS, TokenSerial: "EP2003-0042A2", AppTransaction: "a.b.c"}
+	c, rc := server(t, jsonReply(200, `{"dryRun":true,"supersedes":[{"tokenSerial":"EP2003-0001"}]}`))
+	p, err := c.Token.PreviewCertificate(ctx, in)
+	if err != nil || len(p.Supersedes) != 1 || p.Supersedes[0].TokenSerial != "EP2003-0001" {
+		t.Fatal(err, p)
+	}
+	req, body := rc.last()
+	var got map[string]any
+	_ = json.Unmarshal(body, &got)
+	if req.URL.Path != "/token/certificate" || got["dryRun"] != true || got["tokenSerial"] != "EP2003-0042A2" || got["appTransaction"] != "a.b.c" {
+		t.Fatalf("%s", body)
+	}
+	c, _ = server(t, jsonReply(200, `{"dryRun":true}`))
+	if p, err := c.Token.PreviewCertificate(ctx, in); err != nil || p.Supersedes != nil {
+		t.Fatal(err, p)
+	}
+	c, _ = server(t, jsonReply(409, `{"error":"хязгаар","code":"TOKEN_LIMIT_REACHED","kind":"ORGANIZATION","limit":1,"organization":"NTRMN-1"}`))
+	if _, err := c.Token.PreviewCertificate(ctx, in); err == nil {
+		t.Fatal("409 алга")
+	} else if l, ok := TokenLimitOf(err); !ok || l.Kind != TokenKindOrganization {
+		t.Fatal(err)
+	}
+	// dryRun-гүй хариу (хуучин/буруу CA) — итгэхгүй.
+	c, _ = server(t, jsonReply(200, `{"sessionID":"x"}`))
+	_, err = c.Token.PreviewCertificate(ctx, in)
+	wantInvalid(t, err, "dryRun")
+	if _, err := c.Token.PreviewCertificate(ctx, TokenCertInput{}); err == nil {
+		t.Fatal("хоосон оролт")
 	}
 }
 

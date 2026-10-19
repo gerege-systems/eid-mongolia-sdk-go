@@ -148,6 +148,13 @@ type tokenCertRequest struct {
 	OnBehalfOf       string            `json:"onBehalfOf"`
 	Flow             string            `json:"flow"`
 	AppTransaction   string            `json:"appTransaction,omitempty"`
+	DryRun           bool              `json:"dryRun,omitempty"`
+}
+
+// TokenCertPreview — PreviewCertificate-ийн хариу: бодит олголт эхлэх боломжтой. Supersedes — бодит олголт амжилттай
+// болоход солигдох хувийн токенууд (байхгүй бол nil).
+type TokenCertPreview struct {
+	Supersedes []TokenSupersede
 }
 
 // IssueCertificate — POST /token/certificate: токены AUTH + SIGN гэрчилгээ олголт эхлүүлнэ (иргэн утсаараа батална).
@@ -160,24 +167,9 @@ type tokenCertRequest struct {
 // AppTransaction ирсэн боловч хүчингүй (аль алхам унасныг CA хэлэхгүй); AppTransaction > 16 KiB бол
 // ErrAppTransactionTooLarge (илгээхгүй).
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
-	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
-		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
-	}
-	if len(in.AppTransaction) > MaxAppTransactionBytes {
-		return nil, ErrAppTransactionTooLarge
-	}
-	// CA DisallowUnknownFields — яг эдгээр талбар.
-	req := tokenCertRequest{
-		RelyingPartyUUID: t.creds.RPUUID,
-		RelyingPartyName: t.creds.RPName,
-		Signer:           map[string]string{"etsi": strings.TrimSpace(in.SignerEtsi)},
-		CSRAuth:          base64.StdEncoding.EncodeToString(in.CSRAuth),
-		CSRSign:          base64.StdEncoding.EncodeToString(in.CSRSign),
-		TokenSerial:      strings.TrimSpace(in.TokenSerial),
-		TokenLabel:       in.TokenLabel,
-		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
-		Flow:             "notification",
-		AppTransaction:   strings.TrimSpace(in.AppTransaction),
+	req, err := t.certRequest(in)
+	if err != nil {
+		return nil, err
 	}
 	var r struct {
 		SessionID     string           `json:"sessionID"`
@@ -197,6 +189,51 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 		SessionID: r.SessionID, VC: string(r.VC),
 		CSRAuthSHA256: strings.ToLower(r.CSRAuthSHA256), CSRSignSHA256: strings.ToLower(r.CSRSignSHA256), ExpiresAt: r.ExpiresAt,
 		Supersedes: r.Supersedes,
+	}, nil
+}
+
+// PreviewCertificate — POST /token/certificate {"dryRun": true} (CA 2026-10-19, discovery tokenCertificate.dryRun):
+// IssueCertificate-ийн бүх шалгалт ижил алдааны кодтой, гэхдээ session / утас руу push үүсэхгүй. Урсгал: CSR →
+// PreviewCertificate → Supersedes байвал иргэнд анхааруулж зөвшөөрүүлэх → IssueCertificate (ижил оролт). Хурдны хязгаар
+// (RP, иргэн) 20/мин (push-ийн 3/цагийг зарцуулахгүй). Үр дүн нь шалгасан мөчийнх. Хуучин CA-д 400 (танихгүй талбар).
+func (t *TokenService) PreviewCertificate(ctx context.Context, in TokenCertInput) (*TokenCertPreview, error) {
+	req, err := t.certRequest(in)
+	if err != nil {
+		return nil, err
+	}
+	req.DryRun = true
+	var r struct {
+		DryRun     bool             `json:"dryRun"`
+		Supersedes []TokenSupersede `json:"supersedes"`
+	}
+	if err := t.h.postJSON(ctx, routeTokenCertificate.expand(), req, &r); err != nil {
+		return nil, err
+	}
+	if !r.DryRun {
+		return nil, invalid("token: dryRun хариу биш (CA dryRun-ийг дэмжихгүй)")
+	}
+	return &TokenCertPreview{Supersedes: r.Supersedes}, nil
+}
+
+// certRequest — оролтыг шалгаж POST /token/certificate-ийн биеийг угсарна (CA DisallowUnknownFields — яг эдгээр талбар).
+func (t *TokenService) certRequest(in TokenCertInput) (tokenCertRequest, error) {
+	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
+		return tokenCertRequest{}, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
+	}
+	if len(in.AppTransaction) > MaxAppTransactionBytes {
+		return tokenCertRequest{}, ErrAppTransactionTooLarge
+	}
+	return tokenCertRequest{
+		RelyingPartyUUID: t.creds.RPUUID,
+		RelyingPartyName: t.creds.RPName,
+		Signer:           map[string]string{"etsi": strings.TrimSpace(in.SignerEtsi)},
+		CSRAuth:          base64.StdEncoding.EncodeToString(in.CSRAuth),
+		CSRSign:          base64.StdEncoding.EncodeToString(in.CSRSign),
+		TokenSerial:      strings.TrimSpace(in.TokenSerial),
+		TokenLabel:       in.TokenLabel,
+		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
+		Flow:             "notification",
+		AppTransaction:   strings.TrimSpace(in.AppTransaction),
 	}, nil
 }
 
@@ -402,8 +439,10 @@ type TokenCertInfo struct {
 	// PersonalAutoSupersede — true: хувийн хязгаар хүрсэн үед өөр serial-тай шинэ хувийн токен 409 биш —
 	// TokenCertStart.Supersedes ирж, олголт амжилттай болоход өмнөх хувийн токен солигдоно; 409 TOKEN_LIMIT_REACHED
 	// kind=PERSONAL зөвхөн limit=0 (хувийн олголт хаалттай) үед. Хуучин CA-д false.
-	PersonalAutoSupersede bool            `json:"personalAutoSupersede"`
-	Raw                   json.RawMessage `json:"-"`
+	PersonalAutoSupersede bool `json:"personalAutoSupersede"`
+	// DryRun — true: PreviewCertificate (POST {"dryRun": true}) дэмжигдэнэ. Хуучин CA-д false.
+	DryRun bool            `json:"dryRun"`
+	Raw    json.RawMessage `json:"-"`
 }
 
 // CertificateInfo — discovery-ийн tokenCertificate блок. Блок байхгүй (хуучин CA) бол Enabled false.
