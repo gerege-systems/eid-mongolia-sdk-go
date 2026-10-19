@@ -77,6 +77,9 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 	if err != nil {
 		return nil, newErr(CodeStateInvalid, "state задарсангүй", err)
 	}
+	if err := validate.CheckStructure(st.PDF); err != nil {
+		return nil, newErr(CodeStateInvalid, "state-ийн PDF-ийн бүтэц хэт гүн эсвэл төвөгтэй", err)
+	}
 	cert, err := x509.ParseCertificate(st.SignerCert)
 	if err != nil {
 		return nil, newErr(CodeStateInvalid, "state-ийн signerCert", err)
@@ -137,6 +140,9 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 		}
 		if cerr := ctx.Err(); cerr != nil {
 			return nil, newErr(CodeLTVUnavailable, "цуцлагдсан", cerr)
+		}
+		if errors.Is(err, ErrCertificateRevoked) {
+			return nil, newErr(CodeLTVUnavailable, "гэрчилгээ цуцлагдсан", err)
 		}
 		if attempt >= retries {
 			return nil, newErr(CodeLTVUnavailable, "OCSP/CRL бүрэн авч чадсангүй", err)

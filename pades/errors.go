@@ -3,6 +3,8 @@ package pades
 import (
 	"errors"
 	"fmt"
+
+	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
 )
 
 // Алдааны тогтмол кодууд (binding-ууд JSON {code,message}-ээр дамжуулна). Утга нь өөрчлөгдөхгүй.
@@ -25,6 +27,15 @@ const (
 	// CodePDFNoSignature — ValidatePDF: баримтад цахим гарын үсэг алга (CA /v3/validate/pdf "no_signature").
 	CodePDFNoSignature = "PDF_NO_SIGNATURE"
 )
+
+// ErrPDFStructure — PDF-ийн массив/толь validate.MaxNesting (256)-аас гүн давхарласан эсвэл бүтэц нь хэт төвөгтэй
+// (рекурсив PDF parser-ийн stack overflow-оос хамгаалах урьдчилсан шалгалт). Prepare / ValidatePDF / Verify нь
+// CodePDFInvalid, Complete нь CodeStateInvalid-аар буцаана; errors.Is(err, ErrPDFStructure)-ээр ялгана.
+var ErrPDFStructure = validate.ErrStructure
+
+// ErrCertificateRevoked — Complete: OCSP/CRL-ийн (олгогчийн гарын үсэгтэй) хариугаар гинжийн гэрчилгээ цуцлагдсан
+// (CodeLTVUnavailable, дахин оролдохгүй). errors.Is(err, ErrCertificateRevoked)-ээр ялгана.
+var ErrCertificateRevoked = errors.New("гэрчилгээ цуцлагдсан")
 
 // Error — pades-ийн бүх алдаа. Code нь дээрх тогтмолуудын нэг; Err нь шалтгаан (байвал).
 type Error struct {

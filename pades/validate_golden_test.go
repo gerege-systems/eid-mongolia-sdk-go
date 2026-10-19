@@ -61,7 +61,7 @@ type vHTTP struct {
 }
 
 func vCases() []vCase {
-	return []vCase{
+	return append([]vCase{
 		{Name: "valid-lt", Input: "golden/output/quartz-pdf13.pdf", Offline: true},
 		{Name: "valid-lt-en", Input: "golden/output/quartz-pdf13-en.pdf", Offline: true},
 		{Name: "valid-nopage", Input: "golden/output/quartz-pdf13-nopage.pdf", Offline: true},
@@ -93,7 +93,7 @@ func vCases() []vCase {
 		{Name: "encrypted-aes-128", Input: "validate/input/encrypted-aes-128.pdf", Offline: true},
 		{Name: "encrypted-aes-256", Input: "validate/input/encrypted-aes-256.pdf", Offline: true},
 		{Name: "encrypted-user-password", Input: "validate/input/encrypted-rc4-128-userpw.pdf", Offline: true},
-	}
+	}, v4Cases()...)
 }
 
 // vResponses — онлайн тохиолдлын OCSP/CRL хариу (тестийн 04-ийн түлхүүрээр). Шалгах цаг = goldenNow.
@@ -253,8 +253,14 @@ func vUpdate(t *testing.T, mpath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Байгаа оролтыг дахин бичихгүй (OCSP producedAt, TSA token нь үүсгэх цагаас хамаардаг) — өмнөх тохиолдлууд
+	// байт-ижил үлдэнэ; шинээр үүсгэхийн тулд файлыг устгана.
 	write := func(name string, b []byte) {
-		if err := os.WriteFile(filepath.Join(in, name), b, 0o644); err != nil { // #nosec G306 -- тест
+		path := filepath.Join(in, name)
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if err := os.WriteFile(path, b, 0o644); err != nil { // #nosec G306 -- тест
 			t.Fatal(err)
 		}
 	}
@@ -264,7 +270,12 @@ func vUpdate(t *testing.T, mpath string) {
 	write("tampered.pdf", tampered)
 	write("modified-after-signing.pdf", vAppendInfo(t, base))
 	write("not-pdf.pdf", []byte("not a pdf\n"))
-	write("qualified-phone.pdf", vSignQualified(t, p))
+	if _, err := os.Stat(filepath.Join(in, "qualified-phone.pdf")); err != nil {
+		write("qualified-phone.pdf", vSignQualified(t, p))
+	}
+	for name, b := range v4Inputs(t, p) {
+		write(name+".pdf", b)
+	}
 
 	m := vManifest{
 		Comment: "ValidatePDF conformance — ТЕСТИЙН PKI (golden/pki). Go pades.ValidatePDF, TS validatePdf, CA validate.ValidatePDF " +
@@ -272,7 +283,7 @@ func vUpdate(t *testing.T, mpath string) {
 			"sha256(body)[:8] hex), жагсаалтад байхгүй хүсэлт → 404.",
 		Time:    goldenNow.UTC(),
 		Roots:   []string{"golden/pki/root.pem"},
-		Issuers: []string{"golden/pki/04.pem"},
+		Issuers: []string{"golden/pki/04.pem", "validate/pki/05.pem"},
 	}
 	resps := vResponses(t, p)
 	for _, c := range vCases() {
@@ -281,7 +292,9 @@ func vUpdate(t *testing.T, mpath string) {
 				c.HTTP = map[string]string{}
 			}
 			name := fmt.Sprintf("http/%s-%d.der", c.Name, i)
-			if err := os.WriteFile(filepath.Join(validateDir, name), h.resp, 0o644); err != nil { // #nosec G306 -- тест
+			if _, err := os.Stat(filepath.Join(validateDir, name)); err == nil {
+				// байгаа хариу хэвээр (дээрхтэй ижил шалтгаан); түлхүүр нь хүсэлтийн байтаас тул өөрчлөгдөхгүй.
+			} else if err := os.WriteFile(filepath.Join(validateDir, name), h.resp, 0o644); err != nil { // #nosec G306 -- тест
 				t.Fatal(err)
 			}
 			c.HTTP[vHTTPKey(h.method, h.url, h.body)] = name

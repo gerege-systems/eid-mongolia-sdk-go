@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
 	"time"
 
@@ -81,22 +80,29 @@ func newValidator(roots, extra, extraIssuers []*x509.Certificate, now func() tim
 	}
 	if raws != nil {
 		v.Extract = func(context.Context, []byte) ([]validate.RawSignature, error) { return raws, nil }
-		v.Status = newDSSStatus(raws, issuers, roots)
+		v.Status = newDSSStatus(raws, now)
 	}
 	return v
 }
 
 // dssStatus — validate.StatusSource: eID олгогчийн (04/05) гаргасан гэрчилгээний цуцлалтыг баримтын DSS-ийн
-// OCSP/CRL-ээс (олгогчийн гарын үсгээр шалгасан) уншина. Нотолгоо олдохгүй бол Issued=false («unknown» —
-// таамаглахгүй). Гарын үсгийн дараах цуцлалтыг (revoked_after_signing) зөвхөн DSS-д байвал мэднэ.
+// OCSP/CRL-ээс уншина. Нотолгоо нь ЭНЭ гэрчилгээ + түүний гинжийн олгогчийнх байх ёстой: OCSP — олгогч (эсвэл
+// түүний OCSPSigning responder) зурсан, CertID = олгогчийн нэр/түлхүүрийн hash + serial; CRL — олгогчийн нэр (AKI),
+// олгогчийн гарын үсэг. Цуцалсан нотолгоо аль нэг нь байвал revoked (шинэлэг эсэхээс үл хамааран — цуцлалт буцахгүй,
+// «good» нотолгоог давна); үгүй бол at-д шинэлэг (validate.FreshAt) good нотолгоо байвал good; эс бөгөөс
+// Issued=false («unknown» → revocation_unavailable — таамаглахгүй). Гарын үсгийн дараах цуцлалтыг
+// (revoked_after_signing) зөвхөн DSS-д байвал мэднэ.
 type dssStatus struct {
-	ocsps   [][]byte
-	crls    [][]byte
-	issuers []*x509.Certificate
+	ocsps [][]byte
+	crls  [][]byte
+	now   func() time.Time
 }
 
-func newDSSStatus(raws []validate.RawSignature, issuers, _ []*x509.Certificate) *dssStatus {
-	s := &dssStatus{issuers: issuers}
+func newDSSStatus(raws []validate.RawSignature, now func() time.Time) *dssStatus {
+	if now == nil {
+		now = time.Now
+	}
+	s := &dssStatus{now: now}
 	for _, r := range raws {
 		if r.DSS != nil {
 			s.ocsps, s.crls = r.DSS.OCSPs, r.DSS.CRLs
@@ -106,39 +112,55 @@ func newDSSStatus(raws []validate.RawSignature, issuers, _ []*x509.Certificate) 
 	return s
 }
 
-func (s *dssStatus) CertStatus(serial *big.Int) (validate.CertStatus, error) {
+func (s *dssStatus) CertStatus(cert, issuer *x509.Certificate, at time.Time) (validate.CertStatus, error) {
+	now := s.now()
+	var revoked *time.Time
+	markRevoked := func(t time.Time) {
+		if revoked == nil || t.Before(*revoked) {
+			revoked = &t
+		}
+	}
+	good := false
 	for _, der := range s.ocsps {
-		for _, iss := range s.issuers {
-			resp, err := parseOCSPFrom(der, nil, iss)
-			if err != nil || resp.SerialNumber == nil || resp.SerialNumber.Cmp(serial) != 0 || !responderOK(resp, iss) {
-				continue
-			}
-			switch resp.Status {
-			case ocsp.Good:
-				return validate.CertStatus{Issued: true}, nil
-			case ocsp.Revoked:
-				return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: resp.RevokedAt}, nil
-			}
+		resp, ok := ocspFor(der, cert, issuer)
+		if !ok {
+			continue
+		}
+		switch resp.Status {
+		case ocsp.Revoked:
+			markRevoked(resp.RevokedAt)
+		case ocsp.Good:
+			good = good || validate.FreshAt(resp.ThisUpdate, resp.NextUpdate, at, now)
 		}
 	}
 	for _, der := range s.crls {
 		crl, err := x509.ParseRevocationList(der)
-		if err != nil {
+		if err != nil || !validate.CRLFor(crl, cert, issuer) {
 			continue
 		}
-		for _, iss := range s.issuers {
-			if !bytes.Equal(crl.RawIssuer, iss.RawSubject) || crl.CheckSignatureFrom(iss) != nil {
-				continue
-			}
-			for _, e := range crl.RevokedCertificateEntries {
-				if e.SerialNumber.Cmp(serial) == 0 {
-					return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: e.RevocationTime}, nil
-				}
-			}
-			return validate.CertStatus{Issued: true}, nil
+		if t, listed := validate.CRLListed(crl, cert); listed {
+			markRevoked(t)
+		} else {
+			good = good || validate.FreshAt(crl.ThisUpdate, crl.NextUpdate, at, now)
 		}
 	}
+	switch {
+	case revoked != nil:
+		return validate.CertStatus{Issued: true, Revoked: true, RevokedAt: *revoked}, nil
+	case good:
+		return validate.CertStatus{Issued: true}, nil
+	}
 	return validate.CertStatus{}, nil
+}
+
+// ocspFor — der нь cert-ийн (CertID = issuer + serial) хариу, олгогч эсвэл түүний OCSPSigning responder зурсан.
+func ocspFor(der []byte, cert, issuer *x509.Certificate) (*ocsp.Response, bool) {
+	resp, err := parseOCSPFrom(der, cert, issuer)
+	if err != nil || resp.SerialNumber == nil || resp.SerialNumber.Cmp(cert.SerialNumber) != 0 ||
+		!validate.OCSPCertIDMatches(der, cert, issuer) || !responderOK(resp, issuer) {
+		return nil, false
+	}
+	return resp, true
 }
 
 // responderOK — OCSP хариуг олгогч өөрөө, эсвэл олгогчийн гаргасан id-kp-OCSPSigning EKU-тэй responder зурсан.

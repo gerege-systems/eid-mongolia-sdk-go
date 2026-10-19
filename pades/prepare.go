@@ -113,6 +113,9 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if !bytes.HasPrefix(doc, []byte("%PDF-")) {
 		return nil, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", nil)
 	}
+	if err := validate.CheckStructure(doc); err != nil {
+		return nil, newErr(CodePDFInvalid, "PDF-ийн бүтэц хэт гүн эсвэл төвөгтэй", err)
+	}
 	cert, err := x509.ParseCertificate(o.SignerCert)
 	if err != nil {
 		return nil, newErr(CodeSignerInvalid, "signerCert задарсангүй", err)
