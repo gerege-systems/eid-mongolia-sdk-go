@@ -70,7 +70,7 @@ func scanSignatures(doc []byte) (sigs []sigDict, locked, hasDSS bool, err error)
 		return nil, false, false, err
 	}
 	if r.Trailer().Key("Root").Kind() != pdf.Dict {
-		return nil, false, false, errors.New("Catalog алга")
+		return nil, false, false, errors.New("Catalog алга") //lint:ignore ST1005 Catalog = PDF объектын нэр
 	}
 	hasDSS = r.Trailer().Key("Root").Key("DSS").Kind() == pdf.Dict
 	if docMDPP1(r.Trailer().Key("Root").Key("Perms").Key("DocMDP")) {

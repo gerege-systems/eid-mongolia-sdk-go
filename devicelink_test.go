@@ -1,11 +1,15 @@
 package eid
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -54,6 +58,35 @@ func loadGolden(t *testing.T) goldenFile {
 		t.Fatal(err)
 	}
 	return g
+}
+
+// devicelinkGoldenSHA256 — canonical (ca-eidmongolia-mn server/internal/crypto/testdata/devicelink_golden.json)-ийн
+// sha256. CA векторыг шинэчилбэл файлыг ЗАСВАРГҮЙ хуулж, энэ утгыг CA-ийн commit-тай хамт шинэчилнэ.
+const devicelinkGoldenSHA256 = "56eb99061af2059d7604c2eb0b8b5d178dd4b789cbfc5db30b03aca99f26a716"
+
+// TestDeviceLinkGoldenPinned — локал хуулбар гараар засагдаж (эсвэл хагас хуулагдаж) canonical-аас зөрөхийг барина.
+// EID_CA_REPO (CA репогийн локал clone) өгөгдвөл canonical файлтай байт-ижил эсэхийг мөн шалгана — CA вектор
+// шинэчлэгдээд SDK хуулбар хоцорсныг илрүүлнэ (CA репо private тул CI-д алгасна).
+func TestDeviceLinkGoldenPinned(t *testing.T) {
+	b, err := os.ReadFile("testdata/devicelink_golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(b)); got != devicelinkGoldenSHA256 {
+		t.Fatalf("testdata/devicelink_golden.json sha256 %s ≠ pinned %s — CA-ийн canonical-аас засваргүй хуул", got, devicelinkGoldenSHA256)
+	}
+	repo := os.Getenv("EID_CA_REPO")
+	if repo == "" {
+		t.Log("EID_CA_REPO хоосон — canonical-тай шууд харьцуулалт алгасав")
+		return
+	}
+	canon, err := os.ReadFile(filepath.Join(repo, "server", "internal", "crypto", "testdata", "devicelink_golden.json")) // #nosec G304 -- тест
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(b, canon) {
+		t.Fatalf("SDK хуулбар CA canonical-аас зөрөв (canonical sha256 %x)", sha256.Sum256(canon))
+	}
 }
 
 func goldenInput(g goldenFile, name string, extra time.Duration) DeviceLinkInput {

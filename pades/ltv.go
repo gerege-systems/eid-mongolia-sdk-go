@@ -110,7 +110,7 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 			addCert(c)
 			issuer := issuerOf(c)
 			if issuer == nil {
-				return core.DSS{}, fmt.Errorf("%w: %s-ийн олгогч олдсонгүй", errLTV, c.Subject.CommonName)
+				return core.DSS{}, fmt.Errorf("%w: %s-ийн олгогч олдсонгүй", errLTV, certRef(c))
 			}
 			ok := false
 			var freshErr error
@@ -121,7 +121,7 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 			for _, u := range c.OCSPServer {
 				der, resp, err := fetchOCSP(ctx, f, u, c, issuer, now, fresh)
 				if errors.Is(err, ErrCertificateRevoked) {
-					return core.DSS{}, fmt.Errorf("%w: %s", err, c.Subject.CommonName)
+					return core.DSS{}, fmt.Errorf("%w: %s", err, certRef(c))
 				}
 				if errors.Is(err, errNotFresh) {
 					freshErr = err
@@ -143,7 +143,7 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 				}
 				covers, err := crlCovers(der, c, issuer, now)
 				if err != nil {
-					return core.DSS{}, fmt.Errorf("%w: %s", err, c.Subject.CommonName)
+					return core.DSS{}, fmt.Errorf("%w: %s", err, certRef(c))
 				}
 				if covers {
 					add(&d.CRLs, der)
@@ -152,17 +152,25 @@ func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*
 			}
 			if !ok {
 				if freshErr != nil {
-					return core.DSS{}, fmt.Errorf("%w: %s", freshErr, c.Subject.CommonName)
+					return core.DSS{}, fmt.Errorf("%w: %s", freshErr, certRef(c))
 				}
-				return core.DSS{}, fmt.Errorf("%w: %s-д хүчинтэй OCSP/CRL алга", errLTV, c.Subject.CommonName)
+				return core.DSS{}, fmt.Errorf("%w: %s-д хүчинтэй OCSP/CRL алга", errLTV, certRef(c))
 			}
 			if i == 0 && !after.IsZero() && freshErr != nil && len(c.OCSPServer) > 0 && !hasFreshOCSP(d.OCSPs, c, issuer, after) {
 				// Leaf-ийн OCSP нь genTime-ээс хожуу биш — CRL байсан ч CA-ийн дүрмээр дахин оролдоно.
-				return core.DSS{}, fmt.Errorf("%w: %s", freshErr, c.Subject.CommonName)
+				return core.DSS{}, fmt.Errorf("%w: %s", freshErr, certRef(c))
 			}
 		}
 	}
 	return d, nil
+}
+
+// certRef — алдааны текстэд гэрчилгээг нэрээр (CN = иргэний овог нэр, PII) биш serial-аар заана.
+func certRef(c *x509.Certificate) string {
+	if c.SerialNumber == nil {
+		return "serial ?"
+	}
+	return "serial " + c.SerialNumber.Text(16)
 }
 
 func hasFreshOCSP(list [][]byte, c, issuer *x509.Certificate, after time.Time) bool {
@@ -199,7 +207,7 @@ func fetchOCSP(ctx context.Context, f *fetcher, url string, c, issuer *x509.Cert
 		return nil, nil, ErrCertificateRevoked
 	}
 	if resp.Status != ocsp.Good || !validate.FreshAt(resp.ThisUpdate, resp.NextUpdate, now, now) {
-		return nil, nil, fmt.Errorf("OCSP %s: status %d", c.Subject.CommonName, resp.Status)
+		return nil, nil, fmt.Errorf("OCSP %s: status %d", certRef(c), resp.Status)
 	}
 	if !after.IsZero() && !resp.ThisUpdate.After(after) {
 		return nil, nil, errNotFresh

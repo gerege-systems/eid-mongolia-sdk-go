@@ -245,9 +245,9 @@ var OnBehalfErrorCodes = []string{
 }
 
 // identifierInPath — замын хувь хүн/төхөөрөмжийн таних тэмдэг (PNOMN-…, РД, documentNumber).
-var identifierInPath = regexp.MustCompile(`/(etsi|document)/[^/?#\s]+`)
+var identifierInPath = regexp.MustCompile(`/(etsi|document|linked)/[^/?#\s]+`)
 
-// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…} → "…", query хасагдана.
+// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…} → "…", query хасагдана.
 func maskPath(p string) string {
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		p = p[:i]

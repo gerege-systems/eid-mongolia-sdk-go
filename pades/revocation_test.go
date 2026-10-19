@@ -173,12 +173,22 @@ func TestCompleteRevokedIsHardFailure(t *testing.T) {
 			if ErrorCode(err) != CodeLTVUnavailable || !errors.Is(err, ErrCertificateRevoked) {
 				t.Fatalf("%v", err)
 			}
+			noSubjectCN(t, err, cit)
 			for _, d := range sleeps {
 				if d >= time.Second {
 					t.Fatalf("revoked дээр дахин оролдсон: %v", sleeps)
 				}
 			}
 		})
+	}
+}
+
+// noSubjectCN — LTV алдааны текстэд иргэний CN (овог, нэр — PII) орохгүй; serial-аар заана.
+func noSubjectCN(t *testing.T, err error, cit *x509.Certificate) {
+	t.Helper()
+	msg := err.Error()
+	if cit.Subject.CommonName == "" || strings.Contains(msg, cit.Subject.CommonName) || !strings.Contains(msg, cit.SerialNumber.Text(16)) {
+		t.Fatalf("алдаанд CN эсвэл serial-гүй: %q", msg)
 	}
 }
 
@@ -206,6 +216,7 @@ func TestCollectLTVRejectsForeignEvidence(t *testing.T) {
 			if ErrorCode(err) != CodeLTVUnavailable || errors.Is(err, ErrCertificateRevoked) {
 				t.Fatalf("%v", err)
 			}
+			noSubjectCN(t, err, cit)
 		})
 	}
 }

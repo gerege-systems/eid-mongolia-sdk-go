@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,7 +54,7 @@ func TestMetricsJSON(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(bytes.TrimSpace(want), got) {
-			t.Fatal(fmt.Sprintf("%s зөрөв (-update)", path))
+			t.Fatalf("%s зөрөв (-update)", path)
 		}
 	}
 }

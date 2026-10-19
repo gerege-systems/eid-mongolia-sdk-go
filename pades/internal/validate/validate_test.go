@@ -146,7 +146,7 @@ func tsaServer(t *testing.T, tsa *testCA, parents ...*x509.Certificate) string {
 			AddTSACertificate: true,
 			Certificates:      parents,
 		}
-		resp, err := ts.CreateResponse(tsa.cert, tsa.key)
+		resp, err := ts.CreateResponseWithOpts(tsa.cert, tsa.key, crypto.SHA256)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

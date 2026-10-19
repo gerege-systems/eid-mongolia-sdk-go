@@ -140,11 +140,23 @@ func ResolveBaseURL(baseURL string) (string, error) {
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return "", fmt.Errorf("eid: BaseURL буруу URL: %s", raw)
 	}
+	if u.Scheme == "http" && !isLoopback(u.Hostname()) {
+		return "", fmt.Errorf("eid: BaseURL https байх ёстой (http зөвхөн localhost/loopback): %s", raw)
+	}
 	if legacyHosts[u.Hostname()] && u.Path == "" {
 		return "", fmt.Errorf("eid: RP-API %s-аас %s руу шилжсэн (/v3-гүй) — BaseURL-ийг %s болгоно уу (эсвэл хоосон орхи)",
 			u.Hostname(), DefaultBaseURL, DefaultBaseURL)
 	}
 	return raw, nil
+}
+
+// isLoopback — localhost эсвэл loopback IP (127.0.0.0/8, ::1): API secret сүлжээгээр нээлттэй явахгүй.
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // httpDoer — RP-API HTTP давхарга: Bearer secret, timeout, HTTP статусыг төрөлжсөн алдаа руу буулгана.
