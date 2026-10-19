@@ -68,6 +68,15 @@ type TokenCertStart struct {
 	CSRAuthSHA256 string
 	CSRSignSHA256 string
 	ExpiresAt     string
+	// Supersedes — хувийн олголтод, иргэний хувийн токены хязгаар хүрсэн үед: олголт амжилттай болоход AUTH + SIGN нь
+	// superseded (4)-оор автоматаар цуцлагдах өөр serial-тай хувийн токенууд (CA 2026-10-19). Бусад үед nil. Эхлэлийн
+	// мөчийнх — PIN2-оос өмнө иргэнд анхааруул («Таны өмнөх USB токен (…)-ийн гэрчилгээ хүчингүй болно»).
+	Supersedes []TokenSupersede
+}
+
+// TokenSupersede — TokenCertStart.Supersedes-ийн нэг мөр.
+type TokenSupersede struct {
+	TokenSerial string `json:"tokenSerial"`
 }
 
 // TokenCertItem — олгосон нэг гэрчилгээ.
@@ -171,11 +180,12 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 		AppTransaction:   strings.TrimSpace(in.AppTransaction),
 	}
 	var r struct {
-		SessionID     string  `json:"sessionID"`
-		VC            vcValue `json:"vc"`
-		CSRAuthSHA256 string  `json:"csrAuthSha256"`
-		CSRSignSHA256 string  `json:"csrSignSha256"`
-		ExpiresAt     string  `json:"expiresAt"`
+		SessionID     string           `json:"sessionID"`
+		VC            vcValue          `json:"vc"`
+		CSRAuthSHA256 string           `json:"csrAuthSha256"`
+		CSRSignSHA256 string           `json:"csrSignSha256"`
+		ExpiresAt     string           `json:"expiresAt"`
+		Supersedes    []TokenSupersede `json:"supersedes"`
 	}
 	if err := t.h.postJSON(ctx, routeTokenCertificate.expand(), req, &r); err != nil {
 		return nil, err
@@ -186,6 +196,7 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 	return &TokenCertStart{
 		SessionID: r.SessionID, VC: string(r.VC),
 		CSRAuthSHA256: strings.ToLower(r.CSRAuthSHA256), CSRSignSHA256: strings.ToLower(r.CSRSignSHA256), ExpiresAt: r.ExpiresAt,
+		Supersedes: r.Supersedes,
 	}, nil
 }
 
@@ -356,7 +367,8 @@ const (
 
 // Токены олголтын 409 (ба 400 CodeAppAttestationInvalid) кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
 const (
-	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
+	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй). PERSONAL нь CA 2026-10-19-өөс
+	// зөвхөн Limit 0 (хувийн олголт хаалттай) үед — хязгаар хүрсэн хувийн олголт TokenCertStart.Supersedes-тэй 200.
 	CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
 	// CodeTokenInUse — TokenSerial өөр иргэнд хүчинтэй гэрчилгээтэй бүртгэлтэй.
 	CodeTokenInUse = "TOKEN_IN_USE"
@@ -386,8 +398,12 @@ type TokenCertInfo struct {
 	// 409 CodeTokenScopeChange. Хуучин CA-д талбар алга → false.
 	ScopeLockedOnRenewal bool `json:"scopeLockedOnRenewal"`
 	// AppTransaction — "optional": TokenCertInput.AppTransaction-ийг CA хүлээн авна. Хуучин CA-д "" (талбар илгээвэл 400).
-	AppTransaction string          `json:"appTransaction"`
-	Raw            json.RawMessage `json:"-"`
+	AppTransaction string `json:"appTransaction"`
+	// PersonalAutoSupersede — true: хувийн хязгаар хүрсэн үед өөр serial-тай шинэ хувийн токен 409 биш —
+	// TokenCertStart.Supersedes ирж, олголт амжилттай болоход өмнөх хувийн токен солигдоно; 409 TOKEN_LIMIT_REACHED
+	// kind=PERSONAL зөвхөн limit=0 (хувийн олголт хаалттай) үед. Хуучин CA-д false.
+	PersonalAutoSupersede bool            `json:"personalAutoSupersede"`
+	Raw                   json.RawMessage `json:"-"`
 }
 
 // CertificateInfo — discovery-ийн tokenCertificate блок. Блок байхгүй (хуучин CA) бол Enabled false.

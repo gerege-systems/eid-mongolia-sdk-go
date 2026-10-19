@@ -470,6 +470,7 @@ st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CS
 // … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
 err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+// st.Supersedes — хувийн олголтод солигдох өмнөх хувийн токенууд (доор); PIN2-оос өмнө иргэнд анхааруул
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
 // 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
 // 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
@@ -492,6 +493,13 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 `TokenCertificate.ErrorCode` мөн ийм — override байхгүй. Scope солих = иргэн eID апп-аас токеноо цуцлаад
 (`/v3/mobile/tokens/{tokenSerial}/revoke`) шинээр олгуулна; хэрэглэгчид: «Токены төрлийг (хувийн/байгууллага)
 солихын тулд eID апп-аас токеныг цуцлаад шинээр олгуулна уу».
+
+**Хувийн токены автомат солилт** (CA 2026-10-19, discovery `tokenCertificate.personalAutoSupersede: true`): хувийн
+хязгаар хүрсэн үед өөр `TokenSerial`-тай шинэ хувийн токен 409 биш — `st.Supersedes` (`[]eid.TokenSupersede{TokenSerial}`)
+ирнэ; хувийн токенд шинэ олголт амжилттай болбол (PIN2 + гэрчилгээ) өмнөх хувийн токены AUTH + SIGN superseded (4)-оор
+цуцлагдана. Татгалзсан / хугацаа дууссан олголт өмнөхийг хөндөхгүй. PIN2-оос өмнө: «Таны өмнөх USB токен (EP2003-…)-ийн
+гэрчилгээ хүчингүй болно». 409 `TOKEN_LIMIT_REACHED` `kind=PERSONAL` зөвхөн `limit=0` (хувийн олголт хаалттай) үед;
+байгууллагын токен (`ORGANIZATION`) хатуу хязгаар хэвээр.
 
 **Апп баталгаа (`AppTransaction`, заавал биш)** (CA 2026-10-19, discovery `tokenCertificate.appTransaction:
 "optional"`): macOS App Store build нь StoreKit 2 `AppTransaction`-ийн JWS (compact) мөрийг desktop-оос дамжуулна —
