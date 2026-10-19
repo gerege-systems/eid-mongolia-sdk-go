@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.10.0 — 2026-10-19
+
+### Changed — `eidlogin`: хугацаа CA-ийн session-оос урт байхгүй; `Auth.SessionTTL` (discovery `sessionTtl`)
+
+- **Юу:** `c.Auth.SessionTTL(ctx)` — discovery `/.well-known/eid`-ийн `sessionTtl` (`Auth`, `Sign`; хуучин CA-д 0).
+  `eidlogin`: start-ийн `expiresIn`, cookie `Max-Age`, store-ийн хугацаа = QR/Web2App-д min(`Config.TTL`, CA-ийн
+  `expiresAt` − одоо); push-д (бодит ба decoy ижил) min(`Config.TTL`, discovery `sessionTtl.auth`, 10 мин кэш). Хуучин
+  CA-д бодит push-ийн `expiresAt`-аас ажигласан утгыг decoy авна. `Config.TTL`-ийн анхдагч (2 мин) хэвээр.
+- **Яагаад:** RP `TTL`-ийг CA-ийнхаас урт тохируулбал иргэн CA дууссан session-ийг хүлээж үлддэг; decoy-д CA хариу
+  байхгүй тул CA-ийн `expiresAt`-аар таслах нь бодит/decoy push-ийн хугацааг ялгаж (бүртгэлтэй эсэхийн oracle) болох байв.
+- **Хаана:** `auth.go` (`SessionTTL`), `eidlogin/eidlogin.go` (`authTTL`, `observeAuthTTL`, `begin`/`save`/`startDecoy`),
+  README (eidlogin §хугацаа, `ExpiresAt`), `portal_gaps_test.go` (`TestAuthSessionTTL`), `eidlogin/security_test.go`
+  (`TestPushTTLFromDiscovery`, `TestPushTTLObservedWithoutDiscovery`, `TestQRTTLCappedByCAExpiresAt`).
+- **Шалгасан:** `gofmt`, `go vet`, `go test ./...` (eidlogin 3 удаа), `GOOS=linux go build`.
+- **Үлдсэн:** CA discovery-д `sessionTtl` (CA MR) deploy болтол push нь ажигласан утгаар (±1 с) ажиллана.
+### Added — `TokenCertInput.AppTransaction`, `CodeAppAttestationInvalid`
+
+- **Юу:** `POST /token/certificate`-д заавал биш `appTransaction` (StoreKit 2 AppTransaction JWS, ≤ 16 KiB;
+  `json:"appTransaction,omitempty"`). `MaxAppTransactionBytes`-аас их бол илгээхгүй — `ErrAppTransactionTooLarge`.
+  400 `CodeAppAttestationInvalid` (`APP_ATTESTATION_INVALID`) тогтмол. Discovery `TokenCertInfo.AppTransaction`
+  (`"optional"`; хуучин CA-д `""`).
+- **Яагаад:** CA (MR !390) macOS App Store build-ийн апп баталгааг токены олголтод нэмсэн; SDK-ийн хүсэлтийн бүтэц
+  талбаргүй байсан тул портал дамжуулж чадахгүй байв.
+- **Хаана:** `token.go`, README §3.7, `portal_gaps_test.go` (`TestTokenCertificateAppTransaction`,
+  `TestTokenCertificateInfo`), `contract_test.go` (`TestContractTokenCertificate` — `appTransaction: "optional"`).
+- **Шалгасан:** `gofmt`, `go vet`, `go test ./...`, `go test -tags contract -run ContractTokenCertificate` (live
+  discovery), `GOOS=linux go build`.
+### Added — `Token.PreviewCertificate` (dryRun), `TokenCertInfo.DryRun`
+
+- **Юу:** `c.Token.PreviewCertificate(ctx, in)` — `POST /token/certificate` ижил бие + `"dryRun": true` →
+  `*TokenCertPreview{Supersedes}`; алдаа `IssueCertificate`-тэй ижил (`*APIError`, `TokenLimitOf` …); хариунд
+  `dryRun: true` алга бол `*ValidationError`. Оролтын шалгалт/бие угсралт нэг `certRequest`-д. Discovery `TokenCertInfo.DryRun`.
+- **Яагаад:** `Supersedes` бодит эхлэлийн хариунд ирэх үед PIN2 push явсан байдаг; RP push-ээс өмнө иргэнд анхааруулах
+  хэрэгтэй (CA MR feat/token-cert-dryrun).
+- **Хаана:** `token.go`, README §3.7, `portal_gaps_test.go` (`TestTokenCertificatePreview`), `contract_test.go`
+  (live discovery-д `tokenCertificate.dryRun: true` — CA d3e071f7 прод).
+- **Шалгасан:** `gofmt`, `go vet`, `go test ./...`, contract тест live discovery-д.
+### Added — `TokenCertStart.Supersedes`, `TokenCertInfo.PersonalAutoSupersede`
+
+- **Юу:** `IssueCertificate`-ийн хариунд `Supersedes []TokenSupersede{TokenSerial}` — хувийн хязгаар хүрсэн үед олголт
+  амжилттай болоход superseded (4)-оор цуцлагдах өмнөх хувийн токенууд (бусад үед nil). Discovery
+  `TokenCertInfo.PersonalAutoSupersede` (хуучин CA-д false). 409 `TOKEN_LIMIT_REACHED` `kind=PERSONAL` одоо зөвхөн `limit=0`.
+- **Яагаад:** CA !392 (прод b09b755e) хувийн токены автомат солилт; RP PIN2-оос өмнө иргэнд анхааруулах ёстой.
+- **Хаана:** `token.go`, README §3.7, `portal_gaps_test.go`, `contract_test.go` (`personalAutoSupersede: true`).
+- **Шалгасан:** `gofmt`, `go vet`, `go test ./...`, contract тест live discovery-д.
+
 ## v0.9.0 — 2026-10-19
 
 ### Added — `PersonCertificate.TokenSerial`
