@@ -47,7 +47,17 @@ type TokenCertInput struct {
 	TokenLabel string
 	// OnBehalfOf — байгууллагын токен (NTRMN-…); "" = хувийн токен.
 	OnBehalfOf string
+	// AppTransaction — заавал биш: macOS App Store build-ийн StoreKit 2 AppTransaction JWS (compact, ≤ 16 KiB;
+	// MaxAppTransactionBytes). "" бол илгээхгүй (Windows — баталгаагүй олголт). Ирсэн бол CA offline шалгана; хүчингүй бол
+	// 400 CodeAppAttestationInvalid, утас руу push явахгүй (CA docs/TOKEN_CERT.md §App Store баталгаа).
+	AppTransaction string
 }
+
+// MaxAppTransactionBytes — TokenCertInput.AppTransaction-ийн дээд хэмжээ (CA-ийн хязгаар, 16 KiB).
+const MaxAppTransactionBytes = 16 << 10
+
+// ErrAppTransactionTooLarge — TokenCertInput.AppTransaction > MaxAppTransactionBytes: SDK CA руу илгээхгүй.
+var ErrAppTransactionTooLarge = errors.New("eid: token: AppTransaction 16 KiB-аас их")
 
 // TokenCertStart — олголтын эхлэлийн хариу: утсанд очсон SIGN session.
 type TokenCertStart struct {
@@ -128,6 +138,7 @@ type tokenCertRequest struct {
 	TokenLabel       string            `json:"tokenLabel,omitempty"`
 	OnBehalfOf       string            `json:"onBehalfOf"`
 	Flow             string            `json:"flow"`
+	AppTransaction   string            `json:"appTransaction,omitempty"`
 }
 
 // IssueCertificate — POST /token/certificate: токены AUTH + SIGN гэрчилгээ олголт эхлүүлнэ (иргэн утсаараа батална).
@@ -136,10 +147,15 @@ type tokenCertRequest struct {
 // Сунгалт: ижил TokenSerial дээр энэ иргэний ACTIVE бүртгэл байвал олголт = сунгалт, scope-ийг хадгална — байгууллагын
 // токен зөвхөн тэр байгууллагаар (OnBehalfOf ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол 409
 // CodeTokenScopeChange (override үгүй); scope солих = иргэн eID апп-аас токеноо цуцлаад шинээр олгуулна. Бусад 409:
-// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending.
+// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending. 400 CodeAppAttestationInvalid —
+// AppTransaction ирсэн боловч хүчингүй (аль алхам унасныг CA хэлэхгүй); AppTransaction > 16 KiB бол
+// ErrAppTransactionTooLarge (илгээхгүй).
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
 	if strings.TrimSpace(in.SignerEtsi) == "" || len(in.CSRAuth) == 0 || len(in.CSRSign) == 0 || strings.TrimSpace(in.TokenSerial) == "" {
 		return nil, errors.New("eid: token: SignerEtsi, CSRAuth, CSRSign, TokenSerial шаардлагатай")
+	}
+	if len(in.AppTransaction) > MaxAppTransactionBytes {
+		return nil, ErrAppTransactionTooLarge
 	}
 	// CA DisallowUnknownFields — яг эдгээр талбар.
 	req := tokenCertRequest{
@@ -152,6 +168,7 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 		TokenLabel:       in.TokenLabel,
 		OnBehalfOf:       strings.TrimSpace(in.OnBehalfOf),
 		Flow:             "notification",
+		AppTransaction:   strings.TrimSpace(in.AppTransaction),
 	}
 	var r struct {
 		SessionID     string  `json:"sessionID"`
@@ -337,7 +354,7 @@ const (
 	TokenKindOrganization = "ORGANIZATION"
 )
 
-// Токены олголтын 409 кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
+// Токены олголтын 409 (ба 400 CodeAppAttestationInvalid) кодууд (*APIError.Code; session-ий TokenCertificate.ErrorCode-д ч ирнэ).
 const (
 	// CodeTokenLimitReached — иргэний токены хязгаар хүрсэн (TokenLimitOf-оор дэлгэрэнгүй).
 	CodeTokenLimitReached = "TOKEN_LIMIT_REACHED"
@@ -348,6 +365,9 @@ const (
 	CodeTokenScopeChange = "TOKEN_SCOPE_CHANGE"
 	// CodeAccountDeletePending — иргэн «Бүртгэл устгах» хүсэлт (PENDING) өгсөн: токен олгохгүй (CA !377).
 	CodeAccountDeletePending = "ACCOUNT_DELETE_PENDING"
+	// CodeAppAttestationInvalid — 400: TokenCertInput.AppTransaction ирсэн боловч хүчингүй (гинж Apple Root CA - G3 биш,
+	// гарын үсэг, bundleId, орчин Xcode, signedDate > 30 хоног …). Утас руу push явахгүй.
+	CodeAppAttestationInvalid = "APP_ATTESTATION_INVALID"
 )
 
 // TokenCertInfo — discovery (/.well-known/eid)-ийн tokenCertificate блок.
@@ -364,8 +384,10 @@ type TokenCertInfo struct {
 	OnBehalfOf string `json:"onBehalfOf"`
 	// ScopeLockedOnRenewal — true: сунгалт (ижил TokenSerial дээр ACTIVE бүртгэлтэй) scope-ийг хадгална; өөр scope бол
 	// 409 CodeTokenScopeChange. Хуучин CA-д талбар алга → false.
-	ScopeLockedOnRenewal bool            `json:"scopeLockedOnRenewal"`
-	Raw                  json.RawMessage `json:"-"`
+	ScopeLockedOnRenewal bool `json:"scopeLockedOnRenewal"`
+	// AppTransaction — "optional": TokenCertInput.AppTransaction-ийг CA хүлээн авна. Хуучин CA-д "" (талбар илгээвэл 400).
+	AppTransaction string          `json:"appTransaction"`
+	Raw            json.RawMessage `json:"-"`
 }
 
 // CertificateInfo — discovery-ийн tokenCertificate блок. Блок байхгүй (хуучин CA) бол Enabled false.

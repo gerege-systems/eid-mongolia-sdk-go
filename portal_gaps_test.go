@@ -321,18 +321,61 @@ func TestTokenCertificate(t *testing.T) {
 func TestTokenCertificateInfo(t *testing.T) {
 	c, rc := server(t, jsonReply(200, `{"version":"v3","tokenCertificate":{"certificateLevel":"ADVANCED","enabled":true,
 		"issue":"https://rp.eidmongolia.mn/token/certificate","keyAlgorithm":"EC P-256 (ecdsa-with-SHA256)","onBehalfOf":"optional",
-		"permission":"TOKEN_ISSUE","result":"https://rp.eidmongolia.mn/token/certificate/{sessionID}","scopeLockedOnRenewal":true}}`))
+		"permission":"TOKEN_ISSUE","result":"https://rp.eidmongolia.mn/token/certificate/{sessionID}","scopeLockedOnRenewal":true,"appTransaction":"optional"}}`))
 	i, err := c.Token.CertificateInfo(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" || !i.Enabled || !i.ScopeLockedOnRenewal || i.Permission != "TOKEN_ISSUE" || i.OnBehalfOf != "optional" || len(i.Raw) == 0 {
+	if r, _ := rc.last(); r.URL.Path != "/.well-known/eid" || !i.Enabled || !i.ScopeLockedOnRenewal || i.Permission != "TOKEN_ISSUE" || i.OnBehalfOf != "optional" || i.AppTransaction != "optional" || len(i.Raw) == 0 {
 		t.Fatalf("%+v", i)
 	}
 	old, _ := server(t, jsonReply(200, `{"version":"v3"}`))
 	i, err = old.Token.CertificateInfo(context.Background())
-	if err != nil || i.Enabled || i.ScopeLockedOnRenewal {
+	if err != nil || i.Enabled || i.ScopeLockedOnRenewal || i.AppTransaction != "" {
 		t.Fatalf("%+v %v", i, err)
+	}
+}
+
+// TestTokenCertificateAppTransaction — appTransaction (CA !390): өгсөн бол илгээнэ, > 16 KiB бол илгээхгүй,
+// 400 APP_ATTESTATION_INVALID → *APIError.Code.
+func TestTokenCertificateAppTransaction(t *testing.T) {
+	ctx := context.Background()
+	csrA, _ := tokenKeys(t, "PNOMN-12345678")
+	csrS, _ := tokenKeys(t, "PNOMN-12345678")
+	hx := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	in := TokenCertInput{SignerEtsi: "PNOMN-12345678", CSRAuth: csrA, CSRSign: csrS, TokenSerial: "EP2003-0042A1",
+		AppTransaction: "eyJhbGciOiJFUzI1NiJ9.e30.sig"}
+	c, rc := server(t, jsonReply(200, `{"sessionID":"ts1","vc":{"type":"alphaNumeric5","value":"04817"},
+		"csrAuthSha256":"`+hx(csrA)+`","csrSignSha256":"`+hx(csrS)+`"}`))
+	if _, err := c.Token.IssueCertificate(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	_, body := rc.last()
+	var got map[string]any
+	_ = json.Unmarshal(body, &got)
+	if got["appTransaction"] != in.AppTransaction {
+		t.Fatalf("%s", body)
+	}
+
+	in.AppTransaction = strings.Repeat("a", MaxAppTransactionBytes)
+	if _, err := c.Token.IssueCertificate(ctx, in); err != nil {
+		t.Fatal("16 KiB яг зөвшөөрөгдөнө:", err)
+	}
+	n := len(rc.reqs)
+	in.AppTransaction += "a"
+	if _, err := c.Token.IssueCertificate(ctx, in); !errors.Is(err, ErrAppTransactionTooLarge) {
+		t.Fatal(err)
+	}
+	if len(rc.reqs) != n {
+		t.Fatal("хэт том appTransaction CA руу илгээгдсэн")
+	}
+
+	c, _ = server(t, jsonReply(400, `{"error":"апп баталгаа хүчингүй","code":"APP_ATTESTATION_INVALID"}`))
+	in.AppTransaction = "x.y.z"
+	_, err := c.Token.IssueCertificate(ctx, in)
+	var api *APIError
+	if !errors.As(err, &api) || api.Status != 400 || api.Code != CodeAppAttestationInvalid || api.Retryable() {
+		t.Fatal(err)
 	}
 }
 

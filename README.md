@@ -472,6 +472,7 @@ res, err := c.Token.CertificateResult(ctx, st.SessionID)
 err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
 // 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
+// 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
 
 // токеноор нэвтрэх (AUTH эрх)
 ch, err := c.Token.AuthChallenge(ctx)
@@ -491,6 +492,13 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 `TokenCertificate.ErrorCode` мөн ийм — override байхгүй. Scope солих = иргэн eID апп-аас токеноо цуцлаад
 (`/v3/mobile/tokens/{tokenSerial}/revoke`) шинээр олгуулна; хэрэглэгчид: «Токены төрлийг (хувийн/байгууллага)
 солихын тулд eID апп-аас токеныг цуцлаад шинээр олгуулна уу».
+
+**Апп баталгаа (`AppTransaction`, заавал биш)** (CA 2026-10-19, discovery `tokenCertificate.appTransaction:
+"optional"`): macOS App Store build нь StoreKit 2 `AppTransaction`-ийн JWS (compact) мөрийг desktop-оос дамжуулна —
+`eid.TokenCertInput{…, AppTransaction: jws}`. CA Apple-ийн сервер рүү дуудахгүй, offline шалгана; ирсэн бол заавал
+хүчинтэй, эс бөгөөс 400 `eid.CodeAppAttestationInvalid` (`APP_ATTESTATION_INVALID`, аль алхам унасныг хэлэхгүй, утас
+руу push явахгүй). `""` (Windows) = баталгаагүй олголт. `eid.MaxAppTransactionBytes` (16 KiB)-аас их бол SDK илгээхгүй,
+`eid.ErrAppTransactionTooLarge` буцаана. Хуучин CA-д (`CertificateInfo().AppTransaction == ""`) талбар илгээвэл 400.
 
 `/token/auth/*` нь `/.well-known/eid`-ийн `endpoints.token.auth_challenge` / `auth_verify`-д жагсаагдсан (AUTH эрх) —
 гэрээний тест бусад route-ийн адил шалгана.
