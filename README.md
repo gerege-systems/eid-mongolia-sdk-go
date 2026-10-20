@@ -226,7 +226,7 @@ c, err := eid.NewClient(eid.Config{
 	// BaseURL анхдагч https://rp.eidmongolia.mn (RP-API, /v3-гүй) — mTLS-тэй RP ч мөн энэ хост
 	Credentials: eid.Credentials{
 		RPUUID:    os.Getenv("EID_RP_UUID"),
-		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 байт UTF-8 (кирилл ≈ 60 үсэг; CA илүүг таслана)
+		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 тэмдэгт (CA илүүг тэмдэгтээр таслана)
 		APISecret: os.Getenv("EID_SECRET"),
 	},
 	Trust: eid.TrustConfig{
