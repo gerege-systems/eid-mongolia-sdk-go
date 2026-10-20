@@ -21,13 +21,13 @@ import (
 
 // TokenService — иргэний USB токен (PKCS#11, EC P-256):
 //
-//   - гэрчилгээ олголт (CA docs/TOKEN_CERT.md, RP-д TOKEN_ISSUE + SIGN эрх): IssueCertificate → иргэн утсаараа PIN2-оор
+//   - гэрчилгээ олголт (CA docs/TOKEN_CERT.md, RP-д TOKEN_ISSUE эрх): IssueCertificate → иргэн утсаараа PIN2-оор
 //     батална → Session.Poll (TokenCertificate.Status = ISSUED) → CertificateResult → VerifyTokenCertificates;
 //   - токеноор нэвтрэлт (docs/TOKEN_AUTH.md, AUTH эрх): AuthChallenge → токен TokenAuthDigest-ийг CKM_ECDSA-аар зурна
 //     (түүхий r||s) → AuthVerify.
 //
 // Алдаа: {"error","code"} — *APIError.Code (ж: TOKEN_LIMIT_REACHED → TokenLimitOf, TOKEN_IN_USE, TOKEN_SCOPE_CHANGE,
-// CHALLENGE_EXPIRED, CERT_INVALID);
+// CHALLENGE_EXPIRED, CERT_INVALID; бүгд — TokenErrorCodes);
 // түр алдаа (RATE_LIMITED, STATE_UNAVAILABLE, ISSUANCE_PENDING) — APIError.Retryable + RetryAfter.
 type TokenService struct {
 	h     *httpDoer
@@ -417,7 +417,63 @@ const (
 	// CodeAppAttestationInvalid — 400: TokenCertInput.AppTransaction ирсэн боловч хүчингүй (гинж Apple Root CA - G3 биш,
 	// гарын үсэг, bundleId, орчин Xcode, signedDate > 30 хоног …). Утас руу push явахгүй.
 	CodeAppAttestationInvalid = "APP_ATTESTATION_INVALID"
+	// CodeTokenIssuancePending — 409: энэ иргэнд өөр CSR-тэй олголт хүлээгдэж байна (утсаар батлах эсвэл хугацаа дуусахыг
+	// хүлээнэ). DryRun-д ч ижил.
+	CodeTokenIssuancePending = "TOKEN_ISSUANCE_PENDING"
+	// CodeKYCIncomplete — 409: иргэний латин нэр бүртгэлгүй (гэрчилгээний subject үүсэхгүй); session-ий ErrorCode-д ч.
+	CodeKYCIncomplete = "KYC_INCOMPLETE"
+	// CodeNoActiveDevice — 409: иргэнд идэвхтэй eID утас (хүчинтэй гарын үсгийн гэрчилгээ) алга — батлах push очихгүй.
+	CodeNoActiveDevice = "NO_ACTIVE_DEVICE"
+	// CodeCSRKeyReused — 409: CSR-ийн түлхүүрт гэрчилгээ аль хэдийн олгогдсон — токенд шинэ түлхүүр үүсгэнэ.
+	CodeCSRKeyReused = "CSR_KEY_REUSED"
+	// CodeCSRInvalid — 400: CSR base64 PKCS#10 DER биш / > 4 KiB / задрахгүй; session-ий ErrorCode-д ч.
+	CodeCSRInvalid = "CSR_INVALID"
+	// CodeCSRKeyUnsupported — 400: зөвхөн EC P-256, ecdsa-with-SHA256.
+	CodeCSRKeyUnsupported = "CSR_KEY_UNSUPPORTED"
+	// CodeCSRSignatureInvalid — 400: CSR-ийн гарын үсэг (proof-of-possession) буруу.
+	CodeCSRSignatureInvalid = "CSR_SIGNATURE_INVALID"
+	// CodeCSRKeysIdentical — 400: CSRAuth ба CSRSign ижил түлхүүртэй.
+	CodeCSRKeysIdentical = "CSR_KEYS_IDENTICAL"
+	// CodeIssuanceFailed — session-ий ErrorCode ба CertificateResult-ийн 409: гэрчилгээ олгогдсонгүй.
+	CodeIssuanceFailed = "ISSUANCE_FAILED"
+	// CodeResultExpired — CertificateResult-ийн 410: олголтын үр дүнгийн хугацаа (24 ц) дууссан — шинээр эхлүүлнэ.
+	CodeResultExpired = "RESULT_EXPIRED"
+	// Session-ий TokenCertificate.ErrorCode-д л ирэх (FAILED) кодууд: батлах гарын үсэг session/CSR-тэй таарсангүй, иргэний
+	// гарын үсгийн гэрчилгээ солигдсон, CA-ийн дотоод алдаа, бүртгэлийн давхардал (зэрэг олголт).
+	CodeCSRDigestMismatch = "CSR_DIGEST_MISMATCH"
+	CodeSignerCertChanged = "SIGNER_CERT_CHANGED"
+	CodeIssuanceError     = "ISSUANCE_ERROR"
+	CodeRegistryFailed    = "REGISTRY_FAILED"
 )
+
+// Токеноор нэвтрэлтийн (AuthChallenge / AuthVerify) кодууд (*APIError.Code / *ForbiddenError.Code).
+const (
+	// CodeRPRequired — 403: токеноор нэвтрэлт зөвхөн бүртгэлтэй (стандарт UUID-тай) RP-д.
+	CodeRPRequired = "RP_REQUIRED"
+	// CodeChallengeExpired — 410: challenge олдсонгүй эсвэл хугацаа дууссан — AuthChallenge-ээс дахин.
+	CodeChallengeExpired = "CHALLENGE_EXPIRED"
+	// CodeChallengeUsed — 409: challenge аль хэдийн ашиглагдсан.
+	CodeChallengeUsed = "CHALLENGE_USED"
+	// CodeCertInvalid — 400: гэрчилгээ буруу (eID Personal CA-ийн токены AUTH, EC P-256, бүртгэлтэй биш).
+	CodeCertInvalid = "CERT_INVALID"
+	// CodeCertNotActive — 409: гэрчилгээ идэвхгүй, цуцлагдсан эсвэл хугацаа дууссан.
+	CodeCertNotActive = "CERT_NOT_ACTIVE"
+)
+
+// TokenErrorCodes — токены олголт / үр дүн / нэвтрэлтийн CA-ийн бүх тогтвортой кодууд (runtime шалгалтад; CA
+// tokencert.go, token_auth.go). Хуваалцсан кодууд (REQUEST_INVALID, SIGNATURE_INVALID, SESSION_*, REPRESENTATION_*,
+// RATE_LIMITED, STATE_UNAVAILABLE, ISSUANCE_PENDING) энд ч орно.
+var TokenErrorCodes = []string{
+	CodeTokenLimitReached, CodeTokenInUse, CodeTokenScopeChange, CodeAccountDeletePending, CodeAppAttestationInvalid,
+	CodeTokenIssuancePending, CodeKYCIncomplete, CodeNoActiveDevice, CodeCSRKeyReused, CodeCSRInvalid,
+	CodeCSRKeyUnsupported, CodeCSRSignatureInvalid, CodeCSRKeysIdentical, CodeIssuanceFailed, CodeResultExpired,
+	CodeCSRDigestMismatch, CodeSignerCertChanged, CodeIssuanceError, CodeRegistryFailed,
+	CodeRPRequired, CodeChallengeExpired, CodeChallengeUsed, CodeCertInvalid, CodeCertNotActive,
+	CodeRequestInvalid, CodeSignatureInvalid, CodeSessionMismatch, CodeSessionNotComplete, CodeSessionFailed,
+	CodeRepresentationRevoked, CodeRepresentationDenied, CodeRepresentationPending, CodeRepresentationExpired,
+	CodeOrgNotActive, CodeOrgNotFound, CodeSignerUnidentified,
+	CodeRateLimited, CodeStateUnavailable, CodeIssuancePending,
+}
 
 // TokenCertInfo — discovery (/.well-known/eid)-ийн tokenCertificate блок.
 type TokenCertInfo struct {

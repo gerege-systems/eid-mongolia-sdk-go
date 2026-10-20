@@ -193,13 +193,17 @@ type SessionTTL struct {
 
 // SessionTTL — discovery-ийн sessionTtl ({"auth": сек, "sign": сек}). Талбар алга бол тэг утгатай SessionTTL.
 func (a *AuthService) SessionTTL(ctx context.Context) (*SessionTTL, error) {
+	return fetchSessionTTL(ctx, a.h)
+}
+
+func fetchSessionTTL(ctx context.Context, h *httpDoer) (*SessionTTL, error) {
 	var d struct {
 		SessionTTL *struct {
 			Auth int64 `json:"auth"`
 			Sign int64 `json:"sign"`
 		} `json:"sessionTtl"`
 	}
-	if err := a.h.getJSON(ctx, discoveryPath, 0, &d); err != nil {
+	if err := h.getJSON(ctx, discoveryPath, 0, &d); err != nil {
 		return nil, err
 	}
 	out := &SessionTTL{}

@@ -10,8 +10,12 @@ import (
 const (
 	// DefaultServerPoll — серверийн нэг long-poll-ийн дээд хугацаа.
 	DefaultServerPoll = 30 * time.Second
-	// DefaultMaxWait — WaitForResult-ийн нийт хүлээх дээд хугацаа.
-	DefaultMaxWait = 150 * time.Second
+	// DefaultMaxWait — WaitForResult-ийн нийт хүлээх хугацааны нөөц утга: MaxWait, ExpiresAt өгөөгүй, discovery-ийн
+	// sessionTtl ч мэдэгдэхгүй үед (CA-ийн гарын үсгийн session-ий анхдагч 600 с-тэй ижил).
+	DefaultMaxWait = 600 * time.Second
+	// WaitGrace — ExpiresAt / discovery sessionTtl-ээс хойш нэмж хүлээх хугацаа: CA хугацаа дууссан session-ийг дараагийн
+	// poll-д COMPLETE/TIMEOUT болгодог тул сүүлчийн poll нь дуусах мөчөөс хойш явагдаж, цагийн бага зөрүүг даана.
+	WaitGrace = 15 * time.Second
 )
 
 // SessionService — session poll (long-poll). RP-API нь serverPoll хүртэл хүлээгээд (эсвэл иргэн хариу өгмөгц)
@@ -120,23 +124,29 @@ func (s *SessionService) Poll(ctx context.Context, sessionID string, serverPoll 
 
 // WaitOptions — WaitForResult-ийн тохиргоо. Тэг утга = анхдагч.
 type WaitOptions struct {
-	// MaxWait — нийт хүлээх хугацаа (0 = DefaultMaxWait).
+	// MaxWait — нийт хүлээх хугацаа. 0 бол ExpiresAt + WaitGrace; ExpiresAt тэг бол discovery-ийн sessionTtl
+	// (max(auth, sign)) + WaitGrace; тэр нь ч мэдэгдэхгүй бол DefaultMaxWait. Өгвөл үүнийг л дагана.
 	MaxWait time.Duration
+	// ExpiresAt — session start хариуны ExpiresAt (NotificationSession / DeviceLinkSession.ExpiresAt). Өгвөл
+	// discovery-г татахгүй.
+	ExpiresAt time.Time
 	// ServerPoll — нэг long-poll (0 = DefaultServerPoll).
 	ServerPoll time.Duration
 }
 
-// WaitForResult — COMPLETE болтол poll хийнэ. MaxWait дуустал COMPLETE болоогүй бол сүүлчийн (RUNNING) үр дүнг
-// алдаагүй буцаана — дуудагч EndResult == ""-ийг TIMEOUT мэт боловсруулна. ctx цуцлагдвал алдаа.
+// WaitForResult — COMPLETE болтол poll хийнэ. Анхдагчаар session-ий амьдрах хугацаа дуустал (WaitOptions.MaxWait-ийг
+// үз) хүлээнэ — CA хугацаа дууссан session-ийг COMPLETE/TIMEOUT болгодог тул ердийн үед тэр үр дүн ирнэ. Хугацаа дуустал
+// COMPLETE болоогүй бол сүүлчийн (RUNNING) үр дүнг алдаагүй буцаана — дуудагч EndResult == ""-ийг TIMEOUT мэт
+// боловсруулна. ctx цуцлагдвал алдаа.
 func (s *SessionService) WaitForResult(ctx context.Context, sessionID string, o *WaitOptions) (*SessionResult, error) {
-	maxWait, poll := DefaultMaxWait, DefaultServerPoll
-	if o != nil && o.MaxWait > 0 {
-		maxWait = o.MaxWait
+	if o == nil {
+		o = &WaitOptions{}
 	}
-	if o != nil && o.ServerPoll > 0 {
+	poll := DefaultServerPoll
+	if o.ServerPoll > 0 {
 		poll = o.ServerPoll
 	}
-	deadline := time.Now().Add(maxWait)
+	deadline := s.waitDeadline(ctx, o)
 	last := &SessionResult{State: StateRunning}
 	for {
 		remaining := time.Until(deadline)
@@ -152,4 +162,27 @@ func (s *SessionService) WaitForResult(ctx context.Context, sessionID string, o 
 			return r, nil
 		}
 	}
+}
+
+// waitDeadline — WaitForResult-ийн дуусах мөч: MaxWait > ExpiresAt > discovery sessionTtl > DefaultMaxWait.
+func (s *SessionService) waitDeadline(ctx context.Context, o *WaitOptions) time.Time {
+	now := time.Now()
+	switch {
+	case o.MaxWait > 0:
+		return now.Add(o.MaxWait)
+	case !o.ExpiresAt.IsZero():
+		// Хугацаа аль хэдийн өнгөрсөн ч нэг poll хийнэ — CA-ийн COMPLETE/TIMEOUT-ийг авна.
+		if d := o.ExpiresAt.Add(WaitGrace); d.After(now.Add(time.Second)) {
+			return d
+		}
+		return now.Add(time.Second)
+	}
+	// Session-ий төрөл (auth / sign) энд мэдэгдэхгүй — урт нь аюулгүй: CA хугацаа дууссан session-ийг өөрөө TIMEOUT
+	// болгоно. Discovery татагдахгүй бол нөөц утга (алдаа биш).
+	if st, err := fetchSessionTTL(ctx, s.h); err == nil {
+		if d := max(st.Auth, st.Sign); d > 0 {
+			return now.Add(d + WaitGrace)
+		}
+	}
+	return now.Add(DefaultMaxWait)
 }

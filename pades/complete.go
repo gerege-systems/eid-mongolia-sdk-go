@@ -67,6 +67,9 @@ type Completed struct {
 	// PriorRevisionSHA256 — өмнөх гарын үсгүүдийн revision-ий (doc[:ByteRange төгсгөл]) sha256 — CA угсарсан (горим A)
 	// өмнөх гарын үсгийг бүртгэлд заахад (Registration-ийн тайлбарыг үз).
 	PriorRevisionSHA256 []string
+	// ClaimedRole — PrepareOptions.ClaimedRole (signedAttrs-д орсон); хоосон = хувиараа. Registration үүнийг
+	// RegistrationOptions.OnBehalfOf-той тулгана.
+	ClaimedRole string
 }
 
 // Complete — иргэний гарын үсгийг DTBS дээр шалгаад TSA → CMS → embed → OCSP/CRL (genTime-ийн дараа) → DSS →
@@ -110,7 +113,7 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 	dtbs := core.DTBS(st.SignedAttrs)
 	sig, ok := citizenSignature(cert.PublicKey, dtbs, signature)
 	if !ok && isRSAPSS(cert.PublicKey, dtbs, signature) {
-		return nil, newErr(CodeRequestInvalid, "RSA гарын үсэг RSASSA-PSS — PAdES/CMS-д PKCS#1 v1.5 (sha256WithRSAEncryption) шаардлагатай: SignService.DigestForSigner / DeviceLinkForSigner ашиглана уу", nil)
+		return nil, newErr(CodeSignatureInvalid, "RSA гарын үсэг RSASSA-PSS — PAdES/CMS-д PKCS#1 v1.5 (sha256WithRSAEncryption) шаардлагатай: SignService.DigestForSigner / DeviceLinkForSigner ашиглана уу", nil)
 	}
 	if !ok {
 		return nil, newErr(CodeSignatureInvalid, "гарын үсэг DTBS-тэй таарсангүй", nil)
@@ -178,7 +181,8 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 	}
 	outSum := sha256.Sum256(out)
 	res := &Completed{PDF: out, DocID: st.DocID, CMS: cms, OutSHA256: hex.EncodeToString(outSum[:]), InSHA256: st.InSHA256,
-		HasPage: st.HasPage, PageSHA256: st.PageSHA256, SignerCert: cert.Raw, FileName: st.FileName, RevIndex: st.RevIndex, SigRevSHA256: sigRevHex}
+		HasPage: st.HasPage, PageSHA256: st.PageSHA256, SignerCert: cert.Raw, FileName: st.FileName, RevIndex: st.RevIndex, SigRevSHA256: sigRevHex,
+		ClaimedRole: st.ClaimedRole}
 	for _, r := range raws[:len(raws)-1] {
 		res.PriorCMSSHA256 = append(res.PriorCMSSHA256, r.CMSSHA256)
 		res.PriorRevisionSHA256 = append(res.PriorRevisionSHA256, sha256Hex(out[:r.SignedEnd]))

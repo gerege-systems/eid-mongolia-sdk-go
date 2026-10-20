@@ -247,7 +247,9 @@ s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678", // ETSI / регис�
 	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Интернэт банкинд нэвтрэх"}}, nil)
 show(s.VC) // 5 оронтой баталгаажуулах код — ПИН БИШ, зөвхөн харуулна
 
-r, err := c.Session.WaitForResult(ctx, s.SessionID, nil) // long-poll; хугацаа дуусвал RUNNING-ийг алдаагүй буцаана
+// long-poll; session-ий хугацаа (ExpiresAt + 15 с; nil бол discovery sessionTtl, эс бөгөөс 600 с) дуустал хүлээнэ.
+// CA хугацаа дууссан session-ийг COMPLETE/TIMEOUT болгоно; MaxWait өгвөл түүгээр таслаж RUNNING-ийг алдаагүй буцаана.
+r, err := c.Session.WaitForResult(ctx, s.SessionID, &eid.WaitOptions{ExpiresAt: s.ExpiresAt})
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowNotification})
 if err != nil {
 	return err // *eid.SessionFailedError (USER_REFUSED, TIMEOUT…) эсвэл *eid.ValidationError — ИТГЭХГҮЙ
@@ -641,7 +643,8 @@ sig, _ := base64.StdEncoding.DecodeString(res.SignatureValueB64)
 done, err := pades.Complete(ctx, p.State, sig, pades.CompleteOptions{})
 // OCSP/CRL түр унавал SDK өөрөө 2 удаа дахин оролдоно (~1с, ~3с + jitter; PIN дахин асуухгүй) — CompleteOptions.LTVRetries.
 if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State хэвээр — дахин оролдоно */ }
-// 6. CA-ийн бүртгэл (docID, /verify) — заавал.
+// 6. CA-ийн бүртгэл (docID, /verify) — заавал. Medium "" бол SessionID-аас (phone ⇔ sessionID); ClaimedRole-той
+// гарын үсэгт OnBehalfOf-гүй бол REQUEST_INVALID (CA-д очихоос өмнө).
 reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: s.SessionID,
 	OnBehalfOf: "NTRMN-6235972"})
 _, err = c.PDF.RegisterSignature(ctx, reg) // POST /pdf/signatures
@@ -652,7 +655,7 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
 Бүтэн, compile-оор шалгагддаг хувилбар: `pades/example_test.go` (`Example`).
 
 - `signature`: RSA PKCS#1 v1.5, ECDSA `r‖s` (P-256 64 / P-384 96 байт) эсвэл DER — гэрчилгээний түлхүүрээр автоматаар;
-  RSASSA-PSS → `REQUEST_INVALID` («PKCS#1 v1.5 шаардлагатай»).
+  RSASSA-PSS → `SIGNATURE_INVALID` («PKCS#1 v1.5 шаардлагатай»; TS / .NET / Swift / Kotlin-той ижил код).
 - `RegisterSignature` — `POST /pdf/signatures`, бие нь CA-ийн `PDFSignatureRegisterRequest`-тэй яг ижил (`hasPage`
   илгээхгүй; `signerEtsi` = гэрчилгээний SERIALNUMBER). Эхний гарын үсэг бүртгэгдэхийн тулд verify хуудастай байна.
   `Created` — `true` 201 (шинэ), `false` 200 (ижил биеийн давталт). Өмнөх гарын үсэг CA-ийн угсарсан (горим A) бол
