@@ -163,7 +163,9 @@ type TokenCertPreview struct {
 // Сунгалт: ижил TokenSerial дээр энэ иргэний ACTIVE бүртгэл байвал олголт = сунгалт, scope-ийг хадгална — байгууллагын
 // токен зөвхөн тэр байгууллагаар (OnBehalfOf ижил), хувийн токен зөвхөн хувиараа. Өөр scope бол 409
 // CodeTokenScopeChange (override үгүй); scope солих = иргэн eID апп-аас токеноо цуцлаад шинээр олгуулна. Бусад 409:
-// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending. 400 CodeAppAttestationInvalid —
+// CodeTokenLimitReached (TokenLimitOf), CodeTokenInUse, CodeAccountDeletePending (CA !403-оос push-ээс ӨМНӨ ч — эхлэл,
+// PreviewCertificate; өмнө зөвхөн үр дүнгийн шатанд), CodeTokenIssuancePending, CodeNoActiveDevice, CodeKYCIncomplete,
+// CodeCSRKeyReused. RP-д зөвхөн TOKEN_ISSUE эрх хэрэгтэй (SIGN биш) — эрхгүй бол 403. 400 CodeAppAttestationInvalid —
 // AppTransaction ирсэн боловч хүчингүй (аль алхам унасныг CA хэлэхгүй); AppTransaction > 16 KiB бол
 // ErrAppTransactionTooLarge (илгээхгүй).
 func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) (*TokenCertStart, error) {
@@ -196,6 +198,7 @@ func (t *TokenService) IssueCertificate(ctx context.Context, in TokenCertInput) 
 // IssueCertificate-ийн бүх шалгалт ижил алдааны кодтой, гэхдээ session / утас руу push үүсэхгүй. Урсгал: CSR →
 // PreviewCertificate → Supersedes байвал иргэнд анхааруулж зөвшөөрүүлэх → IssueCertificate (ижил оролт). Хурдны хязгаар
 // (RP, иргэн) 20/мин + RP нийт 120/10 мин (push-ийн 3/цагийг зарцуулахгүй). Үр дүн нь шалгасан мөчийнх. Хуучин CA-д 400 (танихгүй талбар).
+// Иргэн бүртгэл устгах хүсэлттэй бол 409 CodeAccountDeletePending (CA !403-оос). Зөвхөн TOKEN_ISSUE эрх.
 func (t *TokenService) PreviewCertificate(ctx context.Context, in TokenCertInput) (*TokenCertPreview, error) {
 	req, err := t.certRequest(in)
 	if err != nil {
@@ -412,7 +415,8 @@ const (
 	// CodeTokenScopeChange — сунгалт scope-ийг солих гэсэн (хувийн ↔ байгууллага, эсвэл өөр OnBehalfOf). Override үгүй:
 	// иргэн eID апп-аас токеноо цуцалж (/v3/mobile/tokens/{tokenSerial}/revoke) байж шинэ scope-оор олгуулна.
 	CodeTokenScopeChange = "TOKEN_SCOPE_CHANGE"
-	// CodeAccountDeletePending — иргэн «Бүртгэл устгах» хүсэлт (PENDING) өгсөн: токен олгохгүй (CA !377).
+	// CodeAccountDeletePending — иргэн «Бүртгэл устгах» хүсэлт (PENDING) өгсөн: токен олгохгүй (CA !377). CA !403-оос
+	// эхлэл ба PreviewCertificate push-ээс өмнө 409 буцаана; үр дүнгийн шатанд (session ErrorCode) ч хэвээр.
 	CodeAccountDeletePending = "ACCOUNT_DELETE_PENDING"
 	// CodeAppAttestationInvalid — 400: TokenCertInput.AppTransaction ирсэн боловч хүчингүй (гинж Apple Root CA - G3 биш,
 	// гарын үсэг, bundleId, орчин Xcode, signedDate > 30 хоног …). Утас руу push явахгүй.

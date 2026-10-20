@@ -299,7 +299,7 @@ type Representation struct {
 	// RoleLabel-тэй ижил). Хуучин CA-д хоосон.
 	SourceLabel string `json:"sourceLabel,omitempty"`
 	// ClaimedRole — энэ байгууллагын нэрийн өмнөөс PAdES гарын үсэгт CMS signedAttrs-ийн signer-attributes-v2-д бичих
-	// мэдүүлсэн үүрэг («<албан тушаал>, <байгууллага> (NTRMN-…)», CA тооцоолно; хэл нь RoleLabel-тэй ижил). Клиент талын
+	// мэдүүлсэн үүрэг («<албан тушаал>, <байгууллага> (NTRMN-…)», CA тооцоолно; хэл нь RoleLabel-тэй ижил — mn ба en хоёуланг CA бүртгэлд хүлээн авна, CA !403). Клиент талын
 	// PAdES-д ӨӨРЧЛӨЛГҮЙ дамжуулна (pades.PrepareOptions.ClaimedRole); CA бүртгэлд дахин тооцоолж тулгана. Хэт урт эсвэл
 	// хуучин CA-д хоосон.
 	ClaimedRole string `json:"claimedRole,omitempty"`
@@ -320,8 +320,7 @@ type RepresentationsResponse struct {
 type Credentials struct {
 	// RPUUID — бүртгэлтэй RP UUID (relyingPartyUUID).
 	RPUUID string
-	// RPName — дэд системийн нэр (ж: «Интернэт банк»), ≤ 120 байт UTF-8 (кирилл ≈ 60 үсэг; сервер илүүг байтаар
-	// таслана).
+	// RPName — дэд системийн нэр (ж: «Интернэт банк»), ≤ 120 тэмдэгт (rune; CA илүүг тэмдэгтээр таслана).
 	RPName string
 	// APISecret — rp_sk_…; зөвхөн backend-д.
 	APISecret string
