@@ -320,7 +320,8 @@ type RepresentationsResponse struct {
 type Credentials struct {
 	// RPUUID — бүртгэлтэй RP UUID (relyingPartyUUID).
 	RPUUID string
-	// RPName — дэд системийн нэр (ж: «Интернэт банк»), ≤ 120 тэмдэгт (сервер илүүг таслана).
+	// RPName — дэд системийн нэр (ж: «Интернэт банк»), ≤ 120 байт UTF-8 (кирилл ≈ 60 үсэг; сервер илүүг байтаар
+	// таслана).
 	RPName string
 	// APISecret — rp_sk_…; зөвхөн backend-д.
 	APISecret string

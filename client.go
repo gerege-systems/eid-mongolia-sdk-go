@@ -64,7 +64,8 @@ type Config struct {
 //	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
 //	Session      — үр дүн long-poll
 //	Validator    — хариуг крипто-баталгаажуулах (гинж + гарын үсэг)
-//	Share        — гарын үсэгтэй файлыг имэйлээр дамжуулах (SIGN; ShareInfo — discovery-ийн туг, хязгаар)
+//	c.Share / c.ShareInfo (method) — гарын үсэгтэй файлыг имэйлээр (SIGN); ShareInfo — discovery-ийн share блок
+//	             (enabled, хязгаар, квот)
 //
 // Client нь goroutine-safe.
 type Client struct {
