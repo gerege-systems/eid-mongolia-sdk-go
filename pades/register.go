@@ -9,9 +9,11 @@ import (
 
 // RegistrationOptions — CA-ийн бүртгэлийн (POST /pdf/signatures) Completed-ээс гадуурх утгууд.
 type RegistrationOptions struct {
-	Medium     string // eid.PDFMediumPhone | eid.PDFMediumToken
+	// Medium — eid.PDFMediumPhone | eid.PDFMediumToken; "" = SessionID байвал phone, эс бөгөөс token (CA-ийн дүрэм:
+	// phone ⇔ sessionID). phone + SessionID "" эсвэл token + SessionID → REQUEST_INVALID.
+	Medium     string
 	SessionID  string // утсанд заавал: DTBS-ийг зурсан RAW_DIGEST_SIGNATURE session
-	OnBehalfOf string // NTRMN-… (PrepareOptions.ClaimedRole өгсөн бол заавал)
+	OnBehalfOf string // NTRMN-… (PrepareOptions.ClaimedRole өгсөн бол заавал — эс бөгөөс REQUEST_INVALID)
 }
 
 // Registration — Completed-ээс eid.PDFSignatureRegistration (CA dto-тэй ижил бие) бөглөнө; дараа нь
@@ -30,8 +32,16 @@ func Registration(c *Completed, o RegistrationOptions) (eid.PDFSignatureRegistra
 	if c.FileName == "" {
 		return eid.PDFSignatureRegistration{}, newErr(CodeRequestInvalid, "fileName хоосон (PrepareOptions.FileName)", nil)
 	}
+	medium, err := registrationMedium(o.Medium, o.SessionID)
+	if err != nil {
+		return eid.PDFSignatureRegistration{}, err
+	}
+	if c.ClaimedRole != "" && o.OnBehalfOf == "" {
+		return eid.PDFSignatureRegistration{}, newErr(CodeRequestInvalid,
+			"claimedRole-той гарын үсэгт RegistrationOptions.OnBehalfOf (NTRMN-…) заавал", nil)
+	}
 	r := eid.PDFSignatureRegistration{
-		DocID: c.DocID, RevIndex: c.RevIndex, Medium: o.Medium, SessionID: o.SessionID, CMS: c.CMS, FileName: c.FileName,
+		DocID: c.DocID, RevIndex: c.RevIndex, Medium: medium, SessionID: o.SessionID, CMS: c.CMS, FileName: c.FileName,
 		InSHA256: c.InSHA256, SigRevSHA256: c.SigRevSHA256, OutSHA256: c.OutSHA256, OnBehalfOf: o.OnBehalfOf,
 	}
 	if c.RevIndex == 1 {
@@ -49,4 +59,21 @@ func Registration(c *Completed, o RegistrationOptions) (eid.PDFSignatureRegistra
 		r.SignerEtsi = cert.Subject.SerialNumber
 	}
 	return r, nil
+}
+
+// registrationMedium — CA-ийн дүрэм: phone ⇔ sessionID. Хоосон бол sessionID-аас тодорхойлно.
+func registrationMedium(medium, sessionID string) (string, error) {
+	switch {
+	case medium == "" && sessionID != "":
+		return eid.PDFMediumPhone, nil
+	case medium == "":
+		return eid.PDFMediumToken, nil
+	case medium == eid.PDFMediumPhone && sessionID == "":
+		return "", newErr(CodeRequestInvalid, "medium phone-д SessionID заавал", nil)
+	case medium == eid.PDFMediumToken && sessionID != "":
+		return "", newErr(CodeRequestInvalid, "medium token-д SessionID илгээхгүй", nil)
+	case medium != eid.PDFMediumPhone && medium != eid.PDFMediumToken:
+		return "", newErr(CodeRequestInvalid, "medium: phone | token", nil)
+	}
+	return medium, nil
 }

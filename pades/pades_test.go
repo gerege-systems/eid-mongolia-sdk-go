@@ -300,7 +300,7 @@ func TestCRLMirror(t *testing.T) {
 	}
 }
 
-// TestRegistrationAndPSS — RSASSA-PSS гарын үсэг → REQUEST_INVALID (PKCS#1 v1.5 шаардлагатай); Completed →
+// TestRegistrationAndPSS — RSASSA-PSS гарын үсэг → SIGNATURE_INVALID (бусад SDK-тэй ижил) (PKCS#1 v1.5 шаардлагатай); Completed →
 // eid.PDFSignatureRegistration (CA dto-тэй ижил талбарууд).
 func TestRegistrationAndPSS(t *testing.T) {
 	p := loadOrCreatePKI(t)
@@ -314,7 +314,7 @@ func TestRegistrationAndPSS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Complete(context.Background(), prep.State, pss, completeOpts(p)); ErrorCode(err) != CodeRequestInvalid ||
+	if _, err := Complete(context.Background(), prep.State, pss, completeOpts(p)); ErrorCode(err) != CodeSignatureInvalid ||
 		!strings.Contains(err.Error(), "PKCS#1 v1.5") {
 		t.Fatalf("PSS: %v", err)
 	}
@@ -404,5 +404,51 @@ func TestAppearanceRejects(t *testing.T) {
 	vis(ok)(&o)
 	if _, err := Prepare(signed, o); ErrorCode(err) != CodeRequestInvalid {
 		t.Fatalf("docId-гүй: %v", err)
+	}
+}
+
+// TestRegistrationMediumAndRole — medium хоосон бол SessionID-аас (CA: phone ⇔ sessionID); зөрчил ба claimedRole-той
+// гэхдээ OnBehalfOf-гүй бүртгэл → REQUEST_INVALID (CA-д очихоос өмнө).
+func TestRegistrationMediumAndRole(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	o := testOpts(p, p.citizen.cert)
+	o.FileName = "a.pdf"
+	o.ClaimedRole = "Гүйцэтгэх захирал"
+	prep, err := Prepare(readInput(t, "quartz-pdf13.pdf"), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, _ := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
+	done, err := Complete(context.Background(), prep.State, sig, completeOpts(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.ClaimedRole != o.ClaimedRole {
+		t.Fatal("Completed.ClaimedRole", done.ClaimedRole)
+	}
+	if _, err := Registration(done, RegistrationOptions{SessionID: "s1"}); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatal("claimedRole-той, OnBehalfOf-гүй", err)
+	}
+	obo := "NTRMN-6235972"
+	for _, c := range []struct {
+		o    RegistrationOptions
+		want string
+	}{
+		{RegistrationOptions{SessionID: "s1", OnBehalfOf: obo}, eid.PDFMediumPhone},
+		{RegistrationOptions{OnBehalfOf: obo}, eid.PDFMediumToken},
+		{RegistrationOptions{Medium: eid.PDFMediumPhone, OnBehalfOf: obo}, ""},
+		{RegistrationOptions{Medium: eid.PDFMediumToken, SessionID: "s1", OnBehalfOf: obo}, ""},
+		{RegistrationOptions{Medium: "usb", OnBehalfOf: obo}, ""},
+	} {
+		r, err := Registration(done, c.o)
+		if c.want == "" {
+			if ErrorCode(err) != CodeRequestInvalid {
+				t.Fatalf("%+v: %v", c.o, err)
+			}
+			continue
+		}
+		if err != nil || r.Medium != c.want || r.OnBehalfOf != obo {
+			t.Fatalf("%+v: %v %q", c.o, err, r.Medium)
+		}
 	}
 }

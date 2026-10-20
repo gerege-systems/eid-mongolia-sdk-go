@@ -218,6 +218,10 @@ func TestSession_PollAndWait(t *testing.T) {
 	var n int
 	var mu sync.Mutex
 	c, rc := server(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/eid" { // WaitOptions.ExpiresAt алга → discovery sessionTtl
+			_, _ = io.WriteString(w, `{"sessionTtl":{"auth":300,"sign":600}}`)
+			return
+		}
 		mu.Lock()
 		n++
 		k := n
@@ -241,6 +245,38 @@ func TestSession_PollAndWait(t *testing.T) {
 	r, err = c.Session.WaitForResult(context.Background(), "x", &WaitOptions{MaxWait: 10 * time.Millisecond})
 	if err != nil || r.State != StateRunning {
 		t.Fatal(err, r)
+	}
+}
+
+// WaitForResult-ийн анхдагч хугацаа session-ий амьдрах хугацааг дагана (CA: auth 300 с, sign 600 с), 150 с-т таслахгүй.
+func TestWaitDeadline(t *testing.T) {
+	near := func(got time.Time, want time.Duration) bool {
+		d := time.Until(got)
+		return d > want-5*time.Second && d <= want
+	}
+	c, rc := server(t, jsonReply(200, `{"sessionTtl":{"auth":300,"sign":600}}`))
+	if d := c.Session.waitDeadline(context.Background(), &WaitOptions{}); !near(d, 600*time.Second+WaitGrace) {
+		t.Fatal("discovery max(auth, sign) + grace", time.Until(d))
+	}
+	if req, _ := rc.last(); req.URL.Path != "/.well-known/eid" {
+		t.Fatal(req.URL.Path)
+	}
+	exp := time.Now().Add(280 * time.Second)
+	if d := c.Session.waitDeadline(context.Background(), &WaitOptions{ExpiresAt: exp}); !d.Equal(exp.Add(WaitGrace)) {
+		t.Fatal("ExpiresAt + grace", d)
+	}
+	if d := c.Session.waitDeadline(context.Background(), &WaitOptions{ExpiresAt: time.Now().Add(-time.Hour)}); !near(d, time.Second) {
+		t.Fatal("өнгөрсөн ExpiresAt → нэг poll", time.Until(d))
+	}
+	if d := c.Session.waitDeadline(context.Background(), &WaitOptions{MaxWait: 42 * time.Second, ExpiresAt: exp}); !near(d, 42*time.Second) {
+		t.Fatal("MaxWait давуу", time.Until(d))
+	}
+	// Хуучин CA (sessionTtl алга) эсвэл discovery унасан → DefaultMaxWait (600 с).
+	for _, h := range []http.HandlerFunc{jsonReply(200, `{"version":"v3"}`), jsonReply(503, `{}`)} {
+		c, _ := server(t, h)
+		if d := c.Session.waitDeadline(context.Background(), &WaitOptions{}); !near(d, DefaultMaxWait) {
+			t.Fatal("fallback", time.Until(d))
+		}
 	}
 }
 
