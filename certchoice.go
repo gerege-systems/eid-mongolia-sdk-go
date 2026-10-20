@@ -93,7 +93,7 @@ type Signer struct {
 
 // ValidateCertificateChoice — certificate-choice session-ий хариуг шалгана: COMPLETE/OK (эс бөгөөс
 // *SessionFailedError), гэрчилгээ ба documentNumber байгаа, хугацаа, certLevel, зориулалт (гарын үсгийн —
-// contentCommitment, CheckKeyUsage үед), гинж, issuer. Энэ хариунд гарын үсэг БАЙХГҮЙ — иргэнийг таниагүй (нэвтрэлт
+// contentCommitment; SkipKeyUsageCheck үед алгасна), гинж, issuer. Энэ хариунд гарын үсэг БАЙХГҮЙ — иргэнийг таниагүй (нэвтрэлт
 // биш); зөвхөн дараагийн sign session-ий гэрчилгээг урьдчилж мэдэхэд. sessionID — certificate-choice session.
 func (v *Validator) ValidateCertificateChoice(r *SessionResult, sessionID string) (*Signer, error) {
 	if err := sessionDone(r); err != nil {

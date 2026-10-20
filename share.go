@@ -15,8 +15,9 @@ import (
 
 // Гарын үсэгтэй файлыг имэйлээр дамжуулах — POST /share (CA docs/SHARE_EMAIL.md, main 0329ef95). RP гарын үсэг зурсан
 // файлаа дараагийн гарын үсэг зурагч / хүлээн авагч руу хавсралтаар илгээнэ. CA файлыг хадгалахгүй: eID-ийн хүчинтэй
-// гарын үсэгтэй эсэхийг шалгаад email-service руу дамжуулж хаяна. SIGN эрх. CA-ийн туг (EID_SHARE_ENABLED)
-// унтраалттай үед 503 SHARE_DISABLED — ShareInfo().Enabled-ээр урьдчилан шалга.
+// гарын үсэгтэй эсэхийг шалгаад email-service руу дамжуулж хаяна. SIGN эрх. CA-д туг байхгүй (2026-10-16-аас);
+// имэйл/шалгагч тохируулаагүй үед 503 MAIL_UNAVAILABLE / VALIDATOR_UNAVAILABLE (хуучин CA: SHARE_DISABLED) —
+// ShareInfo().Enabled-ээр урьдчилан шалга.
 
 // DefaultShareTimeout — Share-ийн хүсэлтийн хугацаа: CA бүх хүлээн авагчид 120 с-д илгээнэ, nginx 150 с. ctx-ийн
 // deadline богино бол тэр нь ялна.
@@ -212,7 +213,8 @@ func isPrintableASCII(s string) bool {
 
 // ShareInfo — discovery (/.well-known/eid)-ийн share блок.
 type ShareInfo struct {
-	// Enabled — CA-ийн туг. false бол Share → 503 SHARE_DISABLED.
+	// Enabled — имэйлийн үйлчилгээ ба шалгагч тохируулагдсан эсэх. false бол Share → 503 MAIL_UNAVAILABLE /
+	// VALIDATOR_UNAVAILABLE (хуучин CA: SHARE_DISABLED).
 	Enabled  bool          `json:"enabled"`
 	Endpoint string        `json:"endpoint"`
 	Formats  []ShareFormat `json:"formats"`

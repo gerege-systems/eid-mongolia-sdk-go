@@ -5,8 +5,9 @@ package eid
 // CB:E7:F3:FE:1F:04:80:37:C2:15:DA:32:1E:58:CA:A4:F3:63:DE:9E:54:BB:C4:42:A3:BF:D6:2F:AD:83:44:82,
 // хүчинтэй 2031-02-01 хүртэл.
 //
-// TrustConfig.TrustAnchorsPEM-д өгнө. Завсрын CA-уудыг (National Issuing CA (MDDC) → Gerege Issuing CA →
-// eID Mongolia Issuing CA) TrustConfig.IntermediatesPEM-д тохируулна — https://developer.eidmongolia.mn/#verification.
+// TrustConfig.TrustAnchorsPEM-д өгнө. Завсрын CA-ууд (National Issuing CA (MDDC) → Gerege Issuing CA →
+// eID Mongolia Issuing CA) SDK-д суусан — TrustConfig.IntermediatesPEM nil бол CitizenIntermediatesPEM (v0.6.0-аас);
+// https://developer.eidmongolia.mn/#verification.
 const NationalRootCAPEM = `
 -----BEGIN CERTIFICATE-----
 MIIFbzCCA1egAwIBAgIQGW2d2BtfmG+v6sgjAFTJxTANBgkqhkiG9w0BAQsFADBB

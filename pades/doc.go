@@ -7,7 +7,7 @@
 //	// p.DTBS (32 байт) → RP-API RAW_DIGEST_SIGNATURE session (утас) эсвэл токены C_Sign; p.State-ийг хадгална
 //	c, err := pades.Complete(ctx, p.State, signature, pades.CompleteOptions{})
 //	// c.PDF — PAdES-BASELINE-LT; c.CMS, c.DocID, c.RevIndex … — CA-ийн бүртгэлд (POST /pdf/signatures)
-//	rep, err := pades.Verify(c.PDF, pades.VerifyOptions{})
+//	rep, err := pades.ValidatePDF(ctx, c.PDF, pades.ValidateOptions{}) // Verify — Deprecated
 //
 // Complete: гарын үсгийг DTBS дээр шалгана (RSA PKCS#1 v1.5, ECDSA r‖s эсвэл DER) → RFC 3161 timestamp
 // (DefaultTSAURL) → CMS → placeholder-т бичнэ → OCSP/CRL-ийг гэрчилгээний AIA/CDP-ээс (иргэн, TSA-ийн OCSP нь

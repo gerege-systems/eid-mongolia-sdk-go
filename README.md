@@ -19,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.4.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.12.0
 ```
 
 ```go
@@ -49,7 +49,7 @@ Smart-ID-тэй RP-үүдийн хэв маяг: хөтөчид **нэг тов�
 |---|---|---|
 | `POST /auth/eid/start` | `{"mode":"qr"}` эсвэл `{"mode":"push","idCode":"УБ12345678"}` (JSON заавал) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: eid_login` |
 | `GET /auth/eid/start?mode=web2app` | утасны хөтөч (товчны навигаци) | `302` → eID апп (Web2App) |
-| `GET /auth/eid/status` | cookie | `PENDING` (+шинэ `qr`) · `WAIT_CALLBACK` · `OK` (`redirect`, `data`) · `FAILED` (`error`) · `EXPIRED` |
+| `GET /auth/eid/status` | cookie | `PENDING` (`vc`, `expiresIn`, +шинэ `qr`) · `WAIT_CALLBACK` · `OK` (`redirect`, `data`) · `FAILED` (`error`) · `EXPIRED` |
 | `GET /auth/eid/callback` | апп буцаана: `?sessionId&userChallengeVerifier` | `303` → `Success.Redirect` / `SuccessRedirect`, алдаа бол `FailureRedirect?eid_error=<код>` |
 
 eID сервер Web2App буцах замыг үргэлж `/auth/eid/callback` болгож нормчилдог тул `/auth/eid/` дор mount хийнэ:
@@ -94,7 +94,7 @@ mux.Handle("/auth/eid/", login)
 Хөтөчид:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.15.4/dist/button.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gerege-systems/eid-mongolia-sdk@0.26.0/dist/button.js"></script>
 <eid-login-button start-url="/auth/eid/start" status-url="/auth/eid/status" lang="mn"></eid-login-button>
 ```
 
@@ -215,7 +215,7 @@ Tx-д `SessionSecret` (QR угсрах материал) байдаг — Redis-
 **eID аппын доод хувилбар.** `flowType` бэхлэлт (device link v3) ба Web2App-ийн `userChallengeVerifier` нь
 **iOS 2.2.3 (build 59)**, **Android 2.2.3 (versionCode 60)**-аас эхэлсэн. eID сервер 2026-10-07-оос legacy холбоосыг
 бүрэн хассан (v3-гүй session-д утас `DEVICE_LINK_REQUIRED`) бөгөөд доод хувилбарыг `/mobile/app-config`-оор албадан
-шинэчлүүлдэг: Android 2026-10-07-оос ≥ 70, 2026-10-14-ний байдлаар iOS ≥ 2.2.7, Android ≥ 83
+шинэчлүүлдэг: Android 2026-10-07-оос ≥ 70, 2026-10-20-ны байдлаар iOS ≥ 2.2.8, Android ≥ 91
 (`curl https://ca.eidmongolia.mn/mobile/app-config`). Иймд гарын үсэг зурж чадах бүх апп эдгээрийг дэмжинэ. Эх сурвалж:
 eID CA-ийн `docs/DEVICE_LINK_V3.md` §5, §7; changelog `2026-10-02-ios-min-version-2-2-3`, `2026-10-07-android-min-70`.
 
@@ -226,7 +226,7 @@ c, err := eid.NewClient(eid.Config{
 	// BaseURL анхдагч https://rp.eidmongolia.mn (RP-API, /v3-гүй) — mTLS-тэй RP ч мөн энэ хост
 	Credentials: eid.Credentials{
 		RPUUID:    os.Getenv("EID_RP_UUID"),
-		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 тэмдэгт
+		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 байт UTF-8 (кирилл ≈ 60 үсэг; CA илүүг таслана)
 		APISecret: os.Getenv("EID_SECRET"),
 	},
 	Trust: eid.TrustConfig{
@@ -306,7 +306,7 @@ SSE/WebSocket-оор түлхэх бол `eid.TickQRDeviceLink(ctx, input, time.
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowQR})
 
 // Web2App товч → callback (?userChallengeVerifier=…) ирсний дараа
-who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{
+who, err = c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{
 	ExpectedFlowType:      eid.FlowWeb2App, // RP-ийн апп дахь товч бол eid.FlowApp2App
 	UserChallengeVerifier: callback.Query().Get("userChallengeVerifier"),
 })
@@ -422,60 +422,12 @@ Person блок гарын үсэгт **ордоггүй** — гэрчилгэ�
 USB токены серийн дугаар. Нэг токены AUTH + SIGN-ийг байгууллага/огноогоор таамаглахгүй, `TokenSerial`-аар бүлэглэ
 (сунгалтаар солигдсон мөр ч өөрийн токены дугаартай). MOBILE/HSM мөрөнд болон хуучин CA-д `""`.
 
-### 3.8. Гарын үсэгтэй файлыг имэйлээр — `c.Share` (`SIGN` эрх)
-
-Гарын үсэг зурсан PDF-ээ дараагийн гарын үсэг зурагч / хүлээн авагч руу хавсралтаар илгээнэ (`POST /share`). CA файлыг
-**хадгалахгүй**: eID-ийн хүчинтэй гарын үсэгтэй эсэхийг шалгаад илгээж, хаяна. Хүлээн авагч бүрт тусдаа имэйл.
-
-> CA дээр үргэлж асаалттай (2026-10-16-наас туг байхгүй). Хязгаар, квотыг `c.ShareInfo(ctx)`-ээс уншина;
-> `Enabled` false бол имэйлийн үйлчилгээ түр тохируулагдаагүй (503).
-
-```go
-info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
-if err == nil && info.Enabled {
-	res, err := c.Share(ctx, eid.ShareRequest{
-		File:     signedPDF,                // ≤ 3 080 192 байт, eID-ийн хүчинтэй гарын үсэгтэй PDF
-		Filename: "гэрээ.pdf",              // .pdf өргөтгөлтэй; "" = document.pdf
-		To:       []string{"next@example.mn"}, // 1–5, давхардалгүй
-		Subject:  "Гэрээ — гарын үсэг",      // ≤ 150; CA «‹RP нэр›: …» угтвар тавина
-		Message:  "Хоёр дахь гарын үсгийг зурна уу", // ≤ 1000
-		Lang:     "mn",                      // mn | en
-	})
-	var se *eid.ShareError
-	switch {
-	case errors.As(err, &se) && se.Code == eid.CodeMailFailed:
-		// se.Recipients[i] == eid.ShareRecipientFailed — зөвхөн тэднийг дахин илгээ
-	case errors.As(err, &se) && se.Code == eid.CodeFileNotSigned:
-		// se.Reason: eid.ShareReasonNoSignature | ShareReasonInvalid | ShareReasonUntrusted
-	case err == nil:
-		_ = res.DocID // CA-д бүртгэлтэй бол (имэйлд verify холбоос)
-	}
-}
-```
-
-| HTTP | `ShareError.Code` | Тайлбар |
-|---|---|---|
-| 400 | `REQUEST_INVALID`, `FILE_EMPTY`, `RECIPIENT_REQUIRED`, `TOO_MANY_RECIPIENTS`, `RECIPIENT_INVALID`, `RECIPIENT_DUPLICATE` | талбарын алдаа |
-| 413 | `FILE_TOO_LARGE` | файл / имэйл хязгаараас их |
-| 415 | `FILE_TYPE_NOT_SUPPORTED` | PDF биш (өргөтгөл, Content-Type, `%PDF-` гурвуулаа таарна) |
-| 422 | `FILE_NOT_SIGNED` | `.Reason`: `no_signature` \| `invalid` \| `untrusted` |
-| 429 | `RATE_LIMITED` | квот; `.RetryAfter`, `.Retryable()` |
-| 502 | `MAIL_FAILED` | `.Sent`, `.Failed`, `.Recipients` (`To`-гийн дарааллаар `sent` \| `failed`) |
-| 503 | `MAIL_UNAVAILABLE`, `VALIDATOR_UNAVAILABLE`, `VALIDATOR_BUSY` (`SHARE_DISABLED` — хуучин CA) | тохиргоо / ачаалал (`VALIDATOR_*` — Retry-After) |
-
-401 → `*eid.AuthenticationError`, 403 (SIGN эрхгүй, IP/mTLS) → `*eid.ForbiddenError`. Квот: RP тутам цагт 30 / өдөрт 200
-хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
-ctx-ийн deadline богино бол тэр нь ялна.
-
 ### 3.7. USB токен
 
 ```go
 // гэрчилгээ олголт (TOKEN_ISSUE эрх) — иргэн утсаараа PIN2-оор батална
-st, err := c.Token.IssueCertificate(ctx, eid.TokenCertInput{SignerEtsi: etsi, CSRAuth: csrA, CSRSign: csrS,
-	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""}) // "" = хувийн токен
-// … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
-res, err := c.Token.CertificateResult(ctx, st.SessionID)
-err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+in := eid.TokenCertInput{SignerEtsi: etsi, CSRAuth: csrA, CSRSign: csrS,
+	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""} // "" = хувийн токен
 // push-ээс ӨМНӨ: ижил оролтоор dryRun — session/push үүсэхгүй, алдааны код бодиттой ижил
 pv, err := c.Token.PreviewCertificate(ctx, in) // pv.Supersedes байвал иргэнд анхааруулж зөвшөөрүүлээд ↓
 st, err := c.Token.IssueCertificate(ctx, in)
@@ -483,6 +435,9 @@ st, err := c.Token.IssueCertificate(ctx, in)
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
 // 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
 // 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
+// … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
+res, err := c.Token.CertificateResult(ctx, st.SessionID)
+err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
 
 // токеноор нэвтрэх (AUTH эрх)
 ch, err := c.Token.AuthChallenge(ctx)
@@ -527,12 +482,58 @@ desktop дээр цуцалсан ч иргэн утсаараа баталба�
 `/token/auth/*` нь `/.well-known/eid`-ийн `endpoints.token.auth_challenge` / `auth_verify`-д жагсаагдсан (AUTH эрх) —
 гэрээний тест бусад route-ийн адил шалгана.
 
+### 3.8. Гарын үсэгтэй файлыг имэйлээр — `c.Share` (`SIGN` эрх)
+
+Гарын үсэг зурсан PDF-ээ дараагийн гарын үсэг зурагч / хүлээн авагч руу хавсралтаар илгээнэ (`POST /share`). CA файлыг
+**хадгалахгүй**: eID-ийн хүчинтэй гарын үсэгтэй эсэхийг шалгаад илгээж, хаяна. Хүлээн авагч бүрт тусдаа имэйл.
+
+> CA дээр үргэлж асаалттай (2026-10-16-наас туг байхгүй). Хязгаар, квотыг `c.ShareInfo(ctx)`-ээс уншина;
+> `Enabled` false бол имэйлийн үйлчилгээ түр тохируулагдаагүй (503).
+
+```go
+info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
+if err == nil && info.Enabled {
+	res, err := c.Share(ctx, eid.ShareRequest{
+		File:     signedPDF,                // ≤ 3 080 192 байт, eID-ийн хүчинтэй гарын үсэгтэй PDF
+		Filename: "гэрээ.pdf",              // .pdf өргөтгөлтэй; "" = document.pdf
+		To:       []string{"next@example.mn"}, // 1–5, давхардалгүй
+		Subject:  "Гэрээ — гарын үсэг",      // ≤ 150; CA «‹RP нэр›: …» угтвар тавина
+		Message:  "Хоёр дахь гарын үсгийг зурна уу", // ≤ 1000
+		Lang:     "mn",                      // mn | en
+	})
+	var se *eid.ShareError
+	switch {
+	case errors.As(err, &se) && se.Code == eid.CodeMailFailed:
+		// se.Recipients[i] == eid.ShareRecipientFailed — зөвхөн тэднийг дахин илгээ
+	case errors.As(err, &se) && se.Code == eid.CodeFileNotSigned:
+		// se.Reason: eid.ShareReasonNoSignature | ShareReasonInvalid | ShareReasonUntrusted
+	case err == nil:
+		_ = res.DocID // CA-д бүртгэлтэй бол (имэйлд verify холбоос)
+	}
+}
+```
+
+| HTTP | `ShareError.Code` | Тайлбар |
+|---|---|---|
+| 400 | `REQUEST_INVALID`, `FILE_EMPTY`, `RECIPIENT_REQUIRED`, `TOO_MANY_RECIPIENTS`, `RECIPIENT_INVALID`, `RECIPIENT_DUPLICATE` | талбарын алдаа |
+| 413 | `FILE_TOO_LARGE` | файл / имэйл хязгаараас их |
+| 415 | `FILE_TYPE_NOT_SUPPORTED` | PDF биш (өргөтгөл, Content-Type, `%PDF-` гурвуулаа таарна) |
+| 422 | `FILE_NOT_SIGNED` | `.Reason`: `no_signature` \| `invalid` \| `untrusted` |
+| 429 | `RATE_LIMITED` | квот; `.RetryAfter`, `.Retryable()` |
+| 502 | `MAIL_FAILED` | `.Sent`, `.Failed`, `.Recipients` (`To`-гийн дарааллаар `sent` \| `failed`) |
+| 503 | `MAIL_UNAVAILABLE`, `VALIDATOR_UNAVAILABLE`, `VALIDATOR_BUSY` (`SHARE_DISABLED` — хуучин CA) | тохиргоо / ачаалал (`VALIDATOR_*` — Retry-After) |
+
+401 → `*eid.AuthenticationError`, 403 (SIGN эрхгүй, IP/mTLS) → `*eid.ForbiddenError`. Квот: RP тутам цагт 300 / өдөрт 3000
+хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
+ctx-ийн deadline богино бол тэр нь ялна.
+
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
 `EndResult == "OK"` гэдэгт **дангаар нь итгэхгүй** — RP-API эвдэрсэн/proxy хийгдсэн бол хуурамч OK ирж болзошгүй.
 `Validator` (<https://developer.eidmongolia.mn/#verification>):
 
-1. `State == COMPLETE && EndResult == OK` (эс бөгөөс `*SessionFailedError`).
+1. `State == COMPLETE` (эс бөгөөс `*ValidationError` — ж: `WaitForResult`-ийн RUNNING) ба `EndResult == OK` (эс бөгөөс
+   `*SessionFailedError`).
 2. Иргэний гэрчилгээг **trust anchor (Mongolian National Root CA, `eid.NationalRootCAPEM`)** хүртэл гинжээр
    (Root 01 → National Issuing CA 02 → Gerege Issuing CA 03 → eID Mongolia Issuing CA 04 → иргэн) — Go-ийн
    `x509.Certificate.Verify` (RFC 5280): CA basicConstraints + **pathLenConstraint** (04 нь `pathlen:0`), CA-ийн
@@ -678,12 +679,13 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
 
 ```go
 p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "Гэрээ.pdf",
-	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = оролтын сүүлийн хуудас
+	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = оролтын eID verify хуудас БИШ сүүлийн хуудас
 ```
 
 - Координат — pt, хуудасны CropBox (байхгүй бол MediaBox)-ийн **дэлгэцэнд харагдах** (`/Rotate`-ийн дараах) зүүн доод
   булангаас; `/Rotate` 0/90/180/270 бүгд дэмжигдэнэ (дүрслэл босоо харагдана). 0.01 pt хүртэл тойрно.
-- `Page` нь Prepare-д өгсөн баримтын хуудас (1-ээс; энэ удаа нэмэх verify хуудас тооцогдохгүй).
+- `Page` нь Prepare-д өгсөн баримтын хуудас (1-ээс; тодорхой дугаар юуг ч алгасахгүй). 0 = eID verify хуудас БИШ сүүлийн
+  хуудас — энэ Prepare-ийн нэмэх ба өмнөх revision-уудын нэмсэн verify хуудас тооцогдохгүй (v0.12.0+, PLACEMENT_SPEC §1a).
 - `X, Y` нь хүссэн байрлал: тэр хэсэгт хуудасны агуулга (бичвэр, хүснэгтийн зураас, зураг, өмнөх гарын үсэг) байвал
   дүрслэл чөлөөт зай руу шилжинэ — эхлээд толин тусгал багана (баруун доод → зүүн доод), дараа нь 12 pt-ээр дээш.
   Үр дүн: `Prepared.Placement` (`Status`: `requested` | `moved` | `overlap` — чөлөөт зай алга, хүссэн байрлалд
@@ -704,6 +706,7 @@ rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // анх�
 switch pades.ErrorCode(err) {
 case pades.CodePDFNoSignature, pades.CodePDFInvalid, pades.CodePDFTooLarge, pades.CodePDFTooManySignatures: // 4xx
 case pades.CodePDFEncrypted: // v0.7.1: шифрлэгдсэн (/Encrypt) — нууцлалыг арилгаад дахин илгээхийг хэрэглэгчид хэл
+case pades.CodeRequestInvalid: // ValidateOptions.Roots/Intermediates/Issuers задрахгүй
 }
 if rep.Indication == pades.Valid { /* бүх гарын үсэг хүчинтэй */ }
 for _, s := range rep.Signatures {
@@ -729,7 +732,8 @@ for _, s := range rep.Signatures {
   (шалгах цаг = итгэмжлэгдсэн цагийн тэмдгийн цаг, эс бөгөөс `Time`/одоо). Эс бөгөөс тооцохгүй → `revocation_unavailable`.
   Олгогчийн гарын үсэгтэй «revoked» нотолгоо (OCSP эсвэл CRL, онлайн эсвэл DSS) нь «good»-ийг үргэлж давна.
 - **Итгэлгүй PDF.** `Prepare`/`ValidatePDF`/`Verify`/`Complete` задлахын өмнө массив/толийн давхарлалтыг
-  (`> 256` → `PDF_INVALID`, `errors.Is(err, pades.ErrPDFStructure)`) шалгадаг (v0.7.2; өмнө нь ~2 MB `[[[…` баримт
+  (`> 256` → `Prepare`/`ValidatePDF`/`Verify`-д `PDF_INVALID`, `Complete`-д `STATE_INVALID`; аль алинд
+  `errors.Is(err, pades.ErrPDFStructure)`) шалгадаг (v0.7.2; өмнө нь ~2 MB `[[[…` баримт
   `fatal error: stack overflow`-оор процессыг бүхэлд нь унагадаг байв). Энэ нь хамгаалалтын нэг давхарга л — гаднаас ирсэн
   PDF-ийг итгэлгүй оролт гэж үзэж хэмжээг хязгаарла (≤ 10 MiB), хүсэлт бүрд timeout тавь, боломжтой бол тусдаа
   процесс/контейнерт (CPU/санах ойн хязгаартай) задал.
@@ -745,7 +749,7 @@ Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verif
 [WIRE.md](pades/WIRE.md), [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md), [PLACEMENT_SPEC.md](pades/PLACEMENT_SPEC.md)) 1:1 давтаж, golden-ийг байт-ижил гаргана. Runtime-д шахалт хийхгүй (xref/DSS/хуудас) — хэл
 хоорондын байт-ижил байдалд.
 
-Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v4`) — native SDK бүрийн CI тулгана; энэ репогийн CI
+Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v6`) — native SDK бүрийн CI тулгана; энэ репогийн CI
 гаралт бүрийг qpdf (`--check`) ба pyHanko-оор (INTACT/VALID/TRUSTED, DSS-ээс LT, харагдах эсэх) бие даан шалгана.
 
 ## Хөгжүүлэлт
@@ -775,7 +779,7 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 ## English
 
 Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
-standard library plus `golang.org/x/crypto/ocsp`; `pades` also `golang.org/x/text`).
+standard library plus `golang.org/x/crypto/ocsp`; `pades` also digitorus pdf/pkcs7/timestamp and `golang.org/x/text`).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
   (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
