@@ -350,7 +350,13 @@ func pageContent(p PageData, reg, bld *assets.Font) ([]byte, [][5]any, error) {
 // AppendVerifyPage — base-ийн ард баталгаажуулалтын хуудсыг INCREMENTAL UPDATE-аар нэмнэ (PAGE_SPEC.md §Объект):
 // шинэ объектууд (хуудас, content, 2 Type0 фонт × 5 объект, Courier, link annotation-ууд) + /Pages үндсийн шинэ
 // хувилбар (/Kids төгсгөлд, /Count + 1). Catalog өөрчлөгдөхгүй.
-func AppendVerifyPage(base []byte, p PageData) (out []byte, err error) {
+func AppendVerifyPage(base []byte, p PageData) ([]byte, error) {
+	return InsertVerifyPage(base, p, false)
+}
+
+// InsertVerifyPage — AppendVerifyPage; first бол хуудас үндсэн /Pages-ийн /Kids-ийн ЭХЭНД орж баримтын 1-р хуудас
+// болно (PAGE_SPEC.md §8a). Бусад бүх объект, дугаарлалт first-ээс үл хамаарна.
+func InsertVerifyPage(base []byte, p PageData, first bool) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, fmt.Errorf("%w: %v", ErrPDF, r)
@@ -440,13 +446,24 @@ func AppendVerifyPage(base []byte, p PageData) (out []byte, err error) {
 	kids := pages.Key("Kids")
 	kp := kids.GetPtr()
 	pn.WriteString(" /Kids [")
-	for i := range kids.Len() {
-		if err := serialize(&pn, kids.Index(i), kp.GetID(), 0); err != nil {
-			return nil, fmt.Errorf("/Pages /Kids: %w", err)
+	if first { // [<хуудас> 0 R k1 k2 …] — элемент бүрийн өмнө зай
+		pn.WriteString(itoa(pageID) + " 0 R")
+		for i := range kids.Len() {
+			pn.WriteByte(' ')
+			if err := serialize(&pn, kids.Index(i), kp.GetID(), 0); err != nil {
+				return nil, fmt.Errorf("/Pages /Kids: %w", err)
+			}
 		}
-		pn.WriteByte(' ')
+		fmt.Fprintf(&pn, "] /Count %d >>", count+1)
+	} else { // [k1 k2 … <хуудас> 0 R] — элемент бүрийн ард зай
+		for i := range kids.Len() {
+			if err := serialize(&pn, kids.Index(i), kp.GetID(), 0); err != nil {
+				return nil, fmt.Errorf("/Pages /Kids: %w", err)
+			}
+			pn.WriteByte(' ')
+		}
+		fmt.Fprintf(&pn, "%d 0 R] /Count %d >>", pageID, count+1)
 	}
-	fmt.Fprintf(&pn, "%d 0 R] /Count %d >>", pageID, count+1)
 	inc.writeObjectGen(pp.GetID(), uint16(pp.GetGen()), pn.Bytes()) // #nosec G115 -- үе ≤ 65535
 	return inc.finish(rp.GetID())
 }

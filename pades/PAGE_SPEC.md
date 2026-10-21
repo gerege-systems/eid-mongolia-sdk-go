@@ -1,6 +1,6 @@
 # Баталгаажуулалтын (verify) хуудас — PAGE_SPEC (pades-client/1)
 
-Хэрэгжүүлэлт (reference): `pades/internal/core/vpage.go` (`AppendVerifyPage`, `pageContent`), QR `pades/internal/qr/qr.go`,
+Хэрэгжүүлэлт (reference): `pades/internal/core/vpage.go` (`InsertVerifyPage`, `pageContent`), QR `pades/internal/qr/qr.go`,
 фонт `pades/assets`. Native SDK бүр **байт-ижил** гаргана — golden `testdata/golden/output/*.pdf` (хуудастай тохиолдол:
 `quartz-pdf13` (mn), `quartz-pdf13-en` (en), `quartz-objstm`, `quartz-linearized`) нь шалгуур. CA-ийн хуучин fpdf хуудастай төрх ойролцоо, байт-ижил биш.
 
@@ -135,6 +135,20 @@ fileName = PRECHECKS-ийн цэвэрлэгээ (Cc/Cf/Zl/Zp хасах → NFC
 Шинэ дугаар `nextID`-ээс дараалан: хуудас, content, F1 (Type0, CIDFontType2, FontDescriptor, FontFile2, ToUnicode),
 F2 (мөн 5), F3, link #1, link #2. Объектуудыг энэ дарааллаар бичээд /Pages үндсийг (ижил дугаар, бусад түлхүүр хэвээр,
 `/Kids [... <хуудас> 0 R] /Count n+1`) дахин бичнэ. Catalog өөрчлөгдөхгүй (trailer `/Root` = хуучин Catalog).
+
+### 8a. Байрлал (`verifyPagePosition`, golden v9-өөс)
+
+`verifyPagePosition` = `"last"` (анхдагч; хоосон/байхгүй ч мөн) | `"first"`; бусад утга → `REQUEST_INVALID` (хуудас
+нэмэгдэх эсэхээс үл хамааран шалгана). Зөвхөн хуудас нэмэгдэх үед (§1) нөлөөтэй; гарын үсэгтэй баримтад үл тоомсорлоно.
+
+- `last`: үндсэн /Pages-ийн `/Kids [k1 … kn <хуудас> 0 R]` — өмнөхтэй байт-ижил.
+- `first`: `/Kids [<хуудас> 0 R k1 … kn]` (элемент хоорондын ганц зай, `[` ба `]`-ийн дотор зайгүй) — хуудас баримтын
+  1-р хуудас болно. Үүнээс бусад бүх байт (объектын дугаар, дараалал, бусад түлхүүр, `/Count n+1`) `last`-тай ижил.
+  Үл харагдах гарын үсгийн widget урьдын адил гаралтын 1-р хуудсанд (энэ үед verify хуудас) орно.
+
+Хуудас үргэлж **үндсэн** /Pages-ийн `/Kids`-д орно (дунд зангилаа руу биш), тиймээс модны дарааллаар эхний эсвэл сүүлийн
+хуудас болно. Харагдах гарын үсгийн `appearance.page` ба `suggestPlacement`-ийн хуудасны дугаар **оролтын** баримтын
+хуудсаар (нэмэгдсэн хуудсыг тоолохгүй) — PLACEMENT_SPEC §1b.
 
 ```
 <page>    << /Type /Page /Parent P G R /MediaBox [0 0 595.28 841.89] /CropBox [0 0 595.28 841.89] /Rotate 0 /Resources << /Font << /F1 a 0 R /F2 b 0 R /F3 c 0 R >> >> /Contents d 0 R /Annots [e 0 R f 0 R] >>

@@ -179,7 +179,31 @@ func goldenCases() []goldenCase {
 			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "page-explicit-verify-gen1", Input: "case:verify-gen1", Prep: visible(PrepareOptions{},
 			Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64})},
+		// verifyPagePosition "first" (PAGE_SPEC §8a, PLACEMENT_SPEC §1b, golden v9): the verify page becomes page 1; appearance
+		// and placement page numbers stay the input's — (a) 1-page and (b) 2-page input; (c) explicit page 2 → drawn on
+		// output page 3, placement.page 2; (d) page 0 → input page 2; (e) a second signer, page 0 on a document whose verify
+		// page is at the front → its last page (3); (f) explicit page 1 there = the front verify page (kept); (g) no page
+		// added → the option has no effect (prepared bytes = quartz-pdf13-nopage); (h) an unknown value → REQUEST_INVALID.
+		{Name: "vpfirst-single", Input: "input/quartz-pdf13.pdf", Prep: first(page("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "Гэрээ №1 (Quartz).pdf"))},
+		{Name: "vpfirst-multi", Input: "input/libreoffice-contract.pdf", Prep: first(page("2b3c4d5e-6f7a-4b8c-9dae-1f2a3b4c5d6e", "ТЕСТ гэрээ.pdf"))},
+		{Name: "vpfirst-visible-explicit", Input: "input/libreoffice-contract.pdf", Prep: first(visible(page("3c4d5e6f-7a8b-4c9d-8ebf-2a3b4c5d6e7f", "ТЕСТ гэрээ.pdf"),
+			Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64}))},
+		{Name: "vpfirst-visible-page0", Input: "input/libreoffice-contract.pdf", Prep: first(visible(page("4d5e6f7a-8b9c-4dae-9fc0-3b4c5d6e7f80", "ТЕСТ гэрээ.pdf"),
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64}))},
+		{Name: "vpfirst-second-page0", Input: "case:vpfirst-multi", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "vpfirst-second-explicit-verify", Input: "case:vpfirst-multi", Prep: visible(PrepareOptions{},
+			Appearance{Page: 1, X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "vpfirst-nopage", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{DocID: "4e5f6071-8293-4a4b-8bce-3f4a5b6c7d8e",
+			VerifyPagePosition: VerifyPageFirst}},
+		{Name: "vpfirst-invalid", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{VerifyPage: true, DocID: "5e6f7a8b-9cad-4ebf-8a01-4c5d6e7f8091",
+			FileName: "x.pdf", VerifyPagePosition: "middle"}},
 	}
+}
+
+func first(o PrepareOptions) PrepareOptions {
+	o.VerifyPagePosition = VerifyPageFirst
+	return o
 }
 
 func visible(o PrepareOptions, a Appearance) PrepareOptions {
