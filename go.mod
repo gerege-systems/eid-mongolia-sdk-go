@@ -24,3 +24,5 @@ require (
 	golang.org/x/image v0.45.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+replace github.com/digitorus/pdf => github.com/craftzbay/pdf v0.1.3-eid.1
