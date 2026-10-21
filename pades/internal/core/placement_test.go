@@ -146,6 +146,7 @@ func placementGoldenInputs() map[string][]byte {
 		"full-page.pdf":        fxPage(letter+" "+res, full),
 		"two-verify.pdf":       verifyPagesInput(fxPage(letter+" "+res, fxLines(72, 700, 14, 10, 3, "Contract body text")), verifyDocA, verifyDocA),
 		"fake-verify.pdf":      fakeVerifyInput(res),
+		"verify-gen1.pdf":      verifyGen1Input(res),
 	}
 }
 
@@ -184,6 +185,42 @@ func fakeVerifyInput(res string) []byte {
 		"<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A << /S /URI /URI (https://ca.eidmongolia.mn/verify/"+verifyDocB+") >> >>",
 		"<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://ca.eidmongolia.mn/verify/"+verifyDocA+"/1) >> >>",
 	)
+}
+
+// verifyGen1Input — a content page and an eID verify page for verifyDocA whose page, Link annotation and URI action
+// are generation 1 and 2 objects (`6 1 obj`, `8 1 obj`, `10 2 obj`; PLACEMENT_SPEC §1a: every reference resolves with
+// the generation it carries, every xref entry with the generation it records).
+func verifyGen1Input(res string) []byte {
+	type obj struct {
+		gen  int
+		body string
+	}
+	objs := []obj{
+		{0, "<< /Type /Catalog /Pages 2 0 R >>"},
+		{0, "<< /Type /Pages /Kids [3 0 R 6 1 R] /Count 2 >>"},
+		{0, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 4 0 R >>"},
+		{0, fxStream("", fxLines(72, 700, 14, 10, 3, "Contract body text"))},
+		{0, fxHelvetica()},
+		{1, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 7 0 R /Annots [8 1 R 9 0 R] >>"},
+		{0, fxStream("", fxLines(72, 700, 14, 10, 2, "eID Mongolia verification page"))},
+		{1, "<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A 10 2 R >>"},
+		{0, "<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://eidmongolia.mn/trust) >> >>"},
+		{2, "<< /S /URI /URI (https://ca.eidmongolia.mn/verify/" + verifyDocA + ") >>"},
+	}
+	var b bytes.Buffer
+	b.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+	offs := make([]int, len(objs))
+	for i, o := range objs {
+		offs[i] = b.Len()
+		fmt.Fprintf(&b, "%d %d obj\n%s\nendobj\n", i+1, o.gen, o.body)
+	}
+	x := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
+	for i, o := range objs {
+		fmt.Fprintf(&b, "%010d %05d n \n", offs[i], o.gen)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, x)
+	return b.Bytes()
 }
 
 // placementInputs — synthetic inputs that exercise each scanner rule (placement/input).

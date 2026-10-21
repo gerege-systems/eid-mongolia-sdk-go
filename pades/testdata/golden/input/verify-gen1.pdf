@@ -1,0 +1,65 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 6 1 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 113 >>
+stream
+BT /F1 10 Tf 14 TL 72 700 Td
+(Contract body text) Tj T*
+(Contract body text) Tj T*
+(Contract body text) Tj T*
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450 500 550 600 650 700 750 450] >>
+endobj
+6 1 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R /Annots [8 1 R 9 0 R] >>
+endobj
+7 0 obj
+<< /Length 110 >>
+stream
+BT /F1 10 Tf 14 TL 72 700 Td
+(eID Mongolia verification page) Tj T*
+(eID Mongolia verification page) Tj T*
+ET
+
+endstream
+endobj
+8 1 obj
+<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A 10 2 R >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://eidmongolia.mn/trust) >> >>
+endobj
+10 2 obj
+<< /S /URI /URI (https://ca.eidmongolia.mn/verify/f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182) >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000253 00000 n 
+0000000417 00000 n 
+0000000932 00001 n 
+0000001080 00000 n 
+0000001241 00001 n 
+0000001339 00000 n 
+0000001480 00002 n 
+trailer
+<< /Size 11 /Root 1 0 R >>
+startxref
+1587
+%%EOF
