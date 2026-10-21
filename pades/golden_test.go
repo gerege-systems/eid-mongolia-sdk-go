@@ -170,6 +170,15 @@ func goldenCases() []goldenCase {
 			Appearance{X: 340, Y: 36, Width: 220, Height: 64, Exact: true})},
 		{Name: "exact-out-of-bounds", Input: "input/table-bottom.pdf", Prep: visible(page("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f", "table.pdf"),
 			Appearance{X: 400, Y: 36, Width: 220, Height: 64, Exact: true})},
+		// Object generations (PLACEMENT_SPEC §1a, golden v8): input/verify-gen1.pdf has its verify page, Link and URI
+		// action as generation 1/2 objects. (a) first signature (invisible, docId = the page's); (b) second signer, page
+		// 0: docId is read from the generation-1 Link and the generation-1 verify page is skipped → page 1; (c) explicit
+		// page 2: the widget goes on the generation-1 page, which the increment rewrites as `6 1 obj`.
+		{Name: "verify-gen1", Input: "input/verify-gen1.pdf", Prep: PrepareOptions{DocID: "f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182"}},
+		{Name: "page0-verify-gen1", Input: "case:verify-gen1", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "page-explicit-verify-gen1", Input: "case:verify-gen1", Prep: visible(PrepareOptions{},
+			Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64})},
 	}
 }
 

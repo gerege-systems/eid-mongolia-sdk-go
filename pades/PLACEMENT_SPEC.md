@@ -46,6 +46,16 @@ from its page has it); a visible stamp has no Link annotation, and its QR URL (`
 Annotation entries may be direct or indirect; anything else (a non-dictionary entry, `/A` missing, another `/S`, a
 `/URI` that differs in any byte, a page that cannot be read) does not make a verify page.
 
+**Object generations.** References resolve by object number *and* generation: `N G R` reads the xref entry of `N` only
+when that entry records generation `G` (an object in an object stream has generation 0); otherwise the reference is
+null. The `docId` scan (the first `/Subtype /Link` whose `/A /URI` is `https://ca.eidmongolia.mn/verify/` + a lowercase
+UUID, Prepare and §6b) walks the xref in object-number order and reads each in-use object with **the generation its xref
+entry records** — never an assumed generation 0. A verify page, its `/Annots`, Link or `/A` with a non-zero generation is
+therefore found exactly like a generation-0 one. Golden v8 (`input/verify-gen1.pdf`: verify page `6 1 obj`, Link
+`7 1 obj`, URI action `8 2 obj`): `verify-gen1` (first signature, invisible), `page0-verify-gen1` (2nd signer, page 0
+→ docId from the generation-1 Link, page 1), `page-explicit-verify-gen1` (`page: 2` → the widget is added to the
+generation-1 page, rewritten as `6 1 obj`).
+
 The rule errs towards *content*: a page that only looks like a verify page (another `docId`, a different host, a
 `/rev` suffix, text without the link) is a content page — the stamp may then land on it, which is the pre-v6 behaviour
 and harmless; a real content page is never skipped unless it links to this document's own verify URL. No marker is
