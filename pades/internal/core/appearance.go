@@ -31,6 +31,9 @@ type Visible struct {
 	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>
 	// Avoid — scan the page and move the stamp off existing content (PLACEMENT_SPEC.md); false = exactly (X, Y).
 	Avoid bool
+	// Exact — with Avoid: never move; the page is still scanned so the status says "overlap" when content is under
+	// the rect (PLACEMENT_SPEC.md §6a).
+	Exact bool
 	// Tamper — ЗӨВХӨН validator-ийн халдлагын тест (pades багц хэзээ ч тавихгүй).
 	Tamper *VisibleTamper
 }
@@ -404,23 +407,7 @@ func DefaultStampPage(doc []byte, verifyURI string) (page, n int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	var pages []pdf.Value
-	var walk func(v pdf.Value, depth int)
-	walk = func(v pdf.Value, depth int) {
-		if depth > maxSerializeDepth || len(pages) > 1<<16 {
-			return
-		}
-		switch v.Key("Type").Name() {
-		case "Page":
-			pages = append(pages, v)
-		case "Pages":
-			kids := v.Key("Kids")
-			for i := range kids.Len() {
-				walk(kids.Index(i), depth+1)
-			}
-		}
-	}
-	walk(inc.root().Key("Pages"), 0)
+	pages := pageList(inc.root().Key("Pages"))
 	n = len(pages)
 	for i := n - 1; i >= 0; i-- {
 		if !isVerifyPage(pages[i], verifyURI) {

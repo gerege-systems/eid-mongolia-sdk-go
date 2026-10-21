@@ -11,7 +11,7 @@
 ## 1. Оролт ба байршил
 
 ```
-appearance: { page: int (1-ээс; 0/байхгүй = оролтын eID verify хуудас БИШ сүүлийн хуудас — PLACEMENT_SPEC §1a), x, y, width, height: тоо (pt), lang: "mn"|"en" }
+appearance: { page: int (1-ээс; 0/байхгүй = оролтын eID verify хуудас БИШ сүүлийн хуудас — PLACEMENT_SPEC §1a), x, y, width, height: тоо (pt), lang: "mn"|"en", exact: bool (анхдагч false — PLACEMENT_SPEC §6a) }
 ```
 
 - **h100** — бүх урт/координат 1/100 pt-ийн бүхэл тоо: `round100(v) = floor(v × 100 + 0.5)` (IEEE-754 double).
@@ -26,6 +26,9 @@ appearance: { page: int (1-ээс; 0/байхгүй = оролтын eID verify 
   (гүн ≤ 32; `/Count`-д итгэхгүй). `page > тоо` → `REQUEST_INVALID`.
 - **Байршил** ([PLACEMENT_SPEC.md](PLACEMENT_SPEC.md)): `x, y` нь хүссэн байрлал; хуудсан дээрх агуулга (бичвэр, зураг,
   зураас, annotation)-тай давхцвал дүрслэл тогтсон дарааллаар чөлөөт байрлал руу шилжинэ. Чөлөөтэй бол байт-ижил.
+  `exact: true` (иргэн өөрөө байрлуулсан) бол хэзээ ч шилжихгүй — яг тэр тэгш өнцөгтөд, агуулгатай давхцвал
+  `placement.status = "overlap"` (PLACEMENT_SPEC §6a). Гарын үсэггүйгээр санал болгох байрлал/хуудасны хэмжээ:
+  `suggestPlacement` (PLACEMENT_SPEC §6b).
 - **Хайрцаг**: хуудасны `/CropBox`, байхгүй бол `/MediaBox` — хоёулаа `/Parent`-ээр удамшина (гүн ≤ 32). 4 тоо (бүхэл/бодит),
   `round100`, хэвийн болгоно: `box = [min(x0,x2) min(y0,y2) max(x0,x2) max(y0,y2)]`. Алга/буруу → `REQUEST_INVALID`.
 - **Эргэлт**: удамшсан `/Rotate` (бүхэл, 90-ийн үржвэр, эс бөгөөс `REQUEST_INVALID`), `rot = ((r mod 360) + 360) mod 360`.

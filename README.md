@@ -693,6 +693,12 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
   дүрслэл чөлөөт зай руу шилжинэ — эхлээд толин тусгал багана (баруун доод → зүүн доод), дараа нь 12 pt-ээр дээш.
   Үр дүн: `Prepared.Placement` (`Status`: `requested` | `moved` | `overlap` — чөлөөт зай алга, хүссэн байрлалд
   | `unscanned` — хуудсыг хязгаарт багтааж уншиж чадсангүй). Дэлгэрэнгүй: [PLACEMENT_SPEC.md](pades/PLACEMENT_SPEC.md).
+- `Exact: true` (v0.14.0+) — иргэн өөрөө сонгосон байрлал: хэзээ ч шилжихгүй, яг `Page/X/Y/Width/Height`-д зурна
+  (хуудаснаас гарвал `REQUEST_INVALID`); агуулгатай давхцвал `Status` = `overlap`. PLACEMENT_SPEC §6a.
+- `pades.SuggestPlacement(pdf, appearance)` (v0.14.0+) — гарын үсэг, гэрчилгээ, сүлжээгүйгээр Prepare-ийн сонгох байрлал
+  (`Page` шийдэгдсэн, `X/Y/Width/Height/Status`) ба `PageWidth/PageHeight`, `PageCount`, `Pages[]` (хуудас бүрийн
+  харагдах хэмжээ, pt) — UI-д анхдагч байрлалыг харуулж, хэрэглэгч зөөсний дараа `Exact: true`-гаар Prepare руу өгнө.
+  Координат: харагдах зүүн доод булангаас (UI-ийн дээд-зүүн `top` → `y = PageHeight − top − Height`). PLACEMENT_SPEC §6b.
 - Өндөр ≥ 45 pt (QR модуль ≥ 1 pt), бичвэр багтахгүй (нэр 7 pt, бусад 5 pt хүртэл жижгэрнэ), хуудаснаас гарсан, хуудас
   алга, `/Name` бичигдэхгүй нэр, docID тодорхойгүй → `REQUEST_INVALID`. Огноо нь мэдүүлсэн SigningTime (TSA-ийн цаг prepare-д
   мэдэгдэхгүй).
