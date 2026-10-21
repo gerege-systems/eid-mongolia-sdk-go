@@ -13,7 +13,7 @@ the first free spot in a fixed order. When the preferred rect is free, the outpu
 
 ## 1. Scope and result
 
-- Runs whenever `appearance` is given (no opt-out). Inputs: the target page dictionary (APPEARANCE_SPEC §1: `page`
+- Runs whenever `appearance` is given. `appearance.exact = true` (§6a) keeps the scan but never moves the stamp. Inputs: the target page dictionary (APPEARANCE_SPEC §1: `page`
   resolved, CropBox/MediaBox `box` in h100, `rot`), and the requested `x, y, w, h` (h100, visible space). The request is
   validated exactly as before (APPEARANCE_SPEC §1) **before** placement — an invalid request is still `REQUEST_INVALID`.
 - Output: the final `(x, y)` (h100, visible space) and a status:
@@ -21,8 +21,8 @@ the first free spot in a fixed order. When the preferred rect is free, the outpu
   | status | meaning | position |
   |---|---|---|
   | `requested` | the requested rect is free | requested |
-  | `moved` | requested rect overlaps content; a free candidate was found | that candidate |
-  | `overlap` | no candidate is free | requested (drawn over content) |
+  | `moved` | requested rect overlaps content; a free candidate was found (never with `exact`) | that candidate |
+  | `overlap` | no candidate is free (`exact`: the requested rect is not free) | requested (drawn over content) |
   | `unscanned` | the page could not be scanned (§5) | requested |
 
 - `Prepared.placement = { page, x, y, width, height, status }` — `x, y, width, height` in pt (`h100 / 100`), `page` the
@@ -317,6 +317,58 @@ Fallback choice (`overlap` / `unscannable` → requested spot): it keeps today's
 adding a page would change the page count (and break the visible-signature validation of earlier signers), and shrinking
 the stamp would need a different appearance stream. The status makes the overlap visible to the caller.
 
+## 6a. Exact placement (`appearance.exact`)
+
+For a position the signer chose (a UI where the citizen drags the stamp on the page preview), `appearance.exact = true`
+(default `false`; JSON `exact`, TS `exact?: boolean`, Go `Exact`, .NET `Exact`, Swift/Kotlin `exact`):
+
+- Validation is unchanged (APPEARANCE_SPEC §1): the rect must lie fully inside the page's visible box
+  (`x + w ≤ vw`, `y + h ≤ vh`, `w, h > 0`) — otherwise `REQUEST_INVALID`, never clamped. `page` 0 resolves as in §1a.
+- The page is scanned (§3) and the requested rect is the **only** candidate: status `requested` when it is free (§6
+  step 3, with the same 4 pt `pad`), `overlap` when it is not, `unscanned` when the page cannot be scanned (§5). The
+  stamp is drawn at the requested rect in every case; status is never `moved`.
+- The output is the one of the non-exact request whose result is that same rect: an exact request at a free spot is
+  byte-identical to an auto placement that lands there (golden `exact-free` = `table-bottom-visible`,
+  `exact-page0-after-verify` = `page0-after-verify` — same `preparedSha256`). `exact` is not written into the PDF.
+- `exact = false` (or absent) is byte-identical to golden v6.
+
+## 6b. Suggestion without signing (`suggestPlacement`)
+
+`suggestPlacement(pdf, appearance)` (TS `suggestPlacement`, Go `pades.SuggestPlacement`, .NET
+`Pades.SuggestPlacement`, Swift `PAdES.suggestPlacement`, Kotlin `Pades.suggestPlacement`) runs §1a + §3–§6a on the
+input **without** a certificate, signing or network, so a UI can show the default stamp position before signing and map
+coordinates. Result (pt):
+
+```
+{ page,                    // 1-based, resolved (page 0 → §1a)
+  x, y, width, height,     // = Prepared.placement for the same pdf + appearance
+  status,                  // requested | moved | overlap | unscanned (never moved with exact)
+  pageWidth, pageHeight,   // visible size of `page` (CropBox, else MediaBox; after /Rotate)
+  pageCount,               // pages in /Pages tree order (§1a)
+  pages: [{width, height}] // visible size of every page, index 0 = page 1; {0, 0} = geometry unreadable }
+```
+
+- Coordinates are the appearance space (APPEARANCE_SPEC §1): origin at the visible lower-left, x right, y up. A UI that
+  renders page `p` at `s` px/pt with a top-left origin maps `left = x·s`, `top = (pageHeight − y − height)·s`; back:
+  `x = left/s`, `y = pageHeight − top/s − height`, then pass `exact: true` so the stamp stays where the user put it.
+  `pages[i]` sizes = `round100(box)/100` with the §1 box rules — viewers that intersect CropBox with MediaBox may differ
+  only on malformed pages.
+- Page sizes cost one walk of the page tree (no content is read except the target page's scan), so they are always
+  returned.
+- Checks, in order: input size (`PDF_TOO_LARGE`), `%PDF-` header and structure (`PDF_INVALID`), the appearance values
+  (APPEARANCE_SPEC §1, `REQUEST_INVALID`), encryption (`PDF_ENCRYPTED`), page > page count / box / `/Rotate` / rect
+  outside the page (`REQUEST_INVALID`). **Not** checked (Prepare does): prior signatures (`PDF_FOREIGN_SIGNATURE`,
+  `PDF_PRIOR_SIGNATURE_INVALID`, `PDF_LOCKED`, `PDF_TOO_MANY_SIGNATURES`), the signer certificate, `docId`, and whether
+  the name/role fit the stamp size (APPEARANCE_SPEC §3 — depends on the signer).
+- `docId` for §1a: a document that already has signatures (any `/ByteRange` + `/Contents` dictionary, PRECHECKS) uses the
+  `docId` read from its verify page link (the first `/Subtype /Link` whose `/URI` is `https://ca.eidmongolia.mn/verify/`
+  + a lowercase UUID, as Prepare reads it); an unsigned document skips no page (Prepare uses the caller's or a fresh
+  random `docId` there). Hence the result equals `Prepared.placement` except for an unsigned input that already carries
+  verify pages of the `docId` the caller passes to Prepare (golden `page0-two-verify`, synthetic).
+- Golden v7: every visible case carries `expect.suggestion` (the full object above, for that case's input) and
+  `exact-out-of-bounds` carries `expect.suggestionError` = `REQUEST_INVALID`; ports compare field-for-field (numbers as
+  JSON numbers) and assert `suggestion ⊇ placement` for every case except `page0-two-verify`.
+
 ## 7. Compatibility
 
 - Pages where the requested rect is free give byte-identical output (same `/Rect`, same objects) — all golden v3/v4
@@ -344,6 +396,16 @@ the stamp would need a different appearance stream. The status makes the overlap
   | `quartz-pdf13-visible-third` | `quartz-pdf13-visible-second` output (stamp at the bottom-right) | 340, 36, 220×64 | moved → 52, 36 (bottom-left) |
   | `full-page-visible` | `input/full-page.pdf` (text on every line) | 340, 36, 220×64 | overlap → 340, 36 |
 
+- Golden v7 (`appearance.exact`, §6a/§6b):
+
+  | case | input | request | result |
+  |---|---|---|---|
+  | `exact-on-content` | `input/table-bottom.pdf` | 340, 36, 220×64, exact | overlap → 340, 36 (not moved; `table-bottom-visible` moves to 340, 168) |
+  | `exact-free` | `input/table-bottom.pdf` | 340, 168, 220×64, exact | requested; `preparedSha256` = `table-bottom-visible` |
+  | `exact-rotated90-on-footer` | `input/rotated90-footer.pdf` | 536, 36, 220×64, exact | overlap → 536, 36 |
+  | `exact-page0-after-verify` | `case:quartz-pdf13` (page 0) | 340, 36, 220×64, exact | requested, page 1; `preparedSha256` = `page0-after-verify` |
+  | `exact-out-of-bounds` | `input/table-bottom.pdf` | 400, 36, 220×64, exact (400 + 220 > 595.28) | `REQUEST_INVALID` (prepare and suggestion) |
+
 - Regenerate: `go test ./pades/internal/core -run Placement -update-placement` (synthetic inputs + vectors), then
   `go test ./pades -run TestGolden -update` (golden cases; existing TSA fixtures are replayed so older outputs stay
   byte-identical).
@@ -357,6 +419,7 @@ the stamp would need a different appearance stream. The status makes the overlap
 2a. float → int saturating (§2) everywhere; font cache keyed by the containing object (§3.4).
 3. Interpreter (§3.2–§3.6) with the exact evaluation order of §2; fonts (§3.4); annotations (§3.7).
 4. Candidates (§6) reuse the existing `VisibleRect`.
-5. `Prepared.placement` in the public result; `Appearance` input unchanged.
-6. Tests: `placement/vectors.json` box-for-box, golden v5 byte-for-byte, a fuzz/property test that the scanner never
+5. `Prepared.placement` in the public result; `Appearance.exact` (§6a); `suggestPlacement` (§6b) sharing the same code
+   path as Prepare (resolve page → geometry → `VisibleRect` → scan → choose).
+6. Tests: `placement/vectors.json` box-for-box, golden v7 byte-for-byte plus `expect.suggestion` / `suggestionError`, a fuzz/property test that the scanner never
    throws on arbitrary content bytes.

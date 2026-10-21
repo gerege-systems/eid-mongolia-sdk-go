@@ -89,6 +89,10 @@ type Appearance struct {
 	Height float64 `json:"height"`
 	// Lang — "mn" | "en"; хоосон бол PrepareOptions.Lang (тэр нь хоосон бол mn).
 	Lang string `json:"lang,omitempty"`
+	// Exact — draw the stamp exactly at Page/X/Y/Width/Height (a position the signer chose): never moved off page
+	// content. Placement.Status is then "requested", or "overlap" when content is under the rect ("unscanned" when the
+	// page cannot be scanned). false (default) = the rect is only the preferred spot (PLACEMENT_SPEC.md §6, §6a).
+	Exact bool `json:"exact,omitempty"`
 }
 
 // Prepared — Prepare-ийн үр дүн.
@@ -103,8 +107,9 @@ type Prepared struct {
 
 // Placement — the visible stamp's final rect (Appearance coordinates, pt) and how it was chosen. The stamp avoids
 // existing page content (PLACEMENT_SPEC.md): Status "requested" = drawn at Appearance.X/Y; "moved" = that spot was
-// occupied and the stamp moved to free space; "overlap" = no free spot, drawn at the requested spot over content;
-// "unscanned" = the page could not be scanned within the limits, drawn at the requested spot.
+// occupied and the stamp moved to free space; "overlap" = no free spot (Exact: content under the rect), drawn at the
+// requested spot over content; "unscanned" = the page could not be scanned within the limits, drawn at the requested
+// spot. With Appearance.Exact the status is never "moved".
 type Placement struct {
 	Page   int     `json:"page"`
 	X      float64 `json:"x"`
@@ -302,7 +307,7 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
 		Date:  now.Format("2006-01-02 15:04") + " (+08)",
 		URL:   pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
-		Avoid: true,
+		Avoid: true, Exact: a.Exact,
 	}, nil
 }
 

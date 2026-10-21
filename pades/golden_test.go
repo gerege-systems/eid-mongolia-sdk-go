@@ -74,6 +74,10 @@ type goldenExpect struct {
 	PriorCMSSHA256 []string `json:"priorCmsSha256,omitempty"`
 	// Placement — the visible stamp's final rect and status (PLACEMENT_SPEC.md); absent for invisible signatures.
 	Placement *Placement `json:"placement,omitempty"`
+	// Suggestion — SuggestPlacement(input, appearance) (PLACEMENT_SPEC.md §6b); equals Placement in every field it
+	// shares. SuggestionError — its error code when it fails (only on cases whose Prepare fails too).
+	Suggestion      *Suggestion `json:"suggestion,omitempty"`
+	SuggestionError string      `json:"suggestionError,omitempty"`
 }
 
 type goldenManifest struct {
@@ -152,6 +156,20 @@ func goldenCases() []goldenCase {
 			Appearance{Page: 2, X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "page0-fake-verify", Input: "input/fake-verify.pdf", Prep: visible(PrepareOptions{DocID: "f5a6b7c8-d9e0-4f1a-8b2c-3d4e5f607182"},
 			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		// appearance.exact (PLACEMENT_SPEC §6a, golden v7): the signer's own position is never moved — (a) over the
+		// table → "overlap" at 340, 36 (table-bottom-visible moves to 340, 168); (b) exactly at that free spot →
+		// "requested", prepared bytes identical to table-bottom-visible; (c) /Rotate 90 over the footer → "overlap";
+		// (d) page 0 on a signed document still skips the verify page (prepared bytes = page0-after-verify); (e) a rect past the page edge → REQUEST_INVALID.
+		{Name: "exact-on-content", Input: "input/table-bottom.pdf", Prep: visible(page("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f", "table.pdf"),
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64, Exact: true})},
+		{Name: "exact-free", Input: "input/table-bottom.pdf", Prep: visible(page("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f", "table.pdf"),
+			Appearance{X: 340, Y: 168, Width: 220, Height: 64, Exact: true})},
+		{Name: "exact-rotated90-on-footer", Input: "input/rotated90-footer.pdf", Prep: visible(page("d3e4f5a6-b7c8-4d9e-8f1a-2b3c4d5e6f70", "landscape.pdf"),
+			Appearance{X: 536, Y: 36, Width: 220, Height: 64, Exact: true})},
+		{Name: "exact-page0-after-verify", Input: "case:quartz-pdf13", Prep: visible(PrepareOptions{Lang: "en"},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64, Exact: true})},
+		{Name: "exact-out-of-bounds", Input: "input/table-bottom.pdf", Prep: visible(page("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f", "table.pdf"),
+			Appearance{X: 400, Y: 36, Width: 220, Height: 64, Exact: true})},
 	}
 }
 
@@ -470,6 +488,16 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 	o.SignerCert = p.citizen.cert.Raw
 	o.Chain = [][]byte{p.ca04.cert.Raw, p.ca03.cert.Raw, p.ca02.cert.Raw}
 	o.SigningTime = goldenTime
+	var sugErr error
+	if o.Appearance != nil {
+		sug, err := SuggestPlacement(input, *o.Appearance)
+		if err != nil {
+			sugErr = err
+			got.SuggestionError = ErrorCode(err)
+		} else {
+			got.Suggestion = &sug
+		}
+	}
 	prep, err := Prepare(input, o)
 	if err != nil {
 		got.Error = ErrorCode(err)
@@ -477,6 +505,15 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 			t.Fatalf("%s: %v", c.Name, err)
 		}
 		return got, nil, err
+	}
+	if sugErr != nil {
+		t.Errorf("%s: SuggestPlacement: %v (Prepare ok)", c.Name, sugErr)
+	}
+	// page0-two-verify: an unsigned input whose verify pages carry the docId the caller passes to Prepare — the one
+	// case where SuggestPlacement (no docId: nothing skipped on unsigned input) differs (PLACEMENT_SPEC.md §6b).
+	if s, pl := got.Suggestion, prep.Placement; s != nil && c.Name != "page0-two-verify" &&
+		(pl == nil || *pl != (Placement{Page: s.Page, X: s.X, Y: s.Y, Width: s.Width, Height: s.Height, Status: s.Status})) {
+		t.Errorf("%s: SuggestPlacement %+v ≠ Prepared.Placement %+v", c.Name, *s, pl)
 	}
 	st, err := decodeState(prep.State)
 	if err != nil {

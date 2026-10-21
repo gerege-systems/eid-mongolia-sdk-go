@@ -175,21 +175,13 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 		}
 		placed = &Placement{X: vis.X, Y: vis.Y, Status: PlaceRequested}
 		if vis.Avoid {
-			// PLACEMENT_SPEC.md: move off existing page content; the requested rect stays when nothing is free.
-			occ, err := Occupancy(page, box)
-			switch {
-			case err != nil:
-				placed.Status = PlaceUnscanned
-			default:
-				px, py, ok := PlaceVisible(box, rot, vis.X, vis.Y, vis.W, vis.H, occ)
-				switch {
-				case !ok:
-					placed.Status = PlaceOverlap
-				case px != vis.X || py != vis.Y:
-					placed.X, placed.Y, placed.Status = px, py, PlaceMoved
-					if rect, err = VisibleRect(box, rot, px, py, vis.W, vis.H); err != nil {
-						return nil, err
-					}
+			// PLACEMENT_SPEC.md: move off existing page content (Exact: only report it); the requested rect stays
+			// when nothing is free.
+			pl := PlaceOnPage(page, box, rot, vis.X, vis.Y, vis.W, vis.H, vis.Exact)
+			placed = &pl
+			if pl.X != vis.X || pl.Y != vis.Y {
+				if rect, err = VisibleRect(box, rot, pl.X, pl.Y, vis.W, vis.H); err != nil {
+					return nil, err
 				}
 			}
 		}
