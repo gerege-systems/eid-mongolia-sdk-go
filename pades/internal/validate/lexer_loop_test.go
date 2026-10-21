@@ -9,13 +9,15 @@ import (
 )
 
 // lexLoopPDF — нэг объекттой classic xref PDF; objStm бол объект 1 нь шахаагүй ObjStm, объект 2 түүний дотор.
-func lexLoopPDF(body string, objStm bool) []byte {
+func lexLoopPDF(body string, objStm bool) []byte { return lexLoopPDFN(body, objStm, 1, "2 0 ") }
+
+// lexLoopPDFN — lexLoopPDF, ObjStm-ийн /N ба толгойг (hdr) өгнө.
+func lexLoopPDFN(body string, objStm bool, n int, hdr string) []byte {
 	var b bytes.Buffer
 	b.WriteString("%PDF-1.7\n")
 	obj := body
 	if objStm {
-		hdr := "2 0 "
-		obj = fmt.Sprintf("<</Type/ObjStm/N 1/First %d/Length %d>>\nstream\n%s%s\nendstream", len(hdr), len(hdr)+len(body), hdr, body)
+		obj = fmt.Sprintf("<</Type/ObjStm/N %d/First %d/Length %d>>\nstream\n%s%s\nendstream", n, len(hdr), len(hdr)+len(body), hdr, body)
 	}
 	off := b.Len()
 	fmt.Fprintf(&b, "1 0 obj\n%s\nendobj\n", obj)
@@ -42,6 +44,7 @@ func TestExtractRejectsUnterminatedObjectsPromptly(t *testing.T) {
 		"ObjStm хаагдаагүй массив": lexLoopPDF("[1", true),
 		"ObjStm хаагдаагүй мөр":    lexLoopPDF("(abc", true),
 		"ObjStm хаагдаагүй hex":    lexLoopPDF("<0a", true),
+		"ObjStm /N хэт их":         lexLoopPDFN("1", true, 2_000_000_000, "5 0 "),
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
