@@ -1,7 +1,7 @@
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
-github.com/craftzbay/pdf v0.1.3-eid.1 h1:aVUEKvJQk6Q/TFTGNov5sPAKTcrSobbqedom28/oYdo=
-github.com/craftzbay/pdf v0.1.3-eid.1/go.mod h1:05fDDJhPswBRM7GTfqCxNiDyeNcN0f+IobfOAl5pdXw=
+github.com/craftzbay/pdf v0.1.3-eid.2 h1:yqn1MA+2ZKvOnJ8dnxPjv7olstXTU+1dvtHyAlPv4L8=
+github.com/craftzbay/pdf v0.1.3-eid.2/go.mod h1:05fDDJhPswBRM7GTfqCxNiDyeNcN0f+IobfOAl5pdXw=
 github.com/digitorus/pdfsign v0.0.0-20260407063256-85ede6424a74 h1:MANiCuBLkFQNNVgIuGLU+mWxViMgaYCud1W2lZHmJvM=
 github.com/digitorus/pdfsign v0.0.0-20260407063256-85ede6424a74/go.mod h1:pNHrs2ezOb+shtypKo7bpK9acMy96Bhsp8Abeqd0Euo=
 github.com/digitorus/pkcs7 v0.0.0-20230713084857-e76b763bdc49/go.mod h1:SKVExuS+vpu2l9IoOc0RwqE7NYnb0JlcFHFnEJkVDzc=

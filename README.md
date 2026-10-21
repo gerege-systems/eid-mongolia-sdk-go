@@ -19,14 +19,14 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.15.1
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.15.2
 ```
 
 `pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
 SDK-ийн засвартай PDF lexer зөвхөн ингэж танай build-д орно (хаагдаагүй массив/мөр дээр мөнхийн давталтаас сэргийлнэ):
 
 ```
-replace github.com/digitorus/pdf => github.com/craftzbay/pdf v0.1.3-eid.1
+replace github.com/digitorus/pdf => github.com/craftzbay/pdf v0.1.3-eid.2
 ```
 
 ```go
