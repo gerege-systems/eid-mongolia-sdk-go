@@ -673,6 +673,9 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
   `REQUEST_INVALID`). Бүгд унавал `LTV_UNAVAILABLE`; `ctx` цуцлагдвал хүлээлт тасарч `context.Canceled`-ийг боосон
   `LTV_UNAVAILABLE`. TS SDK 0.18.3-ийн `ltvRetries`-тэй ижил — TS ба Go хоёулаа LTV retry-тэй.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
+- `VerifyPagePosition: pades.VerifyPageFirst` (v0.15.0+) — хуудас баримтын ЭХЭНД (1-р хуудас) орно; анхдагч
+  `pades.VerifyPageLast` (төгсгөлд, өмнөхтэй байт-ижил). `Appearance.Page`, `SuggestPlacement`, `Placement.Page` хоёуланд нь
+  оролтын PDF-ийн хуудсаар тоологдоно (нэмэгдсэн хуудсыг тоолохгүй). PAGE_SPEC §8a, PLACEMENT_SPEC §1b.
 
 ### 7.1. Харагдах гарын үсэг (сонголттой)
 

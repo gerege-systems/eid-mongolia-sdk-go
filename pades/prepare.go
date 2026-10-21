@@ -67,6 +67,11 @@ type PrepareOptions struct {
 	// VerifyPage — баталгаажуулалтын (QR) хуудас нэмэх эсэх. Зөвхөн гарын үсэггүй баримтад (эхний eID гарын үсэг)
 	// нэмэгдэнэ — гарын үсэгтэй баримтад хуудас нэмбэл өмнөх гарын үсгийг эвдэнэ (CA-ийн дүрэм).
 	VerifyPage bool `json:"verifyPage,omitempty"`
+	// VerifyPagePosition — where the verify page goes when it is added: VerifyPageLast ("last"; default, also when
+	// empty) or VerifyPageFirst ("first" — it becomes page 1). Only takes effect when the page is added (VerifyPage on
+	// an unsigned document). Appearance.Page, SuggestPlacement and Placement.Page always count the pages of the input
+	// document as given, never the added page (PAGE_SPEC.md §8a, PLACEMENT_SPEC.md §1b).
+	VerifyPagePosition string `json:"verifyPagePosition,omitempty"`
 	// FileName — баримтын нэр: хуудсанд (VerifyPage үед заавал) ба CA-ийн бүртгэлд (Completed.FileName); NFC, ≤ 120.
 	FileName string `json:"fileName,omitempty"`
 	// Lang — хуудасны хэл: "mn" (анхдагч, хоосон бол) | "en" (PAGE_SPEC.md §3a).
@@ -94,6 +99,12 @@ type Appearance struct {
 	// page cannot be scanned). false (default) = the rect is only the preferred spot (PLACEMENT_SPEC.md §6, §6a).
 	Exact bool `json:"exact,omitempty"`
 }
+
+// PrepareOptions.VerifyPagePosition values.
+const (
+	VerifyPageLast  = "last"
+	VerifyPageFirst = "first"
+)
 
 // Prepared — Prepare-ийн үр дүн.
 type Prepared struct {
@@ -155,6 +166,9 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if o.Lang != "" && o.Lang != "mn" && o.Lang != "en" {
 		return nil, newErr(CodeRequestInvalid, "lang: mn | en", nil)
 	}
+	if o.VerifyPagePosition != "" && o.VerifyPagePosition != VerifyPageLast && o.VerifyPagePosition != VerifyPageFirst {
+		return nil, newErr(CodeRequestInvalid, "verifyPagePosition: last | first", nil)
+	}
 	if err := checkAppearance(o); err != nil {
 		return nil, err
 	}
@@ -194,11 +208,11 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		if !fileOK {
 			return nil, newErr(CodeRequestInvalid, "fileName заавал, ≤ 120 тэмдэгт", nil)
 		}
-		base, err = core.AppendVerifyPage(doc, core.PageData{
+		base, err = core.InsertVerifyPage(doc, core.PageData{
 			Brand: pageBrand, FileName: fileName, DocumentHash: inHex, FileSize: int64(len(doc)), DocID: docID,
 			VerifyURL: pageVerifyURL + docID, TrustURL: pageTrustURL, CAName: cert.Issuer.CommonName, TSAName: pageTSAName,
 			Provider: pageProvider, Lang: o.Lang,
-		})
+		}, o.VerifyPagePosition == VerifyPageFirst)
 		if err != nil {
 			return nil, newErr(CodePDFInvalid, "PDF задарсангүй (хуудас нэмж чадсангүй)", err)
 		}
@@ -217,7 +231,12 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 		if vis, err = visibleSpec(doc, o, name, now, docID, revIndex); err != nil {
 			return nil, err
 		}
-		prep, err = core.PrepareSignatureVisible(base, now, name, o.Reason, vis)
+		// vis.Page counts the input's pages; a verify page added in front shifts them by one in base (§1b).
+		onBase := vis
+		if hasPage && o.VerifyPagePosition == VerifyPageFirst {
+			onBase.Page++
+		}
+		prep, err = core.PrepareSignatureVisible(base, now, name, o.Reason, onBase)
 		if errors.Is(err, core.ErrAppearance) {
 			return nil, newErr(CodeRequestInvalid, "appearance: "+strings.TrimPrefix(err.Error(), "pades: "), err)
 		}

@@ -69,6 +69,20 @@ page 2).
 
 Units: h100 = 1/100 pt integers (APPEARANCE_SPEC §1). All scanner arithmetic is IEEE-754 binary64 (§2).
 
+### 1b. Page numbers and `verifyPagePosition` (golden v9)
+
+Page numbers in `appearance.page`, `Prepared.placement.page` and `suggestPlacement` (`page`, `pageCount`, `pages`)
+always count **the pages of the input document as given**: the verify page this Prepare adds (PAGE_SPEC §8a) is never
+counted, whatever its position. With `verifyPagePosition = "first"` the verify page becomes page 1 of the output, so
+the SDK draws the stamp on output page `page + 1` while `placement.page` still reports `page`; with `"last"` (default)
+input and output numbering coincide. `page` is validated against the input's page count (`page > N` →
+`REQUEST_INVALID`), and page 0 (§1a) is resolved on the input before the page is added. A UI that previews the input
+PDF can therefore pass its own page index unchanged.
+
+Second and later signers: a verify page added in front by an earlier revision is an ordinary page of *their* input
+(explicit `page` counts it); page 0 skips it like any verify page (§1a — the scan goes from the last page backwards, so
+a verify page at the front is only reached when every later page is a verify page too).
+
 ## 2. Arithmetic (determinism)
 
 - Numbers from content streams and PDF objects are parsed to binary64 with correct rounding (Go `strconv.ParseFloat`,
