@@ -52,7 +52,7 @@ null. The `docId` scan (the first `/Subtype /Link` whose `/A /URI` is `https://c
 UUID, Prepare and §6b) walks the xref in object-number order and reads each in-use object with **the generation its xref
 entry records** — never an assumed generation 0. A verify page, its `/Annots`, Link or `/A` with a non-zero generation is
 therefore found exactly like a generation-0 one. Golden v8 (`input/verify-gen1.pdf`: verify page `6 1 obj`, Link
-`8 1 obj`, URI action `10 2 obj`): `verify-gen1` (first signature, invisible), `page0-verify-gen1` (2nd signer, page 0
+`7 1 obj`, URI action `8 2 obj`): `verify-gen1` (first signature, invisible), `page0-verify-gen1` (2nd signer, page 0
 → docId from the generation-1 Link, page 1), `page-explicit-verify-gen1` (`page: 2` → the widget is added to the
 generation-1 page, rewritten as `6 1 obj`).
 

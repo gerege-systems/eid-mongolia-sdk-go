@@ -188,38 +188,58 @@ func fakeVerifyInput(res string) []byte {
 }
 
 // verifyGen1Input — a content page and an eID verify page for verifyDocA whose page, Link annotation and URI action
-// are generation 1 and 2 objects (`6 1 obj`, `8 1 obj`, `10 2 obj`; PLACEMENT_SPEC §1a: every reference resolves with
-// the generation it carries, every xref entry with the generation it records).
+// are generation 1 and 2 objects (PLACEMENT_SPEC §1a: every reference resolves with the generation it carries, every
+// xref entry with the generation it records). Revision 1 is the content page alone with objects 6…8 free (6 and 7
+// next generation 1, 8 next generation 2 — ISO 32000-1 §7.5.4, pyHanko strict xref); revision 2 adds the verify page
+// as `6 1 obj`, its docId Link as `7 1 obj`, the Link's /A as `8 2 obj` (content 9 and the trust Link 10: generation 0).
 func verifyGen1Input(res string) []byte {
 	type obj struct {
-		gen  int
-		body string
-	}
-	objs := []obj{
-		{0, "<< /Type /Catalog /Pages 2 0 R >>"},
-		{0, "<< /Type /Pages /Kids [3 0 R 6 1 R] /Count 2 >>"},
-		{0, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 4 0 R >>"},
-		{0, fxStream("", fxLines(72, 700, 14, 10, 3, "Contract body text"))},
-		{0, fxHelvetica()},
-		{1, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 7 0 R /Annots [8 1 R 9 0 R] >>"},
-		{0, fxStream("", fxLines(72, 700, 14, 10, 2, "eID Mongolia verification page"))},
-		{1, "<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A 10 2 R >>"},
-		{0, "<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://eidmongolia.mn/trust) >> >>"},
-		{2, "<< /S /URI /URI (https://ca.eidmongolia.mn/verify/" + verifyDocA + ") >>"},
+		id, gen int
+		body    string
 	}
 	var b bytes.Buffer
+	write := func(objs []obj) map[int]int {
+		offs := map[int]int{}
+		for _, o := range objs {
+			offs[o.id] = b.Len()
+			fmt.Fprintf(&b, "%d %d obj\n%s\nendobj\n", o.id, o.gen, o.body)
+		}
+		return offs
+	}
 	b.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-	offs := make([]int, len(objs))
-	for i, o := range objs {
-		offs[i] = b.Len()
-		fmt.Fprintf(&b, "%d %d obj\n%s\nendobj\n", i+1, o.gen, o.body)
+	r1 := []obj{
+		{1, 0, "<< /Type /Catalog /Pages 2 0 R >>"},
+		{2, 0, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"},
+		{3, 0, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 4 0 R >>"},
+		{4, 0, fxStream("", fxLines(72, 700, 14, 10, 3, "Contract body text"))},
+		{5, 0, fxHelvetica()},
 	}
-	x := b.Len()
-	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
-	for i, o := range objs {
-		fmt.Fprintf(&b, "%010d %05d n \n", offs[i], o.gen)
+	offs := write(r1)
+	x1 := b.Len()
+	// Free list 0 → 6 → 7 → 8 → 0; the gen field of a free entry is the next generation of that number.
+	b.WriteString("xref\n0 9\n0000000006 65535 f \n")
+	for id := 1; id <= 5; id++ {
+		fmt.Fprintf(&b, "%010d 00000 n \n", offs[id])
 	}
-	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, x)
+	for _, f := range [][2]int{{7, 1}, {8, 1}, {0, 2}} {
+		fmt.Fprintf(&b, "%010d %05d f \n", f[0], f[1])
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", x1)
+	r2 := []obj{
+		{2, 0, "<< /Type /Pages /Kids [3 0 R 6 1 R] /Count 2 >>"},
+		{6, 1, "<< /Type /Page /Parent 2 0 R " + letter + " " + res + " /Contents 9 0 R /Annots [7 1 R 10 0 R] >>"},
+		{7, 1, "<< /Type /Annot /Subtype /Link /Rect [72 600 300 612] /Border [0 0 0] /A 8 2 R >>"},
+		{8, 2, "<< /S /URI /URI (https://ca.eidmongolia.mn/verify/" + verifyDocA + ") >>"},
+		{9, 0, fxStream("", fxLines(72, 700, 14, 10, 2, "eID Mongolia verification page"))},
+		{10, 0, "<< /Type /Annot /Subtype /Link /Rect [72 580 300 592] /Border [0 0 0] /A << /S /URI /URI (https://eidmongolia.mn/trust) >> >>"},
+	}
+	offs = write(r2)
+	x2 := b.Len()
+	fmt.Fprintf(&b, "xref\n0 1\n0000000000 65535 f \n2 1\n%010d 00000 n \n6 5\n", offs[2])
+	for _, o := range r2[1:] {
+		fmt.Fprintf(&b, "%010d %05d n \n", offs[o.id], o.gen)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size 11 /Root 1 0 R /Prev %d >>\nstartxref\n%d\n%%%%EOF\n", x1, x2)
 	return b.Bytes()
 }
 
