@@ -17,6 +17,7 @@ var (
 	routeAuthNotificationDocument = rpRoute{"POST", "/authentication/notification/document/{documentNumber}"}
 	routeAuthDeviceLinkAnonymous  = rpRoute{"POST", "/authentication/device-link/anonymous"}
 	routeAuthDeviceLinkEtsi       = rpRoute{"POST", "/authentication/device-link/etsi/{semanticsIdentifier}"}
+	routeAuthQR                   = rpRoute{"POST", "/authentication/qr"}
 	routeSignNotificationEtsi     = rpRoute{"POST", "/signature/notification/etsi/{semanticsIdentifier}"}
 	routeSignNotificationDocument = rpRoute{"POST", "/signature/notification/document/{documentNumber}"}
 	routeSignNotificationLinked   = rpRoute{"POST", "/signature/notification/linked/{documentNumber}"}
@@ -43,6 +44,7 @@ var (
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
 var rpRoutes = []rpRoute{
 	routeAuthNotificationEtsi, routeAuthNotificationDocument, routeAuthDeviceLinkAnonymous, routeAuthDeviceLinkEtsi,
+	routeAuthQR,
 	routeSignNotificationEtsi, routeSignNotificationDocument, routeSignNotificationLinked,
 	routeSignDeviceLinkEtsi, routeSignDeviceLinkDocument,
 	routeCertChoiceDeviceLink, routeCertChoiceEtsi,

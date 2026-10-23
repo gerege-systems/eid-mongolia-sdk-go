@@ -75,7 +75,8 @@ type APIError struct {
 
 func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.Status, e.Body) }
 
-// Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid): серверийн Code-оор.
+// Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid / ErrQRTokenInvalid): серверийн
+// Code-оор.
 func (e *APIError) Is(target error) bool {
 	switch target {
 	case ErrNoSigningCertificate:
@@ -84,6 +85,8 @@ func (e *APIError) Is(target error) bool {
 		return e.Code == CodeCertChoiceInvalid
 	case ErrRequestInvalid:
 		return e.Code == CodeRequestInvalid
+	case ErrQRTokenInvalid:
+		return e.Code == CodeQRTokenInvalid
 	}
 	return false
 }

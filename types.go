@@ -211,8 +211,17 @@ type SessionResult struct {
 	Person *Person
 	// TokenCertificate — USB токены гэрчилгээ олголтын session-ий блок (Token.IssueCertificate); бусад урсгалд nil.
 	TokenCertificate *TokenCertSessionBlock
+	// Presentation — «Миний QR» session-ий CA-ийн presentation (QR.Result шалгана); бусад урсгалд nil.
+	Presentation *SessionPresentation
 	// Raw — серверийн хариуны түүхий JSON (ParseSessionResult / Poll-ийн оролт), SDK задлаагүй талбарт.
 	Raw json.RawMessage
+}
+
+// SessionPresentation — QR session-ий `presentation` блок: JWS (ES256, CA-ийн JWKS) ба түүний payload-ийн хуулбар
+// (Claims — ШАЛГААГҮЙ; итгэхдээ QR.Verify / VerifyQRPresentation-ийн үр дүнг л хэрэглэ).
+type SessionPresentation struct {
+	JWS    string          `json:"jws"`
+	Claims json.RawMessage `json:"claims,omitempty"`
 }
 
 // Person — session-ий person блок (CA dto.PersonBlock). Нэршил core.gerege.mn-тэй нэг мөр — гурван нэр ӨӨР ойлголт:
