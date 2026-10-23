@@ -32,6 +32,7 @@ var (
 	routePersonActivity           = rpRoute{"GET", "/rp/activity/etsi/{personEtsi}"}
 	routePersonSummary            = rpRoute{"GET", "/person/summary/etsi/{personEtsi}"}
 	routePersonChildren           = rpRoute{"GET", "/person/children/etsi/{personEtsi}"}
+	routePersonSignatureImage     = rpRoute{"GET", "/person/etsi/{personEtsi}/signature-image"}
 	routeTokenCertificate         = rpRoute{"POST", "/token/certificate"}
 	routeTokenCertificateResult   = rpRoute{"GET", "/token/certificate/{sessionID}"}
 	routeTokenAuthChallenge       = rpRoute{"POST", "/token/auth/challenge"}
@@ -49,6 +50,7 @@ var rpRoutes = []rpRoute{
 	routeOrgRepresentations,
 	routeSession,
 	routePersonCertificates, routePersonDevices, routePersonActivity, routePersonSummary, routePersonChildren,
+	routePersonSignatureImage,
 	routeTokenCertificate, routeTokenCertificateResult,
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 	routeShare,

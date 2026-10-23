@@ -108,19 +108,10 @@ type Appearance struct {
 	StampImage *PDFImage `json:"stampImage,omitempty"`
 }
 
-// PDFImage — a "PDF image" as the CA serves it (APPEARANCE_SPEC.md §6.1): one ink colour + an 8-bit alpha channel.
-// The SDK writes Alpha into the PDF verbatim (/SMask, /FlateDecode) — nothing is compressed at runtime.
-type PDFImage struct {
-	Width  int    `json:"width"`  // px, 1…1600
-	Height int    `json:"height"` // px, 1…1600
-	Color  [3]int `json:"color"`  // [r, g, b], 0…255
-	// Alpha — zlib stream (RFC 1950, no preset dictionary, nothing after the Adler-32) inflating to exactly
-	// Width·Height bytes, rows top-down, no PNG filter bytes; ≤ 300 KiB. JSON: base64.
-	Alpha []byte `json:"alpha"`
-	// SHA256 — lowercase hex SHA-256 of the PNG the CA stores; not written into the PDF, carried to the registration
-	// (Completed.Images → POST /v3/pdf/signatures `images`).
-	SHA256 string `json:"sha256"`
-}
+// PDFImage — a "PDF image" as the CA serves it (APPEARANCE_SPEC.md §6.1) — eid.PDFImage, so the RP-API responses
+// (eid.Image.PDFImage from Person.SignatureImage, Representation.StampImage) go into Appearance as they are. The SDK
+// writes Alpha into the PDF verbatim (/SMask, /FlateDecode) — nothing is compressed at runtime.
+type PDFImage = eid.PDFImage
 
 // Default stamp sizes (pt) when Appearance.Width and Height are both 0 (APPEARANCE_SPEC.md §6.3): without images, with a
 // signature image, and with a stamp image (with or without a signature image; the height includes the stamp's overflow).
@@ -146,7 +137,7 @@ func appearanceSize(a *Appearance) (w, h float64) {
 
 var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-func (im *PDFImage) core() *core.PDFImage {
+func imageCore(im *PDFImage) *core.PDFImage {
 	if im == nil {
 		return nil
 	}
@@ -363,7 +354,7 @@ func checkAppearance(o PrepareOptions) error {
 		if !sha256Re.MatchString(x.im.SHA256) {
 			return bad(x.name + ".sha256: жижиг hex SHA-256")
 		}
-		if err := core.CheckPDFImage(x.im.core()); err != nil {
+		if err := core.CheckPDFImage(imageCore(x.im)); err != nil {
 			return bad(x.name + ": " + strings.TrimPrefix(err.Error(), "pades: харагдах гарын үсэг: зураг: "))
 		}
 	}
@@ -402,7 +393,7 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 	w, h := appearanceSize(a)
 	return core.Visible{
 		Page: page, X: core.Round100(a.X), Y: core.Round100(a.Y), W: core.Round100(w), H: core.Round100(h),
-		Sig: a.SignatureImage.core(), Stamp: a.StampImage.core(),
+		Sig: imageCore(a.SignatureImage), Stamp: imageCore(a.StampImage),
 		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
 		Date:  now.Format("2006-01-02 15:04") + " (+08)",
 		URL:   pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),

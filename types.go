@@ -306,6 +306,37 @@ type Representation struct {
 	// ValidFrom, ValidTo — ISO 8601; ValidTo "" = хугацаагүй.
 	ValidFrom string `json:"validFrom"`
 	ValidTo   string `json:"validTo,omitempty"`
+	// StampImageSet — байгууллагад тамганы зураг хадгалсан эсэх (CA V110).
+	StampImageSet bool `json:"stampImageSet"`
+	// StampImage — тамганы зураг; зөвхөн SIGN эрхтэй RP-д, зураг байвал (эс бөгөөс nil). PDF-д:
+	// pades.Appearance.StampImage = StampImage.PDFImage (ClaimedRole-той).
+	StampImage *Image `json:"stampImage,omitempty"`
+}
+
+// Image — CA-ийн хадгалсан ил тод PNG (иргэний гарын үсгийн зураг эсвэл байгууллагын тамга; CA docs/SIGNATURE_IMAGES.md).
+type Image struct {
+	PNG       []byte `json:"png"`    // ил тод PNG (JSON: base64)
+	SHA256    string `json:"sha256"` // PNG-ийн sha256, жижиг hex
+	Width     int    `json:"width"`  // px
+	Height    int    `json:"height"` // px
+	UpdatedAt string `json:"updatedAt,omitempty"`
+	// PDFImage — харагдах гарын үсэгт шигтгэх «PDF зураг» (pades.Appearance.SignatureImage / StampImage-д хэвээр
+	// өгнө); CA PNG-ийг хөрвүүлж чадаагүй (олон өнгө, alpha > 300 KiB) бол nil.
+	PDFImage *PDFImage `json:"pdfImage,omitempty"`
+}
+
+// PDFImage — CA-ийн «PDF зураг» (eid-mongolia-sdk-go pades/APPEARANCE_SPEC.md §6.1): нэг бэхний өнгө + 8 бит alpha.
+// pades.PDFImage нь энэ төрөл. Alpha-г дахин шахахгүй — SDK байтаар нь PDF-д бичнэ.
+type PDFImage struct {
+	Width  int    `json:"width"`  // px, 1…1600
+	Height int    `json:"height"` // px, 1…1600
+	Color  [3]int `json:"color"`  // [r, g, b], 0…255
+	// Alpha — zlib stream (RFC 1950, no preset dictionary, nothing after the Adler-32) inflating to exactly
+	// Width·Height bytes, rows top-down, no PNG filter bytes; ≤ 300 KiB. JSON: base64.
+	Alpha []byte `json:"alpha"`
+	// SHA256 — lowercase hex SHA-256 of the PNG the CA stores; not written into the PDF, carried to the registration
+	// (Completed.Images → POST /v3/pdf/signatures `images`).
+	SHA256 string `json:"sha256"`
 }
 
 // RepresentationsResponse — GET /organization/representations/etsi/{personEtsi} хариу.
