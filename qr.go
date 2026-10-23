@@ -70,6 +70,9 @@ const (
 	// CodeQRJWKSUnavailable — CA-ийн JWKS татагдсангүй / буруу. Түр алдаа — дахин оролдож болно (session-ий үр дүн
 	// CA дээр хугацаа дуустал хадгалагдана).
 	CodeQRJWKSUnavailable = "QR_JWKS_UNAVAILABLE"
+	// CodeQRPending — QR.Result-ийн хүлээх хугацаа (WaitOptions) дууссан ч иргэн хараахан хариулаагүй (CA-ийн session
+	// идэвхтэй) — дахин Result / Check дуудаж болно. CA-ийн жинхэнэ хугацаа дуусалт = *SessionFailedError{TIMEOUT}.
+	CodeQRPending = "QR_PENDING"
 )
 
 // errors.Is-ийн sentinel-ууд: *QRError (ба QR_TOKEN_INVALID-д *APIError) Code-оор тулгана.
@@ -79,6 +82,7 @@ var (
 	ErrQRAttributesInvalid   = errors.New("eid: " + CodeQRAttributesInvalid)
 	ErrQRPresentationInvalid = errors.New("eid: " + CodeQRPresentationInvalid)
 	ErrQRJWKSUnavailable     = errors.New("eid: " + CodeQRJWKSUnavailable)
+	ErrQRPending             = errors.New("eid: " + CodeQRPending)
 )
 
 var qrSentinels = map[string]error{
@@ -87,6 +91,7 @@ var qrSentinels = map[string]error{
 	CodeQRAttributesInvalid:   ErrQRAttributesInvalid,
 	CodeQRPresentationInvalid: ErrQRPresentationInvalid,
 	CodeQRJWKSUnavailable:     ErrQRJWKSUnavailable,
+	CodeQRPending:             ErrQRPending,
 }
 
 // QRError — «Миний QR»-ийн клиент талын алдаа (Code — дээрх CodeQR*). CA-ийн 404 QR_TOKEN_INVALID нь *APIError
@@ -575,8 +580,42 @@ func (s *QRService) Result(ctx context.Context, sess *QRSession, o *WaitOptions)
 		return nil, err
 	}
 	if r.State != StateComplete {
-		return nil, &SessionFailedError{EndResult: "TIMEOUT"}
+		return nil, qrErr(CodeQRPending, "иргэн хараахан хариулаагүй")
 	}
+	return s.finish(ctx, r, sess)
+}
+
+// QRCheck — QR.Check-ийн хариу: Complete == false бол иргэн хараахан хариулаагүй (Presentation nil).
+type QRCheck struct {
+	Complete     bool
+	Presentation *QRPresentation
+}
+
+// Check — нэг удаагийн шалгалт (polling UI-д): GET /session/{id} (serverPoll хүртэл; ≤ 0 бол 1 с). Иргэн хараахан
+// хариулаагүй бол QRCheck{Complete: false}; зөвшөөрсөн бол JWS/JWKS-ээр шалгасан presentation. Татгалзсан / CA-ийн
+// хугацаа дууссан бол *SessionFailedError; бусад алдаа Result-тэй ижил.
+func (s *QRService) Check(ctx context.Context, sess *QRSession, serverPoll time.Duration) (*QRCheck, error) {
+	if sess == nil || sess.SessionID == "" {
+		return nil, errors.New("eid: QR.Check: QRSession шаардлагатай")
+	}
+	if serverPoll <= 0 {
+		serverPoll = time.Second
+	}
+	r, err := (&SessionService{h: s.h}).Poll(ctx, sess.SessionID, serverPoll)
+	if err != nil {
+		return nil, err
+	}
+	if r.State != StateComplete {
+		return &QRCheck{}, nil
+	}
+	p, err := s.finish(ctx, r, sess)
+	if err != nil {
+		return nil, err
+	}
+	return &QRCheck{Complete: true, Presentation: p}, nil
+}
+
+func (s *QRService) finish(ctx context.Context, r *SessionResult, sess *QRSession) (*QRPresentation, error) {
 	if r.EndResult != "OK" {
 		return nil, &SessionFailedError{EndResult: r.EndResult}
 	}
