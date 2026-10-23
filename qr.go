@@ -342,7 +342,8 @@ func checkQRClaims(payload []byte, jws string, exp QRExpect) (*QRPresentation, e
 	if c["iss"] != iss {
 		return nil, bad("iss таарсангүй")
 	}
-	if exp.Audience == "" || c["aud"] != exp.Audience {
+	// aud = RP UUID (CA жижиг үсгээр бичнэ) — том/жижиг үсэг ялгахгүй.
+	if aud, _ := c["aud"].(string); exp.Audience == "" || !strings.EqualFold(aud, exp.Audience) {
 		return nil, bad("aud (RP UUID) таарсангүй")
 	}
 	if exp.SessionID == "" || c["sid"] != exp.SessionID {

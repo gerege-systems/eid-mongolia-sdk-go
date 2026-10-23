@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"os"
+	"strings"
 )
 
 var b64 = base64.RawURLEncoding
@@ -118,6 +119,7 @@ func main() {
 		ok("loyalty_phone_unavailable", sign(hdr(), loyalty, false), expect("full_name", "phone"), V{"full_name": fullName}, []string{"phone"}),
 		ok("all_attributes", sign(hdr(), payload(all, []string{}), false), expect("age_over_18", "age_over_21", "full_name", "phone", "birth_date", "civil_id"), all, []string{}),
 		ok("all_unavailable_no_attrs_key", sign(hdr(), with(payload(nil, []string{"birth_date"}), "attrs", nil), false), expect("birth_date"), V{}, []string{"birth_date"}),
+		ok("audience_case_insensitive", ageJWS, with(expect("age_over_18"), "audience", strings.ToUpper(aud)), V{"age_over_18": true}, []string{}),
 		bad("tampered_payload", tampered, expect("age_over_18")),
 		bad("tampered_aud", tampered2, expect("age_over_18")),
 		bad("wrong_audience", ageJWS, with(expect("age_over_18"), "audience", "another-rp-uuid")),
