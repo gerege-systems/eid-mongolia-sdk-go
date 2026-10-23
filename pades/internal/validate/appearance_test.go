@@ -2,6 +2,7 @@ package validate
 
 import (
 	"bytes"
+	"compress/zlib"
 	"strings"
 	"testing"
 	"time"
@@ -145,6 +146,107 @@ func TestOwnVisibleSignature(t *testing.T) {
 	t.Run("нэр зөрүү", func(t *testing.T) {
 		_, err := pades.PrepareSignatureVisible(one, visTime, "BOB DORJ", "", *visSpec("EVIL NAME", 2, nil))
 		if err == nil || !strings.Contains(err.Error(), "/Name") {
+			t.Fatalf("алдаа хүлээсэн: %v", err)
+		}
+	})
+}
+
+// tinyImage — w×h alpha (diagonal ramp) as a PDF image (APPEARANCE_SPEC.md §6.1).
+func tinyImage(t *testing.T, w, h int, color [3]int) *pades.PDFImage {
+	t.Helper()
+	raw := make([]byte, w*h)
+	for i := range raw {
+		raw[i] = byte((i%w + i/w) * 7)
+	}
+	var z bytes.Buffer
+	zw := zlib.NewWriter(&z)
+	if _, err := zw.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &pades.PDFImage{W: w, H: h, Color: color, Alpha: z.Bytes()}
+}
+
+// TestOwnVisibleSignatureImages — APPEARANCE_SPEC.md §6.5: a stamp with signature + organization-stamp images is
+// accepted as the writer made it; any change to the image objects, their placement or the resources is rejected.
+func TestOwnVisibleSignatureImages(t *testing.T) {
+	p := padestest.New(t)
+	v := padesValidator(p)
+	v.Extract = isolated(t)
+	tsa := p.TSAServer(t, nil)
+	alice := p.Citizen(t, "ALICE", "BOLD", "1111111111", 2048)
+	bob := p.Citizen(t, "BOB", "DORJ", "2222222222", 2048)
+	one := p.Sign(t, padesBase(t), alice, padestest.SignOptions{TSAURL: tsa, SigningTime: visTime})
+	spec := func(tamper *pades.VisibleTamper) *pades.Visible {
+		s := visSpec("BOB DORJ", 2, tamper)
+		s.W, s.H = 24000, 14750
+		s.Sig, s.Stamp = tinyImage(t, 40, 12, [3]int{18, 32, 110}), tinyImage(t, 30, 30, [3]int{88, 52, 160})
+		return s
+	}
+	sign2 := func(t *testing.T, tamper *pades.VisibleTamper) []byte {
+		return p.Sign(t, one, bob, padestest.SignOptions{TSAURL: tsa, SigningTime: visTime, Visible: spec(tamper)})
+	}
+	t.Run("хүлээн авна", func(t *testing.T) {
+		rep := mustPDF(t, v, sign2(t, nil))
+		if rep.Indication != Valid || len(rep.Signatures) != 2 {
+			t.Fatalf("%+v", rep)
+		}
+		for _, s := range rep.Signatures {
+			wantPAdESValid(t, s, "PAdES-BASELINE-LT")
+		}
+	})
+	lastDataByte := func(role string) *pades.VisibleTamper {
+		return &pades.VisibleTamper{Body: func(r string, b []byte) []byte {
+			if r != role {
+				return b
+			}
+			b = bytes.Clone(b)
+			i := bytes.LastIndex(b, []byte("\nendstream")) - 1
+			b[i] ^= 1
+			return b
+		}}
+	}
+	attacks := map[string]*pades.VisibleTamper{
+		"base /Width 2": replaceBody("Sig.base", "/Width 1 ", "/Width 2 "),
+		// Өнгө, alpha-ийн агуулга нь оролт (CA-ийн зураг) — PDF-ээс уншиж дахин үүсгэдэг тул өөр өнгө = өөр хүчинтэй
+		// зураг (энэ revision-ийн гарын үсэгт хамрагдана); хэлбэр/байрлал/хэмжээ зөрвөл татгалзана.
+		"base /DeviceCMYK":       replaceBody("Stamp.base", "/DeviceRGB", "/DeviceCMYK"),
+		"mask /Width өөр":        replaceBody("Sig.mask", "/Width 40 ", "/Width 41 "),
+		"mask alpha эвдэрсэн":    lastDataByte("Sig.mask"),
+		"mask /Decode нэмэлт":    replaceBody("Stamp.mask", "/BitsPerComponent 8", "/BitsPerComponent 8 /Decode [1 0]"),
+		"base /Interpolate":      replaceBody("Sig.base", "/BitsPerComponent 8", "/BitsPerComponent 8 /Interpolate true"),
+		"зургийн байрлал өөр":    replaceBody("form", " cm /Sig Do Q", " cm /Stamp Do Q"),
+		"тамга 2 удаа":           replaceBody("form", "EMC", "q 10 0 0 10 0 0 cm /Stamp Do Q\nEMC"),
+		"XObject нэмэлт нэр":     replaceBody("form", "/XObject <<", "/XObject << /X 1 0 R"),
+		"зургийн нөөц солигдсон": replaceBody("form", "/Sig ", "/Sgg "),
+		"тамгын хүрээ (box) өөр": replaceBody("form", "0.5 0.5 239 117 re S", "0.5 0.5 239 146.5 re S"),
+		"хуваах шугам устгасан":  replaceBody("form", "0 69.73 m 240 69.73 l S\n", ""),
+	}
+	for name, tamper := range attacks {
+		t.Run(name, func(t *testing.T) {
+			rep := mustPDF(t, v, sign2(t, tamper))
+			for _, s := range rep.Signatures {
+				if s.SignerName == "ALICE BOLD" {
+					wantModified(t, s)
+					return
+				}
+			}
+			t.Fatalf("эхний гарын үсэг алга: %+v", rep)
+		})
+	}
+	t.Run("тамга claimedRole-гүй", func(t *testing.T) {
+		s := spec(nil)
+		s.Role = ""
+		if _, err := pades.PrepareSignatureVisible(one, visTime, "BOB DORJ", "", *s); err == nil || !strings.Contains(err.Error(), "claimedRole") {
+			t.Fatalf("алдаа хүлээсэн: %v", err)
+		}
+	})
+	t.Run("alpha урт буруу", func(t *testing.T) {
+		s := spec(nil)
+		s.Sig.H = 13
+		if _, err := pades.PrepareSignatureVisible(one, visTime, "BOB DORJ", "", *s); err == nil || !strings.Contains(err.Error(), "alpha") {
 			t.Fatalf("алдаа хүлээсэн: %v", err)
 		}
 	})

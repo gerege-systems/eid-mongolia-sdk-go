@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 )
 
 // stateMagic — State-ийн толгой (хувилбартай). Формат: magic ‖ uint32 BE толгойн урт ‖ JSON толгой ‖ prepared PDF
@@ -23,6 +25,8 @@ type prepState struct {
 	PageSHA256  string   `json:"pageSha256,omitempty"`
 	ClaimedRole string   `json:"claimedRole,omitempty"`
 	FileName    string   `json:"fileName,omitempty"` // цэвэрлэсэн (CA бүртгэлд)
+	// Images — харагдах дүрслэлд шигтгэсэн зургийн PNG sha256 (Completed.Images → бүртгэл).
+	Images []eid.PDFSignatureImage `json:"images,omitempty"`
 	// PreparedSHA256 — prepared PDF-ийн sha256 (state эвдэрснийг Complete-д илрүүлнэ).
 	PreparedSHA256 string `json:"preparedSha256"`
 	PDF            []byte `json:"-"`

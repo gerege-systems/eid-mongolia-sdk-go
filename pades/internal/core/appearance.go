@@ -2,8 +2,10 @@ package core
 
 import (
 	"bytes"
+	"compress/zlib"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 
@@ -29,6 +31,9 @@ type Visible struct {
 	Lang       string // "mn" | "en"
 	Date       string // «YYYY-MM-DD HH:MM (+08)»
 	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>
+	// Sig, Stamp — handwritten-signature and organization-stamp images (APPEARANCE_SPEC.md §6); nil = none. Stamp needs
+	// Role (onBehalfOf). W, H is then the whole widget rect (box + the stamp's overflow above it).
+	Sig, Stamp *PDFImage
 	// Avoid — scan the page and move the stamp off existing content (PLACEMENT_SPEC.md); false = exactly (X, Y).
 	Avoid bool
 	// Exact — with Avoid: never move; the page is still scanned so the status says "overlap" when content is under
@@ -40,7 +45,8 @@ type Visible struct {
 
 // VisibleTamper — харагдах revision-ийг бичихийн өмнө өөрчлөх тестийн hook (халдлагын хувилбар үүсгэх).
 type VisibleTamper struct {
-	// Body — объектын биеийг солино; role: "widget", "form", "F1.0"…"F1.4", "F2.0"…"F2.4".
+	// Body — объектын биеийг солино; role: "widget", "form", "F1.0"…"F1.4", "F2.0"…"F2.4", "Sig.base", "Sig.mask",
+	// "Stamp.base", "Stamp.mask".
 	Body func(role string, body []byte) []byte
 	// AnnotsPage — widget-ийг /P биш энэ хуудасны /Annots-д нэмнэ (1-ээс); −1 бол аль ч /Annots-д нэмэхгүй.
 	AnnotsPage int
@@ -57,6 +63,105 @@ type AppearanceParams struct {
 	Lang   string
 	Date   string
 	URL    string
+	// Sig, Stamp — APPEARANCE_SPEC.md §6 (nil = none; both nil = the §3 layout, byte-identical to golden v9).
+	Sig, Stamp *PDFImage
+}
+
+// PDFImage — a "PDF image" (APPEARANCE_SPEC.md §6.1): one ink colour + an 8-bit alpha channel. Alpha is a zlib stream
+// (RFC 1950) that inflates to exactly W·H bytes (rows top-down, no PNG filter bytes); it is written into the PDF
+// verbatim as the /SMask stream (/FlateDecode) — the SDK never compresses at runtime.
+type PDFImage struct {
+	W, H  int
+	Color [3]int // 0–255 each
+	Alpha []byte
+}
+
+// PDF image limits (APPEARANCE_SPEC.md §6.1).
+const (
+	MaxImageSide       = 1600
+	MaxImageAlphaBytes = 300 << 10
+)
+
+// CheckPDFImage — APPEARANCE_SPEC.md §6.1: 1 ≤ W, H ≤ 1600; colour 0–255; 1 ≤ len(Alpha) ≤ 300 KiB; Alpha is one zlib
+// stream (no preset dictionary, valid Adler-32, no trailing bytes) inflating to exactly W·H bytes. ErrAppearance otherwise.
+func CheckPDFImage(im *PDFImage) error {
+	bad := func(msg string) error { return fmt.Errorf("%w: зураг: %s", ErrAppearance, msg) }
+	if im.W < 1 || im.H < 1 || im.W > MaxImageSide || im.H > MaxImageSide {
+		return bad("хэмжээ 1…1600 px")
+	}
+	for _, c := range im.Color {
+		if c < 0 || c > 255 {
+			return bad("өнгө 0…255")
+		}
+	}
+	if len(im.Alpha) == 0 || len(im.Alpha) > MaxImageAlphaBytes {
+		return bad("alpha 1 B…300 KiB")
+	}
+	br := bytes.NewReader(im.Alpha)
+	zr, err := zlib.NewReader(br)
+	if err != nil {
+		return bad("alpha zlib биш")
+	}
+	n, err := io.Copy(io.Discard, io.LimitReader(zr, int64(im.W*im.H)+1))
+	if err != nil || n != int64(im.W*im.H) || br.Len() != 0 {
+		return bad("alpha нь яг өргөн×өндөр байт биш (эсвэл эвдэрсэн)")
+	}
+	return nil
+}
+
+// apImageLayout — APPEARANCE_SPEC.md §6.3 geometry (h100, visible space): the border box height, the QR/text row
+// height (from the bottom), and the image placements [dx dy dw dh] (dw = 0: no image).
+type apImageLayout struct {
+	boxH, rowH int
+	sig, stamp [4]int
+}
+
+// apFit — fit-contain (iw × ih px) into bw × bh (h100): the full width when the image is relatively wider, else the
+// full height; the other side floor-scaled, at least 1.
+func apFit(iw, ih, bw, bh int) (dw, dh int) {
+	if int64(iw)*int64(bh) >= int64(ih)*int64(bw) {
+		return bw, max(1, int(int64(bw)*int64(ih)/int64(iw)))
+	}
+	return max(1, int(int64(bh)*int64(iw)/int64(ih))), bh
+}
+
+func apLayoutImages(p AppearanceParams) (apImageLayout, error) {
+	l := apImageLayout{boxH: p.H, rowH: p.H}
+	if p.Sig == nil && p.Stamp == nil {
+		return l, nil
+	}
+	small := fmt.Errorf("%w: хэт жижиг (зурагтай дүрслэл)", ErrAppearance)
+	if p.Stamp != nil {
+		l.boxH = p.H * 4 / 5
+	}
+	band := l.boxH * 9 / 22
+	l.rowH = l.boxH - band
+	sh := band * 14 / 15
+	sy := l.rowH - band*2/15
+	sx, sw := (p.W-p.W*15/22)/2, p.W*15/22
+	if p.Stamp != nil {
+		d := l.boxH * 2 / 3
+		qx := min(p.W*41/60-d/2, p.W-d)
+		if qx < 0 || d <= 0 {
+			return l, small
+		}
+		dw, dh := apFit(p.Stamp.W, p.Stamp.H, d, d)
+		l.stamp = [4]int{qx + (d-dw)/2, p.H - d + (d-dh)/2, dw, dh}
+		sx = p.W / 30
+		sw = qx + d/2 - sx
+	}
+	if p.Sig != nil {
+		if sw <= 0 || sh <= 0 {
+			return l, small
+		}
+		dw, dh := apFit(p.Sig.W, p.Sig.H, sw, sh)
+		dx := sx
+		if p.Stamp == nil {
+			dx += (sw - dw) / 2
+		}
+		l.sig = [4]int{dx, sy + (sh-dh)/2, dw, dh}
+	}
+	return l, nil
 }
 
 // APPEARANCE_SPEC.md §3-ийн тогтмолууд (h100 = 1/100 pt).
@@ -134,12 +239,27 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	if p.W <= 0 || p.H <= 0 || p.W > MaxAppearanceSide || p.H > MaxAppearanceSide {
 		return nil, fmt.Errorf("%w: хэмжээ", ErrAppearance)
 	}
+	if p.Stamp != nil && p.Role == "" {
+		return nil, fmt.Errorf("%w: тамгын зураг зөвхөн байгууллагын нэрийн өмнөөс (claimedRole)", ErrAppearance)
+	}
+	for _, im := range []*PDFImage{p.Sig, p.Stamp} {
+		if im != nil {
+			if err := CheckPDFImage(im); err != nil {
+				return nil, err
+			}
+		}
+	}
+	il, err := apLayoutImages(p)
+	if err != nil {
+		return nil, err
+	}
+	rowH := il.rowH
 	m, err := qr.Encode([]byte(p.URL))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrAppearance, err)
 	}
 	n := len(m)
-	mod := (p.H - 2*apPad) / n
+	mod := (rowH - 2*apPad) / n
 	if mod < apMinModule {
 		return nil, fmt.Errorf("%w: хэт жижиг (өндөр ≥ %s pt)", ErrAppearance, Num100(2*apPad+n*apMinModule))
 	}
@@ -148,7 +268,7 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	w := &pageWriter{reg: reg, bld: bld}
 	var lines []apLine
 	for f := apMaxSize; f >= apMinSize && lines == nil && tw > 0; f-- {
-		lines = apLayout(w, p, label, f, tw)
+		lines = apLayout(w, p, label, f, tw, rowH)
 	}
 	if lines == nil {
 		return nil, fmt.Errorf("%w: хэт жижиг (бичвэр багтахгүй)", ErrAppearance)
@@ -168,8 +288,15 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	}
 	w.op("%s RG", colOK)
 	w.op("1 w")
-	w.op("0.5 0.5 %s %s re S", Num100(p.W-100), Num100(p.H-100))
-	w.op("q %s 0 0 %s %s %s cm", Num100(mod), Num100(mod), Num100(apPad), Num100((p.H-mod*n)/2))
+	w.op("0.5 0.5 %s %s re S", Num100(p.W-100), Num100(il.boxH-100))
+	if p.Sig != nil || p.Stamp != nil {
+		w.op("0.5 w")
+		w.op("0 %s m %s %s l S", Num100(rowH), Num100(p.W), Num100(rowH))
+	}
+	if p.Sig != nil {
+		apDrawImage(w, "Sig", il.sig)
+	}
+	w.op("q %s 0 0 %s %s %s cm", Num100(mod), Num100(mod), Num100(apPad), Num100((rowH-mod*n)/2))
 	w.op("0 0 0 rg")
 	for r := range n {
 		for c := 0; c < n; {
@@ -186,11 +313,14 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	}
 	w.op("f")
 	w.op("Q")
-	cursor := p.H - apPad - (p.H-2*apPad-total)/2
+	cursor := rowH - apPad - (rowH-2*apPad-total)/2
 	for _, l := range lines {
 		cursor -= l.size * apLeading
 		w.op("%s rg", l.color)
 		w.op("BT /F%d %d Tf %s %s Td %s Tj ET", l.font, l.size, Num100(tx), Num100(cursor+l.size*apDescent), w.glyphHex(l.font, l.text))
+	}
+	if p.Stamp != nil {
+		apDrawImage(w, "Stamp", il.stamp)
 	}
 	if cm != "" {
 		w.op("Q")
@@ -199,9 +329,14 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	return w.ops.Bytes(), nil
 }
 
+// apDrawImage — `q dw 0 0 dh dx dy cm /<name> Do Q` (APPEARANCE_SPEC.md §6.4).
+func apDrawImage(w *pageWriter, name string, r [4]int) {
+	w.op("q %s 0 0 %s %s %s cm /%s Do Q", Num100(r[2]), Num100(r[3]), Num100(r[0]), Num100(r[1]), name)
+}
+
 // apLayout — нэрийн фонт f (pt)-д мөрүүд: нэр (F2, f, ≤ 2 мөр), үүрэг (F1, f−2, ≤ 2 мөр), label, огноо (F1, f−2, нэг
-// мөр). Аль нэг мөр өргөнд (tw) эсвэл нийт өндөр (H − 2·pad)-д багтахгүй бол nil.
-func apLayout(w *pageWriter, p AppearanceParams, label string, f, tw int) []apLine {
+// мөр). Аль нэг мөр өргөнд (tw) эсвэл нийт өндөр (rowH − 2·pad)-д багтахгүй бол nil.
+func apLayout(w *pageWriter, p AppearanceParams, label string, f, tw, rowH int) []apLine {
 	b := f - apBodyDelta
 	limit := tw * 10 // h100 → 1/1000 pt
 	var lines []apLine
@@ -221,15 +356,30 @@ func apLayout(w *pageWriter, p AppearanceParams, label string, f, tw int) []apLi
 		}
 		total += l.size * apLeading
 	}
-	if total > p.H-2*apPad {
+	if total > rowH-2*apPad {
 		return nil
 	}
 	return lines
 }
 
-// AppearanceObjects — /AP /N form XObject ба түүний 2 фонт (11 объект): ids = [form, F1 ×5, F2 ×5] (F1 = NotoSans,
-// F2 = NotoSans-Bold; объект бүр fontBodies-ийн дарааллаар). Буцаах нь объектын бие (ids-ийн дарааллаар).
-func AppearanceObjects(p AppearanceParams, ids [11]uint32) ([][]byte, error) {
+// AppearanceObjectCount — the number of objects AppearanceObjects writes: 11 (form, F1 ×5, F2 ×5) + 2 per image.
+func AppearanceObjectCount(p AppearanceParams) int {
+	n := 11
+	for _, im := range []*PDFImage{p.Sig, p.Stamp} {
+		if im != nil {
+			n += 2
+		}
+	}
+	return n
+}
+
+// AppearanceObjects — /AP /N form XObject ба түүний 2 фонт (11 объект) + зураг бүрд 2 (APPEARANCE_SPEC.md §6.2): ids =
+// [form, F1 ×5, F2 ×5, (Sig base, Sig mask), (Stamp base, Stamp mask)] (F1 = NotoSans, F2 = NotoSans-Bold; объект бүр
+// fontBodies-ийн дарааллаар), len(ids) = AppearanceObjectCount(p). Буцаах нь объектын бие (ids-ийн дарааллаар).
+func AppearanceObjects(p AppearanceParams, ids []uint32) ([][]byte, error) {
+	if len(ids) != AppearanceObjectCount(p) {
+		return nil, fmt.Errorf("%w: объектын тоо", ErrAppearance)
+	}
 	reg, err := assets.Regular()
 	if err != nil {
 		return nil, err
@@ -246,13 +396,37 @@ func AppearanceObjects(p AppearanceParams, ids [11]uint32) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	res := fmt.Sprintf("/Font << /F1 %d 0 R /F2 %d 0 R >>", ids[1], ids[6])
+	var imgs [][]byte
+	next := 11
+	if p.Sig != nil || p.Stamp != nil {
+		res += " /XObject <<"
+		for _, x := range []struct {
+			name string
+			im   *PDFImage
+		}{{"Sig", p.Sig}, {"Stamp", p.Stamp}} {
+			if x.im == nil {
+				continue
+			}
+			base, mask := ids[next], ids[next+1]
+			next += 2
+			res += fmt.Sprintf(" /%s %d 0 R", x.name, base)
+			imgs = append(imgs,
+				streamObj(fmt.Sprintf(" /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask %d 0 R", mask),
+					[]byte{byte(x.im.Color[0]), byte(x.im.Color[1]), byte(x.im.Color[2])}), // #nosec G115 -- CheckPDFImage: 0–255
+				streamObj(fmt.Sprintf(" /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode", x.im.W, x.im.H),
+					x.im.Alpha))
+		}
+		res += " >>"
+	}
 	out := make([][]byte, 0, len(ids))
-	out = append(out, streamObj(fmt.Sprintf(" /Type /XObject /Subtype /Form /BBox [0 0 %s %s] /Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >>",
-		Num100(bw), Num100(bh), ids[1], ids[6]), content))
+	out = append(out, streamObj(fmt.Sprintf(" /Type /XObject /Subtype /Form /BBox [0 0 %s %s] /Resources << %s >>",
+		Num100(bw), Num100(bh), res), content))
 	r := fontBodies([5]uint32(ids[1:6]), reg)
 	b := fontBodies([5]uint32(ids[6:11]), bld)
 	out = append(out, r[:]...)
-	return append(out, b[:]...), nil
+	out = append(out, b[:]...)
+	return append(out, imgs...), nil
 }
 
 // VisibleWidget — харагдах гарын үсгийн талбар/widget-ийн бие (APPEARANCE_SPEC.md §2). rect — хэрэглэгчийн орон

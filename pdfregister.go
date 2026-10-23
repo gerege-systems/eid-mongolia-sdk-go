@@ -34,6 +34,9 @@ type PDFSignatureRegistration struct {
 	OnBehalfOf string `json:"onBehalfOf,omitempty"`
 	// SignerEtsi — заавал биш (PNOMN-…): ирсэн бол CMS-ийн зурагчийн SERIALNUMBER-тэй тэнцүү (эс бөгөөс 409 SIGNER_MISMATCH).
 	SignerEtsi string `json:"signerEtsi,omitempty"`
+	// Images — харагдах дүрслэлд шигтгэсэн зураг бүрийн {kind, sha256} (pades APPEARANCE_SPEC.md §6.6): CA зурагчийн/
+	// байгууллагын хадгалсан PNG-тэй тулгана. Зураггүй бол илгээхгүй.
+	Images []PDFSignatureImage `json:"images,omitempty"`
 	// PriorSignatures — SDK-д л (CA руу илгээхгүй): өмнөх гарын үсэг бүрийн хоёр түлхүүр, баримтын дарааллаар;
 	// pades.Registration бөглөнө. CA өмнөх мөр бүрийг өөрийнх нь түлхүүрээр таньдаг (клиент талын мөр — CMS, горим A —
 	// revision), файлаас аль нь болохыг ялгах боломжгүй. Тиймээс RegisterSignature эхлээд PriorCMSSHA256-аар илгээж,
@@ -41,6 +44,18 @@ type PDFSignatureRegistration struct {
 	// оролдоно. PriorRevisionSHA256-г гараар өгсөн бол оролдохгүй.
 	PriorSignatures []PDFPriorSignature `json:"-"`
 }
+
+// PDFSignatureImage — PDFSignatureRegistration.Images-ийн нэг мөр.
+type PDFSignatureImage struct {
+	Kind   string `json:"kind"`   // PDFImageSignature | PDFImageStamp
+	SHA256 string `json:"sha256"` // CA-ийн хадгалсан PNG-ийн sha256 (64 жижиг hex)
+}
+
+// PDFSignatureImage.Kind утгууд.
+const (
+	PDFImageSignature = "signature" // иргэний гарын үсгийн зураг
+	PDFImageStamp     = "stamp"     // байгууллагын тамганы зураг
+)
 
 // PDFPriorSignature — өмнөх нэг гарын үсгийн хоёр түлхүүр (PDFSignatureRegistration.PriorSignatures).
 type PDFPriorSignature struct {

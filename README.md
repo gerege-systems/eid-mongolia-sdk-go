@@ -712,6 +712,12 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
 - Өндөр ≥ 45 pt (QR модуль ≥ 1 pt), бичвэр багтахгүй (нэр 7 pt, бусад 5 pt хүртэл жижгэрнэ), хуудаснаас гарсан, хуудас
   алга, `/Name` бичигдэхгүй нэр, docID тодорхойгүй → `REQUEST_INVALID`. Огноо нь мэдүүлсэн SigningTime (TSA-ийн цаг prepare-д
   мэдэгдэхгүй).
+- **Зураг** (golden v10): `Appearance.SignatureImage` (иргэний гарын үсгийн зураг) ба `Appearance.StampImage`
+  (байгууллагын тамга — зөвхөн `ClaimedRole`/onBehalfOf-той) — `*pades.PDFImage{Width, Height, Color [3]int, Alpha (zlib),
+  SHA256}`, CA-ийн өгөх «PDF зураг» (PNG биш). Зураг дүрслэлийн ДОТОР (дээд зурвас; тамга баруун дээд буланд хайрцгийг
+  давж) зурагдана — тусдаа annotation биш тул өмнөх гарын үсэг «өөрчлөгдөөгүй» хэвээр. `Width`, `Height` хоёулаа 0 бол
+  анхдагч хэмжээ: 220×64 / гарын үсэгтэй 220×110 / тамгатай 240×147.5 (тамганы дээш гарах хэсэг орсон). Зургийн sha256
+  `Completed.Images` → `Registration` → `images`. Дэлгэрэнгүй: APPEARANCE_SPEC §6.
 - `Verify` тайлан: `visible` (энэ гарын үсэг харагдах), `visible_later_signature`. Шалгагч зөвхөн яг энэ хэлбэрийг (widget +
   `/AP`-ийг дахин үүсгэж байт-түвшинд тулгана) хүлээн авна. Дэлгэрэнгүй: [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md).
 
