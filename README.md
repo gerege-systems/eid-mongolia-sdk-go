@@ -19,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.18.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.19.0
 ```
 
 `pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
@@ -585,7 +585,11 @@ if p.Attrs.AgeOver18 != nil && *p.Attrs.AgeOver18 { sell() }
 `sid` = session, `nonce` = таны nonce (өгөөгүй бол SDK-ийн rpChallenge), `iat` ≤ одоо+60 с ба ≥ одоо−10 мин,
 `attrs` ∪ `unavailable` = хүссэн аттрибутууд яг (илүү/дутуу → татгалзана), аттрибут бүрийн төрөл (bool, E.164,
 YYYY-MM-DD, {surname, givenName}). Токен нэг удаагийн, 120 с; хариунд гэрчилгээ, person блок, иргэний дугаар
-(`civil_id` хүсээгүй бол) ирэхгүй. `sub` — энэ RP-д зориулсан тогтмол pairwise id. CA-ийн бусад код (`code`): 400 `REQUEST_INVALID` (үл мэдэгдэх талбар ч), 403 `PERMISSION_DENIED` / `RP_REQUIRED`, 429 `RATE_LIMITED`, 503 `QR_UNAVAILABLE` (түр), 410 `QR_PRESENTATION_EXPIRED` (session-ийн үр дүнг иргэн зөвшөөрснөөс хойш 10 минутын дотор л уншина), 410 `QR_SUBJECT_GONE` (ховор); RP-ийн эрх уншилт бүрд дахин шалгагдана (хураагдвал 403). `aud` том/жижиг үсэг ялгахгүй тулгана (CA жижиг үсгээр бичнэ). `Config.QR` (`JWKSURL`, `Issuer`, `JWKSCacheTTL`, `MaxAge`) — тест орчинд л. Хадгалсан JWS-ийг
+(`civil_id` хүсээгүй бол) ирэхгүй. `sub` — энэ RP-д зориулсан тогтмол pairwise id. **Polling UI** (v0.19.0+): `c.QR.Check(ctx, sess, 0)` — нэг удаа шалгана → `QRCheck{Complete, Presentation}`. `Result`-ийн
+хүлээх хугацаа дуусахад иргэн хараахан хариулаагүй бол `errors.Is(err, eid.ErrQRPending)` (дахин дуудаж болно); CA-ийн
+жинхэнэ хугацаа дуусалт нь `*SessionFailedError{TIMEOUT}`.
+
+CA-ийн бусад код (`code`): 400 `REQUEST_INVALID` (үл мэдэгдэх талбар ч), 403 `PERMISSION_DENIED` / `RP_REQUIRED`, 429 `RATE_LIMITED`, 503 `QR_UNAVAILABLE` (түр), 410 `QR_PRESENTATION_EXPIRED` (session-ийн үр дүнг иргэн зөвшөөрснөөс хойш 10 минутын дотор л уншина), 410 `QR_SUBJECT_GONE` (ховор); RP-ийн эрх уншилт бүрд дахин шалгагдана (хураагдвал 403). `aud` том/жижиг үсэг ялгахгүй тулгана (CA жижиг үсгээр бичнэ). `Config.QR` (`JWKSURL`, `Issuer`, `JWKSCacheTTL`, `MaxAge`) — тест орчинд л. Хадгалсан JWS-ийг
 сүлжээгүй дахин шалгах: `eid.VerifyQRPresentation(jws, jwks, eid.QRExpect{…})`.
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал

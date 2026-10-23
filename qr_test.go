@@ -314,9 +314,24 @@ func TestQRResultFailures(t *testing.T) {
 	if _, err := c.QR.Result(ctx, &sess2, wo); !errors.Is(err, ErrQRPresentationInvalid) {
 		t.Fatal("nonce", err)
 	}
+	s.end = "TIMEOUT"
+	if _, err := c.QR.Result(ctx, sess, wo); !errors.As(err, &sf) || sf.EndResult != "TIMEOUT" {
+		t.Fatal("CA timeout", err)
+	}
+	if _, err := c.QR.Check(ctx, sess, 0); !errors.As(err, &sf) || sf.EndResult != "TIMEOUT" {
+		t.Fatal("check CA timeout", err)
+	}
+	s.end = "OK"
 	s.state = "RUNNING"
-	if _, err := c.QR.Result(ctx, sess, &WaitOptions{MaxWait: time.Second, ServerPoll: time.Second}); !errors.As(err, &sf) || sf.EndResult != "TIMEOUT" {
-		t.Fatal("timeout", err)
+	if _, err := c.QR.Result(ctx, sess, &WaitOptions{MaxWait: time.Second, ServerPoll: time.Second}); !errors.Is(err, ErrQRPending) {
+		t.Fatal("pending", err)
+	}
+	if r, err := c.QR.Check(ctx, sess, 0); err != nil || r.Complete || r.Presentation != nil {
+		t.Fatal("check running", r, err)
+	}
+	s.state = "COMPLETE"
+	if r, err := c.QR.Check(ctx, sess, 0); err != nil || !r.Complete || r.Presentation.Attrs.AgeOver18 == nil {
+		t.Fatal("check complete", r, err)
 	}
 }
 
