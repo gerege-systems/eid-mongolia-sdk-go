@@ -93,7 +93,7 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	date := m[2:6] + "-" + m[6:8] + "-" + m[8:10] + " " + m[10:12] + ":" + m[12:14] + " (+08)"
 	// Объектын дугаарууд: form → /Resources /Font /F1 /F2 → Type0 (/DescendantFonts [CID], /ToUnicode) → CID
 	// (/FontDescriptor) → FontDescriptor (/FontFile2).
-	ids, err := c.apIDs(nr)
+	ids, sig, stamp, err := c.apIDs(nr)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,10 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 		return fail
 	}
 	url := apVerifyPrefix + string(sm[1]) + "/" + string(sm[2])
-	p := core.AppearanceParams{W: w, H: h, Rotate: rot, Name: pdfTextString(ns), Role: meta.role, Date: date, URL: url}
+	// Зураг (APPEARANCE_SPEC.md §6.5): PDF-ээс уншсан өнгө/хэмжээ/alpha-аар дахин үүсгэнэ — объект бүрийн толь, content
+	// stream-ийн байрлал (хэмжээнээс тооцсон) байт-ижил байх ёстой; AppearanceObjects нь alpha-г CheckPDFImage-ээр шалгана.
+	p := core.AppearanceParams{W: w, H: h, Rotate: rot, Name: pdfTextString(ns), Role: meta.role, Date: date, URL: url,
+		Sig: sig, Stamp: stamp}
 	for _, lang := range []string{"mn", "en"} {
 		p.Lang = lang
 		bodies, err := core.AppearanceObjects(p, ids)
@@ -131,9 +134,10 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	return fail
 }
 
-// apIDs — /AP /N-ээс 11 объектын дугаар (core.AppearanceObjects-ийн дарааллаар); бүгд шинэ, үе 0, давхардалгүй.
-func (c *classifier) apIDs(n pdfRef) ([11]uint32, error) {
-	var ids [11]uint32
+// apIDs — /AP /N-ээс объектын дугаарууд (core.AppearanceObjects-ийн дарааллаар: form, F1 ×5, F2 ×5, дараа нь
+// /Resources /XObject-ийн /Sig, /Stamp тус бүрд base, /SMask) ба зургууд (PDF-ээс уншсан; nil = байхгүй); бүгд шинэ,
+// үе 0, давхардалгүй.
+func (c *classifier) apIDs(n pdfRef) (ids []uint32, sig, stamp *core.PDFImage, err error) {
 	fail := errNotSignatureOnly
 	refs := []pdfRef{n}
 	get := func(r pdfRef) (pdfDict, error) {
@@ -151,55 +155,117 @@ func (c *classifier) apIDs(n pdfRef) ([11]uint32, error) {
 	}
 	form, err := get(n)
 	if err != nil {
-		return ids, err
+		return nil, nil, nil, err
 	}
 	res, _ := form["Resources"].(pdfDict)
 	fonts, _ := res["Font"].(pdfDict)
 	for _, key := range []string{"F1", "F2"} {
 		t0, ok := fonts[key].(pdfRef)
 		if !ok {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		td, err := get(t0)
 		if err != nil {
-			return ids, err
+			return nil, nil, nil, err
 		}
 		desc, _ := td["DescendantFonts"].(pdfArr)
 		tu, ok1 := td["ToUnicode"].(pdfRef)
 		if len(desc) != 1 || !ok1 {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		cid, ok := desc[0].(pdfRef)
 		if !ok {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		cd, err := get(cid)
 		if err != nil {
-			return ids, err
+			return nil, nil, nil, err
 		}
 		fd, ok := cd["FontDescriptor"].(pdfRef)
 		if !ok {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		fdd, err := get(fd)
 		if err != nil {
-			return ids, err
+			return nil, nil, nil, err
 		}
 		ff, ok := fdd["FontFile2"].(pdfRef)
 		if !ok {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		refs = append(refs, t0, cid, fd, ff, tu)
 	}
+	// Зураг: /XObject /Sig, /Stamp → base (1×1, 3 байт өнгө) → /SMask (W×H, alpha-ийн түүхий zlib). Толины бусад
+	// түлхүүр/утгыг дахин үүсгэсэн объекттой тулгаж шалгана (sameObject).
+	if x, has := res["XObject"]; has {
+		xo, ok := x.(pdfDict)
+		if !ok {
+			return nil, nil, nil, fail
+		}
+		for _, key := range []string{"Sig", "Stamp"} {
+			v, has := xo[key]
+			if !has {
+				continue
+			}
+			br, ok := v.(pdfRef)
+			if !ok {
+				return nil, nil, nil, fail
+			}
+			im, mr, err := c.apImage(br)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			refs = append(refs, br, mr)
+			if key == "Sig" {
+				sig = im
+			} else {
+				stamp = im
+			}
+		}
+	}
 	seen := map[int]bool{}
+	ids = make([]uint32, len(refs))
 	for i, r := range refs {
 		if r.gen != 0 || !c.isNew[r.num] || seen[r.num] {
-			return ids, fail
+			return nil, nil, nil, fail
 		}
 		seen[r.num] = true
 		ids[i] = uint32(r.num) // #nosec G115 -- дугаар < 2^23
 	}
-	return ids, nil
+	return ids, sig, stamp, nil
+}
+
+// apImage — зургийн base XObject (br) ба түүний /SMask-аас core.PDFImage: өнгө = base stream-ийн 3 байт, W/H = mask-ийн
+// /Width /Height (бүхэл), Alpha = mask stream-ийн түүхий байт. Хэлбэрийн бусад шалгалт — дахин үүсгэж тулгах.
+func (c *classifier) apImage(br pdfRef) (*core.PDFImage, pdfRef, error) {
+	fail := errNotSignatureOnly
+	bo, err := c.fin.deref(br)
+	if err != nil {
+		return nil, pdfRef{}, err
+	}
+	base, ok := bo.(pdfStream)
+	if !ok || len(base.data) != 3 {
+		return nil, pdfRef{}, fail
+	}
+	mr, ok := base.dict["SMask"].(pdfRef)
+	if !ok {
+		return nil, pdfRef{}, fail
+	}
+	mo, err := c.fin.deref(mr)
+	if err != nil {
+		return nil, pdfRef{}, err
+	}
+	mask, ok := mo.(pdfStream)
+	if !ok {
+		return nil, pdfRef{}, fail
+	}
+	w, ok1 := mask.dict["Width"].(int64)
+	h, ok2 := mask.dict["Height"].(int64)
+	if !ok1 || !ok2 || w < 1 || h < 1 || w > core.MaxImageSide || h > core.MaxImageSide {
+		return nil, pdfRef{}, fail
+	}
+	return &core.PDFImage{W: int(w), H: int(h), Color: [3]int{int(base.data[0]), int(base.data[1]), int(base.data[2])},
+		Alpha: mask.data}, mr, nil
 }
 
 // sameObject — num объект нь body-г (PAdES бичигчийн бие) задалсантай бүтцээрээ (толь + stream-ийн байт) тэнцүү.
