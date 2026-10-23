@@ -549,6 +549,45 @@ if err == nil && info.Enabled {
 хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
 ctx-ийн deadline богино бол тэр нь ялна.
 
+### 3.9. «Миний QR» — биечлэн шалгах (`c.QR`, v0.18.0)
+
+Иргэн eID апп дээрээ «Миний QR»-ийг харуулна (`EIDMN-QR1:<token>`, 120 с, нэг удаагийн). RP (касс, POS, апп) скан хийж
+хүссэн аттрибутаа асууна → иргэн утсан дээрээ хүсэлтийг (RP нэр, аттрибутын жагсаалт, VC) харж PIN1-ээр зөвшөөрнө →
+RP CA-ийн ES256 гарын үсэгтэй presentation авна. RP-д `AUTH` + `QR_PRESENT` + аттрибут бүрд `QR_ATTR:<нэр>` эрх.
+
+Каталог: `age_over_18`, `age_over_21` (bool, төрсөн огноо задлахгүй), `full_name` ({surname, givenName}),
+`phone` (E.164), `birth_date` (YYYY-MM-DD, мэдрэмтгий), `civil_id` (мэдрэмтгий). Бүртгэлд байхгүй утга →
+`Unavailable`, алдаа биш.
+
+```go
+token, err := eid.ParseQR(scanned) // эсвэл c.QR.Parse; буруу → errors.Is(err, eid.ErrQRFormatInvalid)
+sess, err := c.QR.Start(ctx, eid.QRStartRequest{
+	QR:         scanned, // "EIDMN-QR1:…" эсвэл токен
+	Attributes: []string{eid.QRAttrAgeOver18},
+	Nonce:      orderID, // сонголттой
+})
+if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404: хугацаа дууссан / ашиглагдсан → шинэ QR гаргуул */ }
+showOnPOS(sess.VC) // иргэний утсанд ижил код
+
+// sess-ийг (JSON) хадгалж болно — Result-д nonce, хүссэн аттрибутыг тулгана.
+p, err := c.QR.Result(ctx, sess, nil)
+var sf *eid.SessionFailedError // USER_REFUSED, TIMEOUT …
+switch {
+case errors.As(err, &sf):
+case errors.Is(err, eid.ErrQRPresentationInvalid): // ИТГЭХГҮЙ
+case errors.Is(err, eid.ErrQRJWKSUnavailable): // түр — дахин оролд
+}
+if p.Attrs.AgeOver18 != nil && *p.Attrs.AgeOver18 { sell() }
+```
+
+Дүрэм (гурван SDK-д ижил, `testdata/qr_vectors.json`-оор баталгаажсан): JWS `alg` = ES256, header-т `kid`
+(JWKS-ээс; танихгүй kid → JWKS-ийг нэг удаа дахин татна), `iss` = `https://ca.eidmongolia.mn`, `aud` = таны RP UUID,
+`sid` = session, `nonce` = таны nonce (өгөөгүй бол SDK-ийн rpChallenge), `iat` ≤ одоо+60 с ба ≥ одоо−10 мин,
+`attrs` ∪ `unavailable` = хүссэн аттрибутууд яг (илүү/дутуу → татгалзана), аттрибут бүрийн төрөл (bool, E.164,
+YYYY-MM-DD, {surname, givenName}). Токен нэг удаагийн, 120 с; хариунд гэрчилгээ, person блок, иргэний дугаар
+(`civil_id` хүсээгүй бол) ирэхгүй. `sub` — энэ RP-д зориулсан тогтмол pairwise id. `Config.QR` (`JWKSURL`, `Issuer`, `JWKSCacheTTL`, `MaxAge`) — тест орчинд л. Хадгалсан JWS-ийг
+сүлжээгүй дахин шалгах: `eid.VerifyQRPresentation(jws, jwks, eid.QRExpect{…})`.
+
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
 `EndResult == "OK"` гэдэгт **дангаар нь итгэхгүй** — RP-API эвдэрсэн/proxy хийгдсэн бол хуурамч OK ирж болзошгүй.

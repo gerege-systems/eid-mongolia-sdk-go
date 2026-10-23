@@ -17,6 +17,7 @@ var (
 	routeAuthNotificationDocument = rpRoute{"POST", "/authentication/notification/document/{documentNumber}"}
 	routeAuthDeviceLinkAnonymous  = rpRoute{"POST", "/authentication/device-link/anonymous"}
 	routeAuthDeviceLinkEtsi       = rpRoute{"POST", "/authentication/device-link/etsi/{semanticsIdentifier}"}
+	routeAuthQR                   = rpRoute{"POST", "/authentication/qr"}
 	routeSignNotificationEtsi     = rpRoute{"POST", "/signature/notification/etsi/{semanticsIdentifier}"}
 	routeSignNotificationDocument = rpRoute{"POST", "/signature/notification/document/{documentNumber}"}
 	routeSignNotificationLinked   = rpRoute{"POST", "/signature/notification/linked/{documentNumber}"}
@@ -59,7 +60,7 @@ var rpRoutes = []rpRoute{
 // rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
 // Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ. Одоогоор хоосон —
 // /token/auth/* discovery-ийн endpoints.token.auth_challenge / auth_verify-д орсон тул rpRoutes-д.
-var rpRoutesUndiscovered = []rpRoute{}
+var rpRoutesUndiscovered = []rpRoute{routeAuthQR}
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.
 func (r rpRoute) expand(args ...string) string {

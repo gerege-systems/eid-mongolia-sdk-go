@@ -1,0 +1,563 @@
+{
+  "attributes": [
+    "age_over_18",
+    "age_over_21",
+    "full_name",
+    "phone",
+    "birth_date",
+    "civil_id"
+  ],
+  "clockSkewSeconds": 60,
+  "comment": "eID «Миний QR» cross-SDK vectors (Go/TS/.NET). Generated once; do not regenerate per SDK — copy this file. Rules: developer.eidmongolia.mn «Миний QR».",
+  "jwks": {
+    "keys": [
+      {
+        "alg": "ES256",
+        "crv": "P-256",
+        "kid": "eid-qr-2026-10",
+        "kty": "EC",
+        "use": "sig",
+        "x": "XSeIRGSIu0Q-5IJVh0tnZS83IVlePp7PE2k0XMLI-Gw",
+        "y": "4gSb3yRZ7ucxaijNZMOdpvqdsfyshGFnqqgu1gdhYPM"
+      },
+      {
+        "alg": "ES256",
+        "crv": "P-384",
+        "kid": "eid-qr-p384",
+        "kty": "EC",
+        "use": "sig",
+        "x": "ikunkYLXdv2nN1vtjVmWrYQRPrcQSkY_mYqDdqMOlQ8IwyNQmVxGKAKp2Fw5h-B-",
+        "y": "WLrofFObHHzry4bdOq9UE39yxrUNCbDV1GjccFc2iTGwOzN6kcKPz96DTkEo8sgG"
+      }
+    ]
+  },
+  "maxAgeSeconds": 600,
+  "parse": [
+    {
+      "in": "EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM",
+      "token": "q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "in": "  EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM\n",
+      "token": "q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "in": "q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM",
+      "token": "q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "EIDMN-QR2:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "eidmn-qr1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRi"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiMA"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRi+"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "EIDMN-QR1:q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRi="
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": "https://eidmongolia.mn/?qr=q9Xk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiM"
+    },
+    {
+      "error": "QR_FORMAT_INVALID",
+      "in": ""
+    }
+  ],
+  "verify": [
+    {
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "age_over_18",
+      "result": {
+        "attrs": {
+          "age_over_18": true
+        },
+        "sub": "Zk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiMlC",
+        "unavailable": []
+      }
+    },
+    {
+      "expect": {
+        "attributes": [
+          "full_name",
+          "phone"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJmdWxsX25hbWUiOnsiZ2l2ZW5OYW1lIjoi06jQvdOp0YDQvNCw0LAiLCJzdXJuYW1lIjoi0JHQsNGC0LHQvtC70LQifX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIiwidW5hdmFpbGFibGUiOlsicGhvbmUiXX0.fyOIrUv4sxjp0AJrGtUR9f368HuDAvdLX2sqXzHsdVvutlEXqYLBqt8DenHTKWsSxucaZHhfy7uapi5K3jSIaQ",
+      "name": "loyalty_phone_unavailable",
+      "result": {
+        "attrs": {
+          "full_name": {
+            "givenName": "Өнөрмаа",
+            "surname": "Батболд"
+          }
+        },
+        "sub": "Zk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiMlC",
+        "unavailable": [
+          "phone"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "attributes": [
+          "age_over_18",
+          "age_over_21",
+          "full_name",
+          "phone",
+          "birth_date",
+          "civil_id"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZSwiYWdlX292ZXJfMjEiOmZhbHNlLCJiaXJ0aF9kYXRlIjoiMjAwNC0wNS0xNyIsImNpdmlsX2lkIjoiMTIzNDU2Nzg5MDEyIiwiZnVsbF9uYW1lIjp7ImdpdmVuTmFtZSI6ItOo0L3TqdGA0LzQsNCwIiwic3VybmFtZSI6ItCR0LDRgtCx0L7Qu9C0In0sInBob25lIjoiKzk3Njk5MTEyMjMzIn0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIiwidW5hdmFpbGFibGUiOltdfQ.ggGWbgjkFjMOlhasAjnf4CvWEYTg4p8Z7yUWdmuOC2bCsddnzF5GaXk5zLqNuoUv55Nwz4pLipZlTsWcc1byvQ",
+      "name": "all_attributes",
+      "result": {
+        "attrs": {
+          "age_over_18": true,
+          "age_over_21": false,
+          "birth_date": "2004-05-17",
+          "civil_id": "123456789012",
+          "full_name": {
+            "givenName": "Өнөрмаа",
+            "surname": "Батболд"
+          },
+          "phone": "+97699112233"
+        },
+        "sub": "Zk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiMlC",
+        "unavailable": []
+      }
+    },
+    {
+      "expect": {
+        "attributes": [
+          "birth_date"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdWQiOiI2ZjFjMmI5ZS0zYTRkLTRlNWYtOGE3Yi05YzBkMWUyZjNhNGIiLCJpYXQiOjE3OTI4MDAwMDAsImlzcyI6Imh0dHBzOi8vY2EuZWlkbW9uZ29saWEubW4iLCJub25jZSI6ImNhc2hpZXItN2YzYTljIiwic2lkIjoiMGI4ZjNmMGUtMTExMS00MjIyLTgzMzMtNDQ0NDU1NTU2NjY2Iiwic3ViIjoiWmszdlFoMm05Y1RxTDhyVzF4WWI1blBkQTBzRTZ1SmdIdEtvVmZSaU1sQyIsInVuYXZhaWxhYmxlIjpbImJpcnRoX2RhdGUiXX0.xyDLVy9P7lJ4ks2Q2V2Dgb1hLrAi0KYedyisFCXzRl2awqzcMyTRf5VB_mFliFiTvqt_Irc_AuwV6T-jtyChQw",
+      "name": "all_unavailable_no_attrs_key",
+      "result": {
+        "attrs": {},
+        "sub": "Zk3vQh2m9cTqL8rW1xYb5nPdA0sE6uJgHtKoVfRiMlC",
+        "unavailable": [
+          "birth_date"
+        ]
+      }
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZSwieCI6MX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "tampered_payload"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6Im90aGVyLXJwIiwiaWF0IjoxNzkyODAwMDAwLCJpc3MiOiJodHRwczovL2NhLmVpZG1vbmdvbGlhLm1uIiwibm9uY2UiOiJjYXNoaWVyLTdmM2E5YyIsInNpZCI6IjBiOGYzZjBlLTExMTEtNDIyMi04MzMzLTQ0NDQ1NTU1NjY2NiIsInN1YiI6IlprM3ZRaDJtOWNUcUw4clcxeFliNW5QZEEwc0U2dUpnSHRLb1ZmUmlNbEMifQ.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "tampered_aud"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "another-rp-uuid",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "wrong_audience"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "another-session"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "wrong_session"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "other-nonce",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "wrong_nonce"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://evil.example",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "wrong_issuer"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJIUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.0z0aVC-9xhPaFW45g28WSjm1j8FrOe4xoLXPbDAfvMKP8XNjaQfljQtCvfGyeiIFOuPehGLjni0mZs8b1kpplg",
+      "name": "alg_hs256"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJub25lIiwia2lkIjoiZWlkLXFyLTIwMjYtMTAiLCJ0eXAiOiJKV1QifQ.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.",
+      "name": "alg_none"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.oFAVYnZiKvpfcJ3NEUxkmuYwmucRy7knDxeSRb0yctVNu49y_CDjDJ-_RQvcYkr-jgBZQJ3FB9G6_s8fNG2hSQ",
+      "name": "no_kid"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0xOTk5IiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.nemacNZlAWzfyWIMncAsh5zmcBVhPt_MH2x201zd20XA1G9oAgStVK0-5dgAV2rVS_muwdJrKtEAbvkwv5AMBQ",
+      "name": "unknown_kid"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci1wMzg0IiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Am9aM5iN7gkOylDYQWe03PtY1IAYOb0AyO-ZutP8oH-Gn6dd0FKRBKZ96OXH7TGjZbJ2bgZvQdcfYkyEqShmPQ",
+      "name": "kid_wrong_curve"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiZXhwIl0sImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.0XVnU4p_rsrMHocSiskY5MG_89310iiNlpQzmxxJc4hN_PbpbNvijnbr0IjiZaT7xIxcQyE54Gnzk0Y3X-r_XA",
+      "name": "crit_header"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.MEQCIG5g7ABN4IIMb7qCD5fMvbscIzqa2uM-oZMET-pz3z3uAiA3krsD9QCZYgnvx4Ca0P5EFAX3SZpZio7XlwAQgIp3GQ",
+      "name": "signature_der"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g=",
+      "name": "signature_padded"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZSwiY2l2aWxfaWQiOiIxMjM0NTY3ODkwMTIifSwiYXVkIjoiNmYxYzJiOWUtM2E0ZC00ZTVmLThhN2ItOWMwZDFlMmYzYTRiIiwiaWF0IjoxNzkyODAwMDAwLCJpc3MiOiJodHRwczovL2NhLmVpZG1vbmdvbGlhLm1uIiwibm9uY2UiOiJjYXNoaWVyLTdmM2E5YyIsInNpZCI6IjBiOGYzZjBlLTExMTEtNDIyMi04MzMzLTQ0NDQ1NTU1NjY2NiIsInN1YiI6IlprM3ZRaDJtOWNUcUw4clcxeFliNW5QZEEwc0U2dUpnSHRLb1ZmUmlNbEMifQ.Bv_UEq_ztgSERGHOYNcvA1SRpTW7v8p0v-iebeTrOTenlcgXfoOPCQunjbAWSB-Y0hZ19lbrIIudcUfGt-c71Q",
+      "name": "extra_attribute"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18",
+          "phone"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "missing_attribute"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIiwidW5hdmFpbGFibGUiOlsiYWdlX292ZXJfMTgiXX0.e4f9cOXn_EcLqAyu1fvZtITKqXaXuuh-GtqaBWJqUiaNmKJOYVA1QDWyWJRYt2z0d3zGzc8Gict2nzGgY_PRPw",
+      "name": "attr_and_unavailable"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6InRydWUifSwiYXVkIjoiNmYxYzJiOWUtM2E0ZC00ZTVmLThhN2ItOWMwZDFlMmYzYTRiIiwiaWF0IjoxNzkyODAwMDAwLCJpc3MiOiJodHRwczovL2NhLmVpZG1vbmdvbGlhLm1uIiwibm9uY2UiOiJjYXNoaWVyLTdmM2E5YyIsInNpZCI6IjBiOGYzZjBlLTExMTEtNDIyMi04MzMzLTQ0NDQ1NTU1NjY2NiIsInN1YiI6IlprM3ZRaDJtOWNUcUw4clcxeFliNW5QZEEwc0U2dUpnSHRLb1ZmUmlNbEMifQ.9-5SYO-nZ8t9Zc_lthipuFP8t4ZLjnE8w0f3qjiSGVbqxSGcbcTanoOJe3eCuIrusvm3iT4976Ktn9Wtd7nnzA",
+      "name": "bool_as_string"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "phone"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJwaG9uZSI6Ijk5MTEyMjMzIn0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.lErcXvLQup5Izz_VwVN1L9_i30zSNqK430EvJFVzAOGm1o_1NBb2rzpV0BSMuO3SMAhRedpibaty8vGIx2Nl7A",
+      "name": "phone_not_e164"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "birth_date"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJiaXJ0aF9kYXRlIjoiMjAwNC0wMi0zMCJ9LCJhdWQiOiI2ZjFjMmI5ZS0zYTRkLTRlNWYtOGE3Yi05YzBkMWUyZjNhNGIiLCJpYXQiOjE3OTI4MDAwMDAsImlzcyI6Imh0dHBzOi8vY2EuZWlkbW9uZ29saWEubW4iLCJub25jZSI6ImNhc2hpZXItN2YzYTljIiwic2lkIjoiMGI4ZjNmMGUtMTExMS00MjIyLTgzMzMtNDQ0NDU1NTU2NjY2Iiwic3ViIjoiWmszdlFoMm05Y1RxTDhyVzF4WWI1blBkQTBzRTZ1SmdIdEtvVmZSaU1sQyJ9.uDXddlbTIJeuUpAji1mZwy8F8v7Y46VhJNwR9DvRuHIjTrtzf24o3zznWxlPrYMsXbgAqNWYfOygw5VGXnJ_Xg",
+      "name": "birth_date_invalid"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "full_name"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJmdWxsX25hbWUiOnsic3VybmFtZSI6ItCR0LDRgtCx0L7Qu9C0In19LCJhdWQiOiI2ZjFjMmI5ZS0zYTRkLTRlNWYtOGE3Yi05YzBkMWUyZjNhNGIiLCJpYXQiOjE3OTI4MDAwMDAsImlzcyI6Imh0dHBzOi8vY2EuZWlkbW9uZ29saWEubW4iLCJub25jZSI6ImNhc2hpZXItN2YzYTljIiwic2lkIjoiMGI4ZjNmMGUtMTExMS00MjIyLTgzMzMtNDQ0NDU1NTU2NjY2Iiwic3ViIjoiWmszdlFoMm05Y1RxTDhyVzF4WWI1blBkQTBzRTZ1SmdIdEtvVmZSaU1sQyJ9.hlnQ9YkE-qYieqdeiiCpGiMherCWuZBl9_tl2AN_chp3GYwIvkWPKNfQTzLEzBfHGsQWF05MDEGMUIMvZJQ-GA",
+      "name": "full_name_missing_given"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYifQ.LK18gl1kPb5M0rw1PXw1l6G7QFgTwux8lfIChYQDyLkEmgvJESBD5dAgqSMhQhgfPF5iBdIlrtYGYnwRysjYKg",
+      "name": "no_sub"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792799880,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "iat_future"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800601,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImlhdCI6MTc5MjgwMDAwMCwiaXNzIjoiaHR0cHM6Ly9jYS5laWRtb25nb2xpYS5tbiIsIm5vbmNlIjoiY2FzaGllci03ZjNhOWMiLCJzaWQiOiIwYjhmM2YwZS0xMTExLTQyMjItODMzMy00NDQ0NTU1NTY2NjYiLCJzdWIiOiJaazN2UWgybTljVHFMOHJXMXhZYjVuUGRBMHNFNnVKZ0h0S29WZlJpTWxDIn0.Hty99U-6ElL9wfNI39ABhXb9B13g9qHNpOglHYwwSNLrtRY84lC8tizJoBVqSKoWQD7XppUg93y7GfMBaorf6g",
+      "name": "iat_too_old"
+    },
+    {
+      "error": "QR_PRESENTATION_INVALID",
+      "expect": {
+        "attributes": [
+          "age_over_18"
+        ],
+        "audience": "6f1c2b9e-3a4d-4e5f-8a7b-9c0d1e2f3a4b",
+        "issuer": "https://ca.eidmongolia.mn",
+        "nonce": "cashier-7f3a9c",
+        "now": 1792800005,
+        "sessionID": "0b8f3f0e-1111-4222-8333-444455556666"
+      },
+      "jws": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVpZC1xci0yMDI2LTEwIiwidHlwIjoiSldUIn0.eyJhdHRycyI6eyJhZ2Vfb3Zlcl8xOCI6dHJ1ZX0sImF1ZCI6IjZmMWMyYjllLTNhNGQtNGU1Zi04YTdiLTljMGQxZTJmM2E0YiIsImV4cCI6MTc5Mjc5OTkwMCwiaWF0IjoxNzkyODAwMDAwLCJpc3MiOiJodHRwczovL2NhLmVpZG1vbmdvbGlhLm1uIiwibm9uY2UiOiJjYXNoaWVyLTdmM2E5YyIsInNpZCI6IjBiOGYzZjBlLTExMTEtNDIyMi04MzMzLTQ0NDQ1NTU1NjY2NiIsInN1YiI6IlprM3ZRaDJtOWNUcUw4clcxeFliNW5QZEEwc0U2dUpnSHRLb1ZmUmlNbEMifQ.-wYVrWOpb5OLs0xT5u33jMQBFoOqvm6s10fHLqo0IJdJ2gTQRNgr7bDsWNKzyTADQy2321uaZ3w96xjjbzD3Ww",
+      "name": "exp_passed"
+    }
+  ],
+  "version": 1
+}

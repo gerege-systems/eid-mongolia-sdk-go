@@ -50,6 +50,7 @@ type rawSession struct {
 	OnBehalfOf          *OrgResult             `json:"onBehalfOf"`
 	Person              *Person                `json:"person"`
 	TokenCertificate    *TokenCertSessionBlock `json:"tokenCertificate"`
+	Presentation        *SessionPresentation   `json:"presentation"`
 }
 
 // ParseSessionResult — RP-API-ийн session JSON-ийг SessionResult болгон задална (хадгалсан хариуг дахин
@@ -85,6 +86,10 @@ func (r *rawSession) result() *SessionResult {
 	if tok != nil && tok.Status == "" {
 		tok = nil
 	}
+	pres := r.Presentation
+	if pres != nil && pres.JWS == "" {
+		pres = nil
+	}
 	return &SessionResult{
 		State:                        r.State,
 		EndResult:                    r.Result.EndResult,
@@ -103,6 +108,7 @@ func (r *rawSession) result() *SessionResult {
 		OnBehalfOf:                   org,
 		Person:                       person,
 		TokenCertificate:             tok,
+		Presentation:                 pres,
 	}
 }
 
