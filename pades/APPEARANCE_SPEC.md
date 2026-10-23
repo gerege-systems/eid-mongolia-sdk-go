@@ -183,7 +183,9 @@ SDK оролтыг PNG-ээр АВАХГҮЙ: PNG-ийн IDAT-ийг дахин 
 удаа шахна; SDK `alpha`-г **байтаар нь** /SMask stream болгон бичнэ (runtime шахалт үгүй — бүх SDK байт-ижил).
 
 Шалгалт (бүгд `REQUEST_INVALID`, PDF задлахаас өмнө; `suggestPlacement`-д ч): `1 ≤ width, height ≤ 1600`; өнгө бүр
-0…255; `1 ≤ len(alpha) ≤ 300 KiB` (307 200 байт); alpha нь НЭГ zlib stream — preset dictionary (FDICT) үгүй, Adler-32 зөв,
+0…255; `1 ≤ len(alpha) ≤ 300 KiB` (307 200 байт); alpha нь НЭГ zlib stream — preset dictionary үгүй (FLG-ийн FDICT бит
+(`alpha[1] & 0x20`) тавигдсан бол DICTID-ээс үл хамааран, DICTID = 1 (хоосон толь) ч татгалзана — Go `compress/zlib` г.м.
+задлагч үүнийг зөвшөөрдөг тул SDK бүр битийг өөрөө шалгана), Adler-32 зөв,
 stream-ийн ард илүү байт үгүй, задлахад яг `width·height` байт; `sha256` нь `^[0-9a-f]{64}$`. `stampImage` нь зөвхөн
 `claimedRole` (onBehalfOf)-той (Prepare-д; `suggestPlacement` claimedRole-гүй тул шалгахгүй). Тамга гарын үсгийн зураггүйгээр
 зөвшөөрөгдөнө — тэр үед B1-ийн геометр, дээд зурвас хоосон (зөвхөн хуваах шугам ба тамга).
@@ -277,5 +279,6 @@ Stamp mask]` — бүгд шинэ, үе 0, давхардалгүй. 7-р ал�
 
 PDF нь PNG-ийн sha256-г агуулахгүй. `Completed.images` = `[{kind: "signature"|"stamp", sha256}]` (signatureImage, дараа нь
 stampImage — байгаа нь), `registration()` үүнийг POST /v3/pdf/signatures-д `images` болгон илгээнэ (зураггүй бол талбаргүй).
-CA зурагчийн / байгууллагын (onBehalfOf) хадгалсан PNG-ийн sha256-тай тулгана. **CA тал хэрэгжээгүй** (2026-10-23): CA
-`DisallowUnknownFields` тул `images` хүлээн авахаас өмнө зурагтай бүртгэл 400 болно.
+CA зурагчийн / байгууллагын (onBehalfOf) тухайн мөчийн **одоогийн** хадгалсан PNG-ийн sha256-тай тулгана; зураг алга эсвэл
+sha256 өөр (солигдсон / устгасан) → 409 `IMAGE_MISMATCH` (CA прод f604ed2b, 2026-10-23; discovery
+`pdfSigning.registerErrorCodes`-д).

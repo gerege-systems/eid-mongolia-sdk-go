@@ -97,6 +97,10 @@ func CheckPDFImage(im *PDFImage) error {
 	if len(im.Alpha) == 0 || len(im.Alpha) > MaxImageAlphaBytes {
 		return bad("alpha 1 B…300 KiB")
 	}
+	// FDICT: compress/zlib accepts DICTID 1 (the empty dictionary) — §6.1 forbids any preset dictionary.
+	if len(im.Alpha) >= 2 && im.Alpha[1]&0x20 != 0 {
+		return bad("alpha preset dictionary (FDICT)")
+	}
 	br := bytes.NewReader(im.Alpha)
 	zr, err := zlib.NewReader(br)
 	if err != nil {

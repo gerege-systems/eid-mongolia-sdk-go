@@ -109,6 +109,9 @@ const (
 	CodeDocNotFound = "DOC_NOT_FOUND"
 	// CodePriorMismatch — 409: revIndex эсвэл priorCmsSha256/priorRevisionSha256 бүртгэлтэй таарахгүй.
 	CodePriorMismatch = "PRIOR_MISMATCH"
+	// CodeImageMismatch — 409: images[] (kind, sha256) нь зурагчийн / onBehalfOf байгууллагын CA дээрх ОДООГИЙН
+	// хадгалсан зурагтай таарахгүй (алга, солигдсон эсвэл устгасан; pades APPEARANCE_SPEC.md §6.6).
+	CodeImageMismatch = "IMAGE_MISMATCH"
 )
 
 // PDFRegisterErrorCodes — POST /pdf/signatures-ийн бүх CA код (TS SDK PDF_REGISTER_ERROR_CODES-тэй ижил дараалал).
@@ -131,6 +134,7 @@ var PDFRegisterErrorCodes = []string{
 	CodeRegistryConflict,
 	CodeDocNotFound,
 	CodePriorMismatch,
+	CodeImageMismatch,
 	CodeRateLimited,
 	CodeStateUnavailable,
 }

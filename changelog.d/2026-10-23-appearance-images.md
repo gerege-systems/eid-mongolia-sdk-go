@@ -14,6 +14,8 @@
 - **Шалгасан:** `go test -race ./...` (v9-ийн бүх golden байт-ижил), validator халдлага 12 (`TestOwnVisibleSignatureImages`),
   оролтын шалгалт 12 (`TestAppearanceImageInput`), pyHanko 0.38 (62 гарын үсэг OK; `img-second` sig1 `FORM_FILLING`),
   qpdf (pikepdf 12.4) асуудалгүй, рендер: PDFKit, pdfium, pdf.js, MuPDF.
-- **Үлдсэн:** CA `POST /v3/pdf/signatures` нь `images`-ийг хүлээн авах (DisallowUnknownFields — одоо 400; contract CI
-  `TestContractPDFSignaturesBody` CA discovery-д `images?` нэмэгдтэл улаан); CA-ийн RP API «PDF зураг» хэлбэрээр өгөх;
-  TS/.NET/Swift/Kotlin порт; Adobe гар шалгалт.
+- **`eid.CodeImageMismatch` (`IMAGE_MISMATCH`, 409)** `PDFRegisterErrorCodes`-д (`CodePriorMismatch`-ийн ард) — CA
+  `images`-ийг одоогийн хадгалсан зурагтай тулгана (CA прод f604ed2b; discovery `registerErrorCodes`).
+- **alpha FDICT** — FLG-ийн FDICT бит тавигдсан alpha (DICTID = 1 ч) `REQUEST_INVALID` (`compress/zlib` DICTID 1-ийг
+  зөвшөөрдөг байсан — спектэй зөрж байв; тест `alpha FDICT 1`).
+- **Үлдсэн:** Adobe гар шалгалт.

@@ -717,7 +717,10 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
   SHA256}`, CA-ийн өгөх «PDF зураг» (PNG биш). Зураг дүрслэлийн ДОТОР (дээд зурвас; тамга баруун дээд буланд хайрцгийг
   давж) зурагдана — тусдаа annotation биш тул өмнөх гарын үсэг «өөрчлөгдөөгүй» хэвээр. `Width`, `Height` хоёулаа 0 бол
   анхдагч хэмжээ: 220×64 / гарын үсэгтэй 220×110 / тамгатай 240×147.5 (тамганы дээш гарах хэсэг орсон). Зургийн sha256
-  `Completed.Images` → `Registration` → `images`. Дэлгэрэнгүй: APPEARANCE_SPEC §6.
+  `Completed.Images` → `Registration` → `images`; CA одоогийн хадгалсан зурагтай тулгана — таарахгүй бол 409
+  `IMAGE_MISMATCH` (`eid.CodeImageMismatch`). Зургийг RP хариуны `pdfImage`-ээс авна (`GET
+  /v3/person/etsi/{etsi}/signature-image` — SIGN эрх + иргэнийг сүүлийн 24 цагт нэвтрүүлсэн; тамга —
+  `representations[].stampImage.pdfImage`). Дэлгэрэнгүй: APPEARANCE_SPEC §6.
 - `Verify` тайлан: `visible` (энэ гарын үсэг харагдах), `visible_later_signature`. Шалгагч зөвхөн яг энэ хэлбэрийг (widget +
   `/AP`-ийг дахин үүсгэж байт-түвшинд тулгана) хүлээн авна. Дэлгэрэнгүй: [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md).
 

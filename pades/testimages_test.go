@@ -75,6 +75,15 @@ func badAlphaImage() *PDFImage {
 	return im
 }
 
+// fdictAlpha — the same zlib stream with FDICT set and DICTID 1 (Adler-32 of the empty dictionary): compress/zlib
+// and most platform inflaters accept it, APPEARANCE_SPEC.md §6.1 does not (REQUEST_INVALID in every SDK).
+func fdictAlpha(z []byte) []byte {
+	cmf, flg := z[0], byte(0xC0|0x20)
+	flg |= byte(31-(int(cmf)*256+int(flg))%31) % 31
+	out := []byte{cmf, flg, 0, 0, 0, 1}
+	return append(out, z[2:]...)
+}
+
 // TestAppearanceImageInput — APPEARANCE_SPEC.md §6.1 input checks (REQUEST_INVALID before the PDF is parsed), the
 // default sizes (§6.3) and the registration images (§6.6).
 func TestAppearanceImageInput(t *testing.T) {
@@ -100,6 +109,7 @@ func TestAppearanceImageInput(t *testing.T) {
 		"alpha дутуу байт": badAlphaImage(),
 		"alpha ард хог":    mod(func(im *PDFImage) { im.Alpha = append(bytes.Clone(im.Alpha), 0) }),
 		"alpha > 300 KiB":  mod(func(im *PDFImage) { im.Alpha = make([]byte, 300<<10+1) }),
+		"alpha FDICT 1":    mod(func(im *PDFImage) { im.Alpha = fdictAlpha(im.Alpha) }),
 	}
 	for name, im := range bad {
 		t.Run(name, func(t *testing.T) {
