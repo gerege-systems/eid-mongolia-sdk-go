@@ -612,12 +612,21 @@ func TestGolden(t *testing.T) {
 	}
 	rt := &replayTransport{t: t, m: &m, live: p.liveResponder(t), record: map[string][]byte{}}
 	want := map[string]goldenExpect{}
+	recorded := map[string]*Appearance{}
 	for _, c := range m.Cases {
 		want[c.Name] = c.Expect
+		recorded[c.Name] = c.Prep.Appearance
 	}
 	outputs := map[string][]byte{}
 	var cases []goldenCase
 	for _, c := range goldenCases() {
+		// Images come from the manifest (the golden contract, as for the native SDKs): testImage's compress/zlib output
+		// differs between Go releases, the recorded alpha bytes do not. -update rewrites them from testImage.
+		if a, r := c.Prep.Appearance, recorded[c.Name]; !*update && a != nil && r != nil {
+			cp := *a
+			cp.SignatureImage, cp.StampImage = r.SignatureImage, r.StampImage
+			c.Prep.Appearance = &cp
+		}
 		var input []byte
 		if name, ok := strings.CutPrefix(c.Input, "case:"); ok {
 			input = outputs[name]

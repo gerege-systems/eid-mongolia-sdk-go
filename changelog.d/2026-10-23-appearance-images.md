@@ -18,4 +18,6 @@
   `images`-ийг одоогийн хадгалсан зурагтай тулгана (CA прод f604ed2b; discovery `registerErrorCodes`).
 - **alpha FDICT** — FLG-ийн FDICT бит тавигдсан alpha (DICTID = 1 ч) `REQUEST_INVALID` (`compress/zlib` DICTID 1-ийг
   зөвшөөрдөг байсан — спектэй зөрж байв; тест `alpha FDICT 1`).
+- **TestGolden зургийг manifest-ээс авна** (`-update`-ээс бусад үед) — `compress/zlib`-ийн гаралт Go 1.27-д өөрчлөгдсөн тул
+  `testImage`-ээс дахин шахсан alpha v10-ийн байттай зөрж байв (CI `test (stable)`); Go 1.26.4 ба 1.27.3 дээр ногоон.
 - **Үлдсэн:** Adobe гар шалгалт.
