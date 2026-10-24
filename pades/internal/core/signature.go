@@ -89,15 +89,6 @@ func PrepareSignatureVisible(base []byte, signingTime time.Time, signerName, rea
 	return prepareSignature(base, signingTime, signerName, reason, &vis)
 }
 
-// apImageRole — VisibleTamper role of the k-th image object (0-based, after the 11 font/form objects).
-func apImageRole(vis *Visible, k int) string {
-	part := [2]string{"base", "mask"}[k%2]
-	if vis.Sig != nil && k < 2 {
-		return "Sig." + part
-	}
-	return "Stamp." + part
-}
-
 func prepareSignature(base []byte, signingTime time.Time, signerName, reason string, vis *Visible) (out *Prepared, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -127,9 +118,8 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 	fieldName := "Signature " + strconv.Itoa(k)
 
 	sigID, fieldID, catID := inc.reserve(), inc.reserve(), inc.reserve()
-	var apIDs []uint32 // харагдах: form, F1 ×5, F2 ×5, зураг бүрд 2 (APPEARANCE_SPEC.md §6.2)
+	var apIDs [11]uint32 // харагдах: form, F1 ×5, F2 ×5
 	if vis != nil {
-		apIDs = make([]uint32, AppearanceObjectCount(AppearanceParams{Sig: vis.Sig, Stamp: vis.Stamp}))
 		for i := range apIDs {
 			apIDs[i] = inc.reserve()
 		}
@@ -196,7 +186,7 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 			}
 		}
 		bodies, err := AppearanceObjects(AppearanceParams{W: vis.W, H: vis.H, Rotate: rot, Name: vis.Name, Role: vis.Role,
-			Lang: vis.Lang, Date: vis.Date, URL: vis.URL, Sig: vis.Sig, Stamp: vis.Stamp}, apIDs)
+			Lang: vis.Lang, Date: vis.Date, URL: vis.URL}, apIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -206,10 +196,7 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 			widget = tm.Body("widget", widget)
 			for i := range bodies {
 				role := "form"
-				switch {
-				case i >= 11:
-					role = apImageRole(vis, i-11)
-				case i > 0:
+				if i > 0 {
 					role = fmt.Sprintf("F%d.%d", (i-1)/5+1, (i-1)%5)
 				}
 				bodies[i] = tm.Body(role, bodies[i])

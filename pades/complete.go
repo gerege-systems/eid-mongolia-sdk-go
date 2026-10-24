@@ -16,7 +16,6 @@ import (
 
 	"crypto"
 
-	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
 )
@@ -71,9 +70,6 @@ type Completed struct {
 	// ClaimedRole — PrepareOptions.ClaimedRole (signedAttrs-д орсон); хоосон = хувиараа. Registration үүнийг
 	// RegistrationOptions.OnBehalfOf-той тулгана.
 	ClaimedRole string
-	// Images — the images drawn in this signature's stamp (Appearance.SignatureImage / StampImage, in that order) as
-	// {kind, sha256}; Registration sends them as `images` (APPEARANCE_SPEC.md §6.6). nil without images.
-	Images []eid.PDFSignatureImage
 }
 
 // Complete — иргэний гарын үсгийг DTBS дээр шалгаад TSA → CMS → embed → OCSP/CRL (genTime-ийн дараа) → DSS →
@@ -186,7 +182,7 @@ func Complete(ctx context.Context, state []byte, signature []byte, o CompleteOpt
 	outSum := sha256.Sum256(out)
 	res := &Completed{PDF: out, DocID: st.DocID, CMS: cms, OutSHA256: hex.EncodeToString(outSum[:]), InSHA256: st.InSHA256,
 		HasPage: st.HasPage, PageSHA256: st.PageSHA256, SignerCert: cert.Raw, FileName: st.FileName, RevIndex: st.RevIndex, SigRevSHA256: sigRevHex,
-		ClaimedRole: st.ClaimedRole, Images: st.Images}
+		ClaimedRole: st.ClaimedRole}
 	for _, r := range raws[:len(raws)-1] {
 		res.PriorCMSSHA256 = append(res.PriorCMSSHA256, r.CMSSHA256)
 		res.PriorRevisionSHA256 = append(res.PriorRevisionSHA256, sha256Hex(out[:r.SignedEnd]))

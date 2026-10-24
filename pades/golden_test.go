@@ -198,28 +198,6 @@ func goldenCases() []goldenCase {
 			VerifyPagePosition: VerifyPageFirst}},
 		{Name: "vpfirst-invalid", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{VerifyPage: true, DocID: "5e6f7a8b-9cad-4ebf-8a01-4c5d6e7f8091",
 			FileName: "x.pdf", VerifyPagePosition: "middle"}},
-		// Signature / stamp images inside the stamp (APPEARANCE_SPEC.md §6, golden v10; synthetic images —
-		// testimages_test.go): (a) personal signature image, default size 220×110 (width/height 0); (b) signature +
-		// organization stamp (onBehalfOf), default 240×147.5; (c) stamp only; (d) /Rotate 90 page with both; (e) a second
-		// signer with both images after a first signer with a signature image (same page); (f) an alpha stream one byte
-		// short → REQUEST_INVALID; (g) a stamp image without claimedRole → REQUEST_INVALID.
-		{Name: "img-signature", Input: "input/quartz-pdf13.pdf", Prep: visible(page("6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d", "Гэрээ №1 (Quartz).pdf"),
-			Appearance{X: 36, Y: 36, SignatureImage: testSignatureImage()})},
-		{Name: "img-signature-stamp", Input: "input/quartz-pdf13.pdf", Prep: visible(PrepareOptions{VerifyPage: true,
-			DocID: "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e", FileName: "Гэрээ №1 (Quartz).pdf", Lang: "mn", Reason: "Тест ХХК-ийг төлөөлж",
-			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{X: 340, Y: 36, SignatureImage: testSignatureImage(), StampImage: testStampImage()})},
-		{Name: "img-stamp-only", Input: "input/quartz-pdf13.pdf", Prep: visible(PrepareOptions{VerifyPage: true,
-			DocID: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f", FileName: "Гэрээ №1 (Quartz).pdf", Lang: "en", Reason: "Тест ХХК-ийг төлөөлж",
-			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{X: 340, Y: 36, StampImage: testStampImage()})},
-		{Name: "img-rotated90", Input: "input/quartz-rotated90.pdf", Prep: visible(PrepareOptions{VerifyPage: true,
-			DocID: "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a", FileName: "rotated.pdf", Lang: "mn", Reason: "Тест ХХК-ийг төлөөлж",
-			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{X: 516, Y: 36, SignatureImage: testSignatureImage(), StampImage: testStampImage()})},
-		{Name: "img-second", Input: "case:img-signature", Prep: visible(PrepareOptions{Reason: "Тест ХХК-ийг төлөөлж",
-			ClaimedRole: "Захирал, Тест ХХК (NTRMN-1234567)"}, Appearance{Page: 1, X: 340, Y: 36, SignatureImage: testSignatureImage(), StampImage: testStampImage()})},
-		{Name: "img-bad-alpha", Input: "input/quartz-pdf13.pdf", Prep: visible(page("0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b", "x.pdf"),
-			Appearance{X: 36, Y: 36, SignatureImage: badAlphaImage()})},
-		{Name: "img-stamp-no-role", Input: "input/quartz-pdf13.pdf", Prep: visible(page("1f2a3b4c-5d6e-4f7a-9b8c-9d0e1f2a3b4c", "x.pdf"),
-			Appearance{X: 340, Y: 36, StampImage: testStampImage()})},
 	}
 }
 
@@ -612,21 +590,12 @@ func TestGolden(t *testing.T) {
 	}
 	rt := &replayTransport{t: t, m: &m, live: p.liveResponder(t), record: map[string][]byte{}}
 	want := map[string]goldenExpect{}
-	recorded := map[string]*Appearance{}
 	for _, c := range m.Cases {
 		want[c.Name] = c.Expect
-		recorded[c.Name] = c.Prep.Appearance
 	}
 	outputs := map[string][]byte{}
 	var cases []goldenCase
 	for _, c := range goldenCases() {
-		// Images come from the manifest (the golden contract, as for the native SDKs): testImage's compress/zlib output
-		// differs between Go releases, the recorded alpha bytes do not. -update rewrites them from testImage.
-		if a, r := c.Prep.Appearance, recorded[c.Name]; !*update && a != nil && r != nil {
-			cp := *a
-			cp.SignatureImage, cp.StampImage = r.SignatureImage, r.StampImage
-			c.Prep.Appearance = &cp
-		}
 		var input []byte
 		if name, ok := strings.CutPrefix(c.Input, "case:"); ok {
 			input = outputs[name]

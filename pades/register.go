@@ -43,7 +43,6 @@ func Registration(c *Completed, o RegistrationOptions) (eid.PDFSignatureRegistra
 	r := eid.PDFSignatureRegistration{
 		DocID: c.DocID, RevIndex: c.RevIndex, Medium: medium, SessionID: o.SessionID, CMS: c.CMS, FileName: c.FileName,
 		InSHA256: c.InSHA256, SigRevSHA256: c.SigRevSHA256, OutSHA256: c.OutSHA256, OnBehalfOf: o.OnBehalfOf,
-		Images: append([]eid.PDFSignatureImage(nil), c.Images...),
 	}
 	if c.RevIndex == 1 {
 		r.PageSHA256 = c.PageSHA256

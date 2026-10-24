@@ -59,8 +59,7 @@ array → `[` + зайгаар + `]`. Гүн ≤ 32.
    бөгөөс `FEFF` + UTF-16BE hex.
 2. **Widget/талбар** (`fieldID`): `<<\n  /Type /Annot\n  /Subtype /Widget\n  /Rect [0 0 0 0]\n[  /P <page> <gen> R\n]  /F 132\n  /FT /Sig\n  /T (Signature k)\n  /V <sigID> 0 R\n>>`
    — `k` = AcroForm /Fields-ийн `/FT /Sig` тоо + 1, нэр давхцвал k++. `/P` = /Pages модны эхний /Page (гүн ≤ 32).
-   **Харагдах** (`appearance` өгсөн) бол энэ widget-ийн оронд APPEARANCE_SPEC.md §2-ийн widget + 11 /AP объект (зураг
-   бүрд + 2, APPEARANCE_SPEC §6.2), хуудас нь
+   **Харагдах** (`appearance` өгсөн) бол энэ widget-ийн оронд APPEARANCE_SPEC.md §2-ийн widget + 11 /AP объект, хуудас нь
    `appearance.page`-ийн хуудас (доорх 3 дахь алхам тэр хуудсанд).
 3. Эхний хуудасны `/Annots`-д widget: `/Annots` шууд бус массив бол тэр массивыг (ижил дугаар/үе) `[… <fieldID> 0 R]`;
    эс бөгөөс хуудсыг (ижил дугаар/үе) бусад түлхүүрээр (§1a) + ` /Annots [… <fieldID> 0 R]` дахин бичнэ.

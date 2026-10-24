@@ -3,8 +3,6 @@ package eid
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -231,22 +229,6 @@ func (p *PersonService) Summary(ctx context.Context, personEtsi string) (*Person
 func (p *PersonService) Children(ctx context.Context, personEtsi string) (*PersonChildren, error) {
 	var r PersonChildren
 	if err := p.get(ctx, routePersonChildren.expand(personEtsi), &r, &r.Raw); err != nil {
-		return nil, err
-	}
-	return &r, nil
-}
-
-// SignatureImage — GET /person/etsi/{personEtsi}/signature-image: иргэний гарын үсгийн зураг (харагдах гарын үсэгт —
-// pades.Appearance.SignatureImage = img.PDFImage). PKI_READ биш, SIGN эрх; иргэн сүүлийн 24 цагт танай RP-ээр
-// нэвтэрсэн байх ёстой (эс бөгөөс *ForbiddenError). Иргэн зураг хадгалаагүй (404) бол (nil, nil).
-func (p *PersonService) SignatureImage(ctx context.Context, personEtsi string) (*Image, error) {
-	var r Image
-	var raw json.RawMessage
-	if err := p.get(ctx, routePersonSignatureImage.expand(personEtsi), &r, &raw); err != nil {
-		var ae *APIError
-		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &r, nil

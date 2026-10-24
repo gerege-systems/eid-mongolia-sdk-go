@@ -393,16 +393,6 @@ coordinates. Result (pt):
   `exact-out-of-bounds` carries `expect.suggestionError` = `REQUEST_INVALID`; ports compare field-for-field (numbers as
   JSON numbers) and assert `suggestion ⊇ placement` for every case except `page0-two-verify`.
 
-## 6c. Images (golden v10)
-
-With `signatureImage` / `stampImage` (APPEARANCE_SPEC §6) nothing in §1–§6b changes: the request `w, h` is the **whole
-widget rect** — for a stamp image it is the box plus the stamp's overflow above it (the union), so the candidate rects,
-the 4 pt `pad` test and the `/Rect` all use the union and the overflow never lands on content. `width = height = 0`
-selects the default size by the image flags — 220 × 64 (none), 220 × 110 (signature image), 240 × 147.5 (stamp image,
-with or without a signature image) — in Prepare and in `suggestPlacement` alike (pass the same `appearance`, images
-included, to get the right size; `suggestion.width/height` report it). Image input errors are `REQUEST_INVALID` in
-`suggestPlacement` too; the `claimedRole` requirement of `stampImage` is checked by Prepare only.
-
 ## 7. Compatibility
 
 - Pages where the requested rect is free give byte-identical output (same `/Rect`, same objects) — all golden v3/v4
