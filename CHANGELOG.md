@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.20.0 — 2026-10-24
+
+### Removed (BREAKING) — гарын үсгийн зураг / байгууллагын тамганы зураг
+
+- **Юу:** v0.16.0–v0.17.0-д нэмэгдсэн зургийн функц бүрэн хасагдав: `pades.Appearance.SignatureImage` / `StampImage`,
+  `pades.PdfImage`, `Completed.Images` (бүртгэлийн `images`, 409 `IMAGE_MISMATCH` код), alpha/zlib FDICT шалгалт,
+  зурагтай байрлал (220×110 / 240×147.5), APPEARANCE_SPEC / PLACEMENT_SPEC-ийн зургийн хэсгүүд; RP-API-ийн
+  `Person.SignatureImage`, `Representation.StampImage` / `StampImageSet`. Харагдах тамга өмнөх QR тамга руу буцна —
+  `Prepare` / `Complete`-ийн гаралт v0.15.x-тэй байт-ижил. Эдгээрийг ашиглаж буй код compile хийгдэхгүй — устгана уу.
+  «Миний QR» (`c.QR`) хэвээр.
+- **Яагаад:** зургийн функцийг бүх системээс (CA, портал, апп, SDK) бүрэн хасах шийдвэр (2026-10-24).
+- **Хаана:** #44, #45-ийг revert; golden v10 → `pades-golden-v9` (зурагтай 5 кейс хасагдсан).
+- **Шалгасан:** `pades/testdata/golden` нь `pades-golden-v9` tag-тай `git diff` хоосон; `go test ./...`, `go vet`.
+
 ## v0.19.0 — 2026-10-23
 
 ### Added — «Миний QR»: нэг удаагийн шалгалт `check`; `result`-ийн хүлээлт дуусахад `QR_PENDING`

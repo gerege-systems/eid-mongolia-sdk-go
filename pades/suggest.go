@@ -68,8 +68,7 @@ func SuggestPlacement(doc []byte, a Appearance) (Suggestion, error) {
 			verifyURI = pageVerifyURL + id
 		}
 	}
-	aw, ah := appearanceSize(&a)
-	w, h := core.Round100(aw), core.Round100(ah)
+	w, h := core.Round100(a.Width), core.Round100(a.Height)
 	s, err := core.SuggestVisible(doc, verifyURI, a.Page, core.Round100(a.X), core.Round100(a.Y), w, h, a.Exact)
 	if errors.Is(err, core.ErrAppearance) {
 		return Suggestion{}, newErr(CodeRequestInvalid, "appearance: "+strings.TrimPrefix(err.Error(), "pades: "), err)

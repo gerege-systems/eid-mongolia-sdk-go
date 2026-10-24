@@ -19,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.19.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.20.0
 ```
 
 `pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
@@ -423,19 +423,6 @@ Person блок гарын үсэгт **ордоггүй** — гэрчилгэ�
 `c.Person.Certificates` · `Devices` · `Activity(ctx, etsi, &eid.ActivityQuery{Flow, Limit, Offset})` · `Summary` ·
 `Children` — иргэн сүүлийн 24 цагт танай RP-ээр нэвтэрсэн байх ёстой (эс бөгөөс 403). Хариу бүрт `Raw`.
 
-`c.Person.SignatureImage(ctx, etsi)` (v0.17.0+) — `GET /person/etsi/{etsi}/signature-image`, **SIGN** эрх (PKI_READ
-биш) + иргэн сүүлийн 24 цагт нэвтэрсэн; иргэн зураг хадгалаагүй (404) бол `(nil, nil)`. `*eid.Image{PNG, SHA256, Width,
-Height, UpdatedAt, PDFImage}`. `Representation`-д `StampImageSet` ба (SIGN эрхтэй RP-д) `StampImage *eid.Image`.
-`PDFImage`-ийг харагдах гарын үсэгт шууд өгнө (`pades.PDFImage` = `eid.PDFImage`):
-
-```go
-img, err := c.Person.SignatureImage(ctx, signerEtsi)
-if err != nil { return err }
-ap := &pades.Appearance{X: 340, Y: 36} // Width = Height = 0 → анхдагч хэмжээ
-if img != nil { ap.SignatureImage = img.PDFImage }
-// байгууллагын нэрийн өмнөөс: ap.StampImage = rep.StampImage.PDFImage (rep.StampImage != nil үед)
-```
-
 `PersonCertificate`-д (v0.5.0-аас) `IssuedAt` (олгосон), `RevokedAt` (цуцалсан — REVOKED), `RevocationReason` (RFC 5280
 нэр: `keyCompromise`, `superseded`, `cessationOfOperation` …). `Status` өөрчлөгдөхгүй: сунгалт/дахин бүртгэлээр солигдсон
 мөр `SUSPENDED` + `RevocationReason: "superseded"`, `RevokedAt` nil.
@@ -768,14 +755,6 @@ p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyP
 - Өндөр ≥ 45 pt (QR модуль ≥ 1 pt), бичвэр багтахгүй (нэр 7 pt, бусад 5 pt хүртэл жижгэрнэ), хуудаснаас гарсан, хуудас
   алга, `/Name` бичигдэхгүй нэр, docID тодорхойгүй → `REQUEST_INVALID`. Огноо нь мэдүүлсэн SigningTime (TSA-ийн цаг prepare-д
   мэдэгдэхгүй).
-- **Зураг** (golden v10): `Appearance.SignatureImage` (иргэний гарын үсгийн зураг) ба `Appearance.StampImage`
-  (байгууллагын тамга — зөвхөн `ClaimedRole`/onBehalfOf-той) — `*pades.PDFImage{Width, Height, Color [3]int, Alpha (zlib),
-  SHA256}`, CA-ийн өгөх «PDF зураг» (PNG биш). Зураг дүрслэлийн ДОТОР (дээд зурвас; тамга баруун дээд буланд хайрцгийг
-  давж) зурагдана — тусдаа annotation биш тул өмнөх гарын үсэг «өөрчлөгдөөгүй» хэвээр. `Width`, `Height` хоёулаа 0 бол
-  анхдагч хэмжээ: 220×64 / гарын үсэгтэй 220×110 / тамгатай 240×147.5 (тамганы дээш гарах хэсэг орсон). Зургийн sha256
-  `Completed.Images` → `Registration` → `images`; CA одоогийн хадгалсан зурагтай тулгана — таарахгүй бол 409
-  `IMAGE_MISMATCH` (`eid.CodeImageMismatch`). Зургийг RP хариуны `pdfImage`-ээс авна (`c.Person.SignatureImage` —
-  SIGN эрх + иргэнийг сүүлийн 24 цагт нэвтрүүлсэн; тамга — `Representation.StampImage.PDFImage`; §3.6). Дэлгэрэнгүй: APPEARANCE_SPEC §6.
 - `Verify` тайлан: `visible` (энэ гарын үсэг харагдах), `visible_later_signature`. Шалгагч зөвхөн яг энэ хэлбэрийг (widget +
   `/AP`-ийг дахин үүсгэж байт-түвшинд тулгана) хүлээн авна. Дэлгэрэнгүй: [APPEARANCE_SPEC.md](pades/APPEARANCE_SPEC.md).
 

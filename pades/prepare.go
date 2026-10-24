@@ -20,7 +20,6 @@ import (
 	"github.com/digitorus/pdf"
 	"golang.org/x/text/unicode/norm"
 
-	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
@@ -99,49 +98,6 @@ type Appearance struct {
 	// content. Placement.Status is then "requested", or "overlap" when content is under the rect ("unscanned" when the
 	// page cannot be scanned). false (default) = the rect is only the preferred spot (PLACEMENT_SPEC.md §6, §6a).
 	Exact bool `json:"exact,omitempty"`
-	// SignatureImage — the signer's handwritten-signature image (CA: GET /v3/person/etsi/{etsi}/signature-image) drawn
-	// inside the stamp (APPEARANCE_SPEC.md §6). nil = none (byte-identical to golden v9).
-	SignatureImage *PDFImage `json:"signatureImage,omitempty"`
-	// StampImage — the organization's stamp image (CA: representations[].stampImage); only with
-	// PrepareOptions.ClaimedRole (onBehalfOf), REQUEST_INVALID otherwise. The round stamp overlaps the box top-right and
-	// sticks out above it — Width/Height are the whole widget rect (APPEARANCE_SPEC.md §6.3).
-	StampImage *PDFImage `json:"stampImage,omitempty"`
-}
-
-// PDFImage — a "PDF image" as the CA serves it (APPEARANCE_SPEC.md §6.1) — eid.PDFImage, so the RP-API responses
-// (eid.Image.PDFImage from Person.SignatureImage, Representation.StampImage) go into Appearance as they are. The SDK
-// writes Alpha into the PDF verbatim (/SMask, /FlateDecode) — nothing is compressed at runtime.
-type PDFImage = eid.PDFImage
-
-// Default stamp sizes (pt) when Appearance.Width and Height are both 0 (APPEARANCE_SPEC.md §6.3): without images, with a
-// signature image, and with a stamp image (with or without a signature image; the height includes the stamp's overflow).
-const (
-	DefaultStampWidth, DefaultStampHeight                   = 220, 64
-	DefaultSignatureStampWidth, DefaultSignatureStampHeight = 220, 110
-	DefaultOrgStampWidth, DefaultOrgStampHeight             = 240, 147.5
-)
-
-// appearanceSize — Width/Height, or the default for the images when both are 0.
-func appearanceSize(a *Appearance) (w, h float64) {
-	if a.Width != 0 || a.Height != 0 {
-		return a.Width, a.Height
-	}
-	switch {
-	case a.StampImage != nil:
-		return DefaultOrgStampWidth, DefaultOrgStampHeight
-	case a.SignatureImage != nil:
-		return DefaultSignatureStampWidth, DefaultSignatureStampHeight
-	}
-	return DefaultStampWidth, DefaultStampHeight
-}
-
-var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
-func imageCore(im *PDFImage) *core.PDFImage {
-	if im == nil {
-		return nil
-	}
-	return &core.PDFImage{W: im.Width, H: im.Height, Color: im.Color, Alpha: im.Alpha}
 }
 
 // PrepareOptions.VerifyPagePosition values.
@@ -215,9 +171,6 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	}
 	if err := checkAppearance(o); err != nil {
 		return nil, err
-	}
-	if a := o.Appearance; a != nil && a.StampImage != nil && o.ClaimedRole == "" {
-		return nil, newErr(CodeRequestInvalid, "appearance: stampImage зөвхөн claimedRole (onBehalfOf)-той", nil)
 	}
 	now := o.SigningTime
 	if now.IsZero() {
@@ -300,14 +253,6 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	}
 	st := &prepState{DocID: docID, SignerCert: cert.Raw, SignedAttrs: attrs, ByteRange: prep.ByteRange, RevIndex: revIndex,
 		InSHA256: inHex, HasPage: hasPage, PageSHA256: pageHex, ClaimedRole: o.ClaimedRole, FileName: fileName, PDF: prep.PDF, PreparedSHA256: sha256Hex(prep.PDF)}
-	if a := o.Appearance; a != nil {
-		if a.SignatureImage != nil {
-			st.Images = append(st.Images, eid.PDFSignatureImage{Kind: eid.PDFImageSignature, SHA256: a.SignatureImage.SHA256})
-		}
-		if a.StampImage != nil {
-			st.Images = append(st.Images, eid.PDFSignatureImage{Kind: eid.PDFImageStamp, SHA256: a.StampImage.SHA256})
-		}
-	}
 	for _, c := range chain {
 		st.Chain = append(st.Chain, c.Raw)
 	}
@@ -344,20 +289,6 @@ func checkAppearance(o PrepareOptions) error {
 	if o.ClaimedRole != "" && !roleText(o.ClaimedRole) {
 		return bad("claimedRole-д удирдах тэмдэгт")
 	}
-	for _, x := range []struct {
-		name string
-		im   *PDFImage
-	}{{"signatureImage", a.SignatureImage}, {"stampImage", a.StampImage}} {
-		if x.im == nil {
-			continue
-		}
-		if !sha256Re.MatchString(x.im.SHA256) {
-			return bad(x.name + ".sha256: жижиг hex SHA-256")
-		}
-		if err := core.CheckPDFImage(imageCore(x.im)); err != nil {
-			return bad(x.name + ": " + strings.TrimPrefix(err.Error(), "pades: харагдах гарын үсэг: зураг: "))
-		}
-	}
 	return nil
 }
 
@@ -390,10 +321,8 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 		return core.Visible{}, newErr(CodeRequestInvalid, fmt.Sprintf("appearance: page %d > хуудасны тоо %d", page, n), nil)
 	}
 	lang := cmp.Or(a.Lang, o.Lang, "mn")
-	w, h := appearanceSize(a)
 	return core.Visible{
-		Page: page, X: core.Round100(a.X), Y: core.Round100(a.Y), W: core.Round100(w), H: core.Round100(h),
-		Sig: imageCore(a.SignatureImage), Stamp: imageCore(a.StampImage),
+		Page: page, X: core.Round100(a.X), Y: core.Round100(a.Y), W: core.Round100(a.Width), H: core.Round100(a.Height),
 		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
 		Date:  now.Format("2006-01-02 15:04") + " (+08)",
 		URL:   pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
