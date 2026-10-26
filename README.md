@@ -19,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.20.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.21.0
 ```
 
 `pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
