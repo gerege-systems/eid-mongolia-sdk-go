@@ -19,7 +19,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.20.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.21.0
 ```
 
 `pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
@@ -536,48 +536,54 @@ if err == nil && info.Enabled {
 хүсэлт, хүлээн авагч тутам өдөрт 10 имэйл (бодит утгыг `ShareInfo().Quota`-аас). Хугацаа `DefaultShareTimeout` (150 с);
 ctx-ийн deadline богино бол тэр нь ялна.
 
-### 3.9. «Миний QR» — биечлэн шалгах (`c.QR`, v0.18.0)
+### 3.9. «Миний QR» — биечлэн шалгах (`c.QR`, v0.21.0)
 
 Иргэн eID апп дээрээ «Миний QR»-ийг харуулна (`EIDMN-QR1:<token>`, 120 с, нэг удаагийн). RP (касс, POS, апп) скан хийж
-хүссэн аттрибутаа асууна → иргэн утсан дээрээ хүсэлтийг (RP нэр, аттрибутын жагсаалт, VC) харж PIN1-ээр зөвшөөрнө →
-RP CA-ийн ES256 гарын үсэгтэй presentation авна. RP-д `AUTH` + `QR_PRESENT` + аттрибут бүрд `QR_ATTR:<нэр>` эрх.
-
-Каталог: `age_over_18`, `age_over_21` (bool, төрсөн огноо задлахгүй), `full_name` ({surname, givenName}),
-`phone` (E.164), `birth_date` (YYYY-MM-DD, мэдрэмтгий), `civil_id` (мэдрэмтгий). Бүртгэлд байхгүй утга →
-`Unavailable`, алдаа биш.
+`c.QR.Start` дуудна → иргэний утсанд нэг өгүүлбэр («Та <RP>-д «Миний мэдээлэл» хэсгийн бүх мэдээллийг хуваалцах гэж
+байна») + PIN2 → RP иргэний «Миний мэдээлэл»-ийг бүхэлд нь (эх сурвалжийн түлхүүрээр, хэвээр) ба нүүрний зургийг
+**иргэний QUALIFIED гарын үсэгтэй** (PS256 JWS, `x5c` = [SIGN гэрчилгээ, issuing CA]) авна. RP-д зөвхөн `QR_PRESENT` эрх.
+CA өгөгдлийн хуулбар хадгалахгүй — presentation-ийг **нэг л удаа** уншина (дахин → 410).
 
 ```go
-token, err := eid.ParseQR(scanned) // эсвэл c.QR.Parse; буруу → errors.Is(err, eid.ErrQRFormatInvalid)
+token, err := eid.ParseQR(scanned) // эсвэл c.QR.Parse; "EIDMN-QR1:<43>" биш → errors.Is(err, eid.ErrQRFormatInvalid)
 sess, err := c.QR.Start(ctx, eid.QRStartRequest{
-	QR:         scanned, // "EIDMN-QR1:…" эсвэл токен
-	Attributes: []string{eid.QRAttrAgeOver18},
-	Nonce:      orderID, // сонголттой
+	QR:    scanned,
+	Nonce: orderID, // сонголттой: 16–128 хэвлэгдэх ASCII; "" = 22 тэмдэгт санамсаргүй
 })
 if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404: хугацаа дууссан / ашиглагдсан → шинэ QR гаргуул */ }
-showOnPOS(sess.VC) // иргэний утсанд ижил код
 
-// sess-ийг (JSON) хадгалж болно — Result-д nonce, хүссэн аттрибутыг тулгана.
+// sess-ийг (JSON) хадгалж болно — Result-д sid, nonce-ийг тулгана. Polling UI: c.QR.Check(ctx, sess, 0).
 p, err := c.QR.Result(ctx, sess, nil)
 var sf *eid.SessionFailedError // USER_REFUSED, TIMEOUT …
+var qe *eid.QRError
 switch {
 case errors.As(err, &sf):
-case errors.Is(err, eid.ErrQRPresentationInvalid): // ИТГЭХГҮЙ
-case errors.Is(err, eid.ErrQRJWKSUnavailable): // түр — дахин оролд
+case errors.Is(err, eid.ErrQRPending): // хүлээх хугацаа дууссан, session идэвхтэй — дахин Result / Check
+case errors.Is(err, eid.ErrQRPresentationGone): // 410: аль хэдийн уншигдсан → шинэ QR
+case errors.As(err, &qe): // QR_CHAIN_INVALID, QR_SIGNATURE_INVALID … — ИТГЭХГҮЙ
 }
-if p.Attrs.AgeOver18 != nil && *p.Attrs.AgeOver18 { sell() }
+for _, k := range p.Keys { fmt.Println(k, p.Data[k]) } // payload-ийн дараалал
+_ = p.Photo                     // JPEG байт (эсвэл nil)
+_ = p.Signer.ETSI               // = sub, гэрчилгээний serialNumber (PNOMN-…)
+_ = p.SHA256                    // = CA-ийн аудитын qrsha (маргаан тулгах)
 ```
 
-Дүрэм (гурван SDK-д ижил, `testdata/qr_vectors.json`-оор баталгаажсан): JWS `alg` = ES256, header-т `kid`
-(JWKS-ээс; танихгүй kid → JWKS-ийг нэг удаа дахин татна), `iss` = `https://ca.eidmongolia.mn`, `aud` = таны RP UUID,
-`sid` = session, `nonce` = таны nonce (өгөөгүй бол SDK-ийн rpChallenge), `iat` ≤ одоо+60 с ба ≥ одоо−10 мин,
-`attrs` ∪ `unavailable` = хүссэн аттрибутууд яг (илүү/дутуу → татгалзана), аттрибут бүрийн төрөл (bool, E.164,
-YYYY-MM-DD, {surname, givenName}). Токен нэг удаагийн, 120 с; хариунд гэрчилгээ, person блок, иргэний дугаар
-(`civil_id` хүсээгүй бол) ирэхгүй. `sub` — энэ RP-д зориулсан тогтмол pairwise id. **Polling UI** (v0.19.0+): `c.QR.Check(ctx, sess, 0)` — нэг удаа шалгана → `QRCheck{Complete, Presentation}`. `Result`-ийн
-хүлээх хугацаа дуусахад иргэн хараахан хариулаагүй бол `errors.Is(err, eid.ErrQRPending)` (дахин дуудаж болно); CA-ийн
-жинхэнэ хугацаа дуусалт нь `*SessionFailedError{TIMEOUT}`.
+Шалгалт (`eid.VerifyQRPresentation(ctx, jws, eid.QRExpect{…}, trust)` — гурван SDK-д ижил, CA-ийн
+`testdata/myqr_vectors.json`-оор): compact JWS ≤ 512 KiB → header яг `{alg: PS256, typ: eidmn-myqr+jwt, x5c: [2]}` →
+гинж leaf → (x5c[1] ∪ intermediates) → anchor (± 60 с; leaf CA биш, KU contentCommitment, QUALIFIED, RSA ≥ 2048, issuer
+SKI allowlist) → цуцлалт (`Trust.Revocation`; nil бол `NewOCSPChecker`, анхдагч hard-fail) → RSASSA-PSS (SHA-256, salt
+32) ирсэн байт дээр → claims (`iss`, `sub` = cert serialNumber, `statement` = rp_name-ийн өгүүлбэр) → `aud` (том/жижиг
+үсэг ялгахгүй) → `sid` → `nonce` → `0 < exp−iat ≤ 300`, `iat ≤ одоо+60`, `одоо < exp+60` → `data` (`source`
+`^[a-z0-9_-]{1,32}$`, `fields` ≤ 128 мөр утга (түлхүүр 1–64 тэмдэгт, утга ≤ 2048 байт), `photo` strict base64 JPEG
+≤ 150 KiB). Алдаа бүр `*QRError{Code}` (`QR_JWS_MALFORMED`, `QR_HEADER_INVALID`, `QR_CHAIN_INVALID`, `QR_CERT_REVOKED`,
+`QR_REVOCATION_UNKNOWN`, `QR_SIGNATURE_INVALID`, `QR_CLAIMS_INVALID`, `QR_AUDIENCE_MISMATCH`, `QR_SESSION_MISMATCH`,
+`QR_NONCE_MISMATCH`, `QR_NOT_YET_VALID`, `QR_EXPIRED`, `QR_DATA_INVALID`) + `ErrQR*` sentinel. Итгэл = `Config.Trust`:
+`TrustAnchorsPEM` хоосон бол SDK-ийн `NationalRootCAPEM` (энд `AllowUntrusted` үйлчлэхгүй), issuer анхдагч
+`CitizenIssuingCASKI`.
 
-CA-ийн бусад код (`code`): 400 `REQUEST_INVALID` (үл мэдэгдэх талбар ч), 403 `PERMISSION_DENIED` / `RP_REQUIRED`, 429 `RATE_LIMITED`, 503 `QR_UNAVAILABLE` (түр), 410 `QR_PRESENTATION_EXPIRED` (session-ийн үр дүнг иргэн зөвшөөрснөөс хойш 10 минутын дотор л уншина), 410 `QR_SUBJECT_GONE` (ховор); RP-ийн эрх уншилт бүрд дахин шалгагдана (хураагдвал 403). `aud` том/жижиг үсэг ялгахгүй тулгана (CA жижиг үсгээр бичнэ). `Config.QR` (`JWKSURL`, `Issuer`, `JWKSCacheTTL`, `MaxAge`) — тест орчинд л. Хадгалсан JWS-ийг
-сүлжээгүй дахин шалгах: `eid.VerifyQRPresentation(jws, jwks, eid.QRExpect{…})`.
+CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE` → `*QRError` (`Cause` = `*APIError`); 400
+`REQUEST_INVALID`, 403 `PERMISSION_DENIED` / `RP_REQUIRED` (`*ForbiddenError`), 409 `NO_SIGNING_CERTIFICATE`, 429
+`RATE_LIMITED` (`*APIError`). `Config.QR.Issuer` — тест орчинд л.
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -868,6 +874,12 @@ standard library plus `golang.org/x/crypto/ocsp`; `pades` also digitorus pdf/pkc
   recipients; `*eid.ShareError` (`Code`, `Reason` on 422, `Sent`/`Failed`/`Recipients` on 502 `MAIL_FAILED`).
   `Client.ShareInfo` reads the discovery `share` block (limits, quota; the CA has no share flag since 2026-10-16).
   `PersonCertificate` gained `IssuedAt`, `RevokedAt`, `RevocationReason` (RFC 5280 name).
+- `c.QR` (QR_PRESENT, v0.21.0) — «My QR» in-person check: `ParseQR` (`EIDMN-QR1:<token>`) → `Start`
+  (`POST /authentication/qr`, nonce auto 22 chars) → `Result` / `Check` → `*QRPresentation` (the citizen's whole «My
+  info» dict in payload order + JPEG photo, signed by the citizen's QUALIFIED key with PIN2: PS256 JWS, `x5c`).
+  `VerifyQRPresentation` checks chain, revocation (OCSP, hard-fail), PSS, claims and data limits; failures are
+  `*QRError{Code}` (`QR_CHAIN_INVALID`, `QR_SIGNATURE_INVALID`, …). Read once — a second read is 410
+  `QR_PRESENTATION_GONE`.
 - Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
 - `eidlogin.New` — "Log in with eID" one-button backend (net/http, mount at `/auth/eid/`): `start` (QR / push by
   registration number / Web2App 302), `status` (fresh QR every second), `callback` (Web2App + `userChallengeVerifier`).
