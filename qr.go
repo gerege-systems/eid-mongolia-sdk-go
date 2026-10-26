@@ -3,99 +3,125 @@ package eid
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
+	"io"
+	"maps"
 	"net/http"
-	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
-// «Миний QR» (биечлэн шалгах): иргэн апп дээрээ нэг удаагийн QR (120 с) харуулна → RP скан хийж QR.Start-аар
-// хүссэн аттрибутаа CA-аас асууна → иргэн утсан дээрээ PIN1-ээр зөвшөөрнө → QR.Result нь CA-ийн ES256 гарын үсэгтэй
-// presentation (JWS)-ийг JWKS-ээр шалгаж, ЗӨВХӨН хүссэн аттрибутуудыг буцаана. Гэрчилгээ, person блок ирэхгүй.
-// RP-д AUTH + QR_PRESENT + аттрибут бүрд QR_ATTR:<нэр> эрх хэрэгтэй.
-
-// QR аттрибутын каталог (CA гэрээ v1, 2026-10-23).
-const (
-	QRAttrAgeOver18 = "age_over_18" // bool — 18 нас хүрсэн эсэх (төрсөн огноог задлахгүй)
-	QRAttrAgeOver21 = "age_over_21" // bool — 21 нас хүрсэн эсэх
-	QRAttrFullName  = "full_name"   // {surname, givenName} — кирилл
-	QRAttrPhone     = "phone"       // E.164 мөр
-	QRAttrBirthDate = "birth_date"  // YYYY-MM-DD (мэдрэмтгий)
-	QRAttrCivilID   = "civil_id"    // иргэний дугаар (мэдрэмтгий)
-)
-
-// QRAttributes — каталогийн бүх аттрибут (дараалал = баримтын дараалал).
-var QRAttributes = []string{QRAttrAgeOver18, QRAttrAgeOver21, QRAttrFullName, QRAttrPhone, QRAttrBirthDate, QRAttrCivilID}
+// «Миний QR» (CA гэрээ myqr-2026-10-26): иргэн eID апп дээрээ «EIDMN-QR1:<token>» QR (120 с, нэг удаагийн) харуулна →
+// RP QR.Start-аар POST /authentication/qr → иргэн утсан дээрээ PIN2-оор (QUALIFIED SIGN түлхүүр) зөвшөөрнө →
+// QR.Result нь иргэний ӨӨРИЙН PS256 JWS-ийг (x5c = [SIGN гэрчилгээ, issuing CA]) гинж + цуцлалт + гарын үсэг + claim-аар
+// шалгаж «Миний мэдээлэл»-ийн бүх талбарыг (payload-ийн дарааллаар) ба нүүрний зургийг буцаана. CA өгөгдлийн хуулбар
+// хадгалахгүй — presentation-ийг нэг л удаа уншина (дахин уншвал 410 QR_PRESENTATION_GONE). RP-д зөвхөн QR_PRESENT эрх.
 
 const (
 	// QRPrefix — иргэний аппын QR-ийн агуулгын угтвар: "EIDMN-QR1:<token>".
 	QRPrefix = "EIDMN-QR1:"
+	// QRJWSType — presentation JWS-ийн header typ.
+	QRJWSType = "eidmn-myqr+jwt"
 	// DefaultQRIssuer — presentation JWS-ийн iss.
 	DefaultQRIssuer = "https://ca.eidmongolia.mn"
-	// DefaultQRJWKSURL — CA-ийн presentation гарын үсгийн нийтийн түлхүүрүүд (JWKS).
-	DefaultQRJWKSURL = "https://ca.eidmongolia.mn/.well-known/eid-jwks.json"
-	// DefaultQRJWKSCacheTTL — JWKS-ийг кэшлэх хугацаа; танихгүй kid ирвэл (≥ 30 с-ийн зайтай) шууд дахин татна.
-	DefaultQRJWKSCacheTTL = time.Hour
-	// DefaultQRMaxAge — presentation-ийн iat-аас хойш хүлээн авах дээд хугацаа.
-	DefaultQRMaxAge = 10 * time.Minute
-	// QRClockSkew — iat ирээдүйд байж болох зөрүү.
+	// QRMaxAge — exp − iat-ийн дээд утга (CA: exp = iat + 300).
+	QRMaxAge = 300 * time.Second
+	// QRClockSkew — iat / exp / гэрчилгээний хугацааг шалгахад зөвшөөрөх цагийн зөрүү.
 	QRClockSkew = 60 * time.Second
 
-	qrJWKSMinRefresh = 30 * time.Second
-	qrMaxJWS         = 16 << 10
-	qrMaxJWKS        = 64 << 10
+	qrMaxJWS        = 512 << 10
+	qrMaxFields     = 128
+	qrMaxKeyRunes   = 64
+	qrMaxValueBytes = 2048
+	qrMaxPhotoBytes = 150 << 10
+	qrSaltLength    = 32
 )
 
-// QR алдааны кодууд — *QRError.Code (APIError.Code-д QR_TOKEN_INVALID ирнэ). TS / .NET SDK-д ижил.
+// «Миний QR»-ийн алдааны кодууд — *QRError.Code (CA гэрээ §6.2; TS / .NET SDK-д ижил). CA-ийн бусад код (403
+// PERMISSION_DENIED / RP_REQUIRED, 409 NO_SIGNING_CERTIFICATE, 400 REQUEST_INVALID, 429 RATE_LIMITED) хэвээр
+// *ForbiddenError / *APIError-оор ирнэ.
 const (
-	// CodeQRFormatInvalid — сканнердсан мөр "EIDMN-QR1:<43 тэмдэгт base64url>" (эсвэл зөвхөн токен) биш. Клиент талын.
+	// CodeQRFormatInvalid — сканнердсан мөр "EIDMN-QR1:<43 тэмдэгт base64url>" биш. Клиент талын.
 	CodeQRFormatInvalid = "QR_FORMAT_INVALID"
 	// CodeQRTokenInvalid — 404: токен танигдахгүй / хугацаа дууссан (120 с) / ашиглагдсан → иргэнээс шинэ QR гаргуул.
 	CodeQRTokenInvalid = "QR_TOKEN_INVALID"
-	// CodeQRAttributesInvalid — аттрибутын жагсаалт хоосон, каталогид алга, эсвэл давхардсан. Клиент талын.
-	CodeQRAttributesInvalid = "QR_ATTRIBUTES_INVALID"
-	// CodeQRPresentationInvalid — presentation (JWS) шалгалтад унасан: гарын үсэг, iss/aud/sid/nonce, хугацаа, аттрибут.
-	// Хариунд ИТГЭХГҮЙ.
-	CodeQRPresentationInvalid = "QR_PRESENTATION_INVALID"
-	// CodeQRJWKSUnavailable — CA-ийн JWKS татагдсангүй / буруу. Түр алдаа — дахин оролдож болно (session-ий үр дүн
-	// CA дээр хугацаа дуустал хадгалагдана).
-	CodeQRJWKSUnavailable = "QR_JWKS_UNAVAILABLE"
 	// CodeQRPending — QR.Result-ийн хүлээх хугацаа (WaitOptions) дууссан ч иргэн хараахан хариулаагүй (CA-ийн session
 	// идэвхтэй) — дахин Result / Check дуудаж болно. CA-ийн жинхэнэ хугацаа дуусалт = *SessionFailedError{TIMEOUT}.
 	CodeQRPending = "QR_PENDING"
+	// CodeQRPresentationGone — 410: presentation аль хэдийн нэг удаа уншигдсан эсвэл хугацаа нь дууссан → шинэ QR.
+	CodeQRPresentationGone = "QR_PRESENTATION_GONE"
+	// Доорх кодууд — VerifyQRPresentation-ийн шалгалт (§6.1); аль нь ч гарвал хариунд ИТГЭХГҮЙ.
+	CodeQRJWSMalformed      = "QR_JWS_MALFORMED"
+	CodeQRHeaderInvalid     = "QR_HEADER_INVALID"
+	CodeQRChainInvalid      = "QR_CHAIN_INVALID"
+	CodeQRCertRevoked       = "QR_CERT_REVOKED"
+	CodeQRRevocationUnknown = "QR_REVOCATION_UNKNOWN"
+	CodeQRSignatureInvalid  = "QR_SIGNATURE_INVALID"
+	CodeQRClaimsInvalid     = "QR_CLAIMS_INVALID"
+	CodeQRAudienceMismatch  = "QR_AUDIENCE_MISMATCH"
+	CodeQRSessionMismatch   = "QR_SESSION_MISMATCH"
+	CodeQRNonceMismatch     = "QR_NONCE_MISMATCH"
+	CodeQRNotYetValid       = "QR_NOT_YET_VALID"
+	CodeQRExpired           = "QR_EXPIRED"
+	CodeQRDataInvalid       = "QR_DATA_INVALID"
 )
 
 // errors.Is-ийн sentinel-ууд: *QRError (ба QR_TOKEN_INVALID-д *APIError) Code-оор тулгана.
 var (
-	ErrQRFormatInvalid       = errors.New("eid: " + CodeQRFormatInvalid)
-	ErrQRTokenInvalid        = errors.New("eid: " + CodeQRTokenInvalid)
-	ErrQRAttributesInvalid   = errors.New("eid: " + CodeQRAttributesInvalid)
-	ErrQRPresentationInvalid = errors.New("eid: " + CodeQRPresentationInvalid)
-	ErrQRJWKSUnavailable     = errors.New("eid: " + CodeQRJWKSUnavailable)
-	ErrQRPending             = errors.New("eid: " + CodeQRPending)
+	ErrQRFormatInvalid     = errors.New("eid: " + CodeQRFormatInvalid)
+	ErrQRTokenInvalid      = errors.New("eid: " + CodeQRTokenInvalid)
+	ErrQRPending           = errors.New("eid: " + CodeQRPending)
+	ErrQRPresentationGone  = errors.New("eid: " + CodeQRPresentationGone)
+	ErrQRJWSMalformed      = errors.New("eid: " + CodeQRJWSMalformed)
+	ErrQRHeaderInvalid     = errors.New("eid: " + CodeQRHeaderInvalid)
+	ErrQRChainInvalid      = errors.New("eid: " + CodeQRChainInvalid)
+	ErrQRCertRevoked       = errors.New("eid: " + CodeQRCertRevoked)
+	ErrQRRevocationUnknown = errors.New("eid: " + CodeQRRevocationUnknown)
+	ErrQRSignatureInvalid  = errors.New("eid: " + CodeQRSignatureInvalid)
+	ErrQRClaimsInvalid     = errors.New("eid: " + CodeQRClaimsInvalid)
+	ErrQRAudienceMismatch  = errors.New("eid: " + CodeQRAudienceMismatch)
+	ErrQRSessionMismatch   = errors.New("eid: " + CodeQRSessionMismatch)
+	ErrQRNonceMismatch     = errors.New("eid: " + CodeQRNonceMismatch)
+	ErrQRNotYetValid       = errors.New("eid: " + CodeQRNotYetValid)
+	ErrQRExpired           = errors.New("eid: " + CodeQRExpired)
+	ErrQRDataInvalid       = errors.New("eid: " + CodeQRDataInvalid)
 )
 
 var qrSentinels = map[string]error{
-	CodeQRFormatInvalid:       ErrQRFormatInvalid,
-	CodeQRTokenInvalid:        ErrQRTokenInvalid,
-	CodeQRAttributesInvalid:   ErrQRAttributesInvalid,
-	CodeQRPresentationInvalid: ErrQRPresentationInvalid,
-	CodeQRJWKSUnavailable:     ErrQRJWKSUnavailable,
-	CodeQRPending:             ErrQRPending,
+	CodeQRFormatInvalid:     ErrQRFormatInvalid,
+	CodeQRTokenInvalid:      ErrQRTokenInvalid,
+	CodeQRPending:           ErrQRPending,
+	CodeQRPresentationGone:  ErrQRPresentationGone,
+	CodeQRJWSMalformed:      ErrQRJWSMalformed,
+	CodeQRHeaderInvalid:     ErrQRHeaderInvalid,
+	CodeQRChainInvalid:      ErrQRChainInvalid,
+	CodeQRCertRevoked:       ErrQRCertRevoked,
+	CodeQRRevocationUnknown: ErrQRRevocationUnknown,
+	CodeQRSignatureInvalid:  ErrQRSignatureInvalid,
+	CodeQRClaimsInvalid:     ErrQRClaimsInvalid,
+	CodeQRAudienceMismatch:  ErrQRAudienceMismatch,
+	CodeQRSessionMismatch:   ErrQRSessionMismatch,
+	CodeQRNonceMismatch:     ErrQRNonceMismatch,
+	CodeQRNotYetValid:       ErrQRNotYetValid,
+	CodeQRExpired:           ErrQRExpired,
+	CodeQRDataInvalid:       ErrQRDataInvalid,
 }
 
-// QRError — «Миний QR»-ийн клиент талын алдаа (Code — дээрх CodeQR*). CA-ийн 404 QR_TOKEN_INVALID нь *APIError
-// хэвээр ирнэ — хоёуланг нь errors.Is(err, ErrQRTokenInvalid)-ээр барина.
+// QRError — «Миний QR»-ийн алдаа (Code — дээрх CodeQR*). CA-ийн 404 QR_TOKEN_INVALID / 410-ийг ч энэ төрлөөр буцаана
+// (Cause = анхны *APIError, errors.As-аар авна).
 type QRError struct {
 	Code   string
 	Reason string
@@ -114,475 +140,92 @@ func qrErr(code, format string, a ...any) *QRError {
 
 var qrTokenRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
-// ParseQR — сканнердсан QR-ийн агуулгаас токеныг гаргана: "EIDMN-QR1:<token>" эсвэл зөвхөн токен (43 тэмдэгт
-// base64url). Хоосон зай хасагдана. Буруу бол *QRError{CodeQRFormatInvalid}.
+// ParseQR — сканнердсан QR-ийн агуулгаас токеныг гаргана: ASCII хоосон зай хасаад "EIDMN-QR1:" + 43 тэмдэгт
+// base64url. Бусад бүх хэлбэр (угтваргүй токен ч) → *QRError{CodeQRFormatInvalid}.
 func ParseQR(scanned string) (string, error) {
-	s := strings.TrimPrefix(strings.TrimSpace(scanned), QRPrefix)
-	if !qrTokenRe.MatchString(s) {
+	s, ok := strings.CutPrefix(strings.Trim(scanned, " \t\n\v\f\r"), QRPrefix)
+	if !ok || !qrTokenRe.MatchString(s) {
 		return "", qrErr(CodeQRFormatInvalid, "eID «Миний QR» биш")
 	}
 	return s, nil
 }
 
-func checkQRAttributes(attrs []string) error {
-	if len(attrs) == 0 {
-		return qrErr(CodeQRAttributesInvalid, "аттрибут сонгоогүй")
-	}
-	seen := make(map[string]bool, len(attrs))
-	for _, a := range attrs {
-		if !isQRAttribute(a) {
-			return qrErr(CodeQRAttributesInvalid, "каталогид алга: %q", a)
-		}
-		if seen[a] {
-			return qrErr(CodeQRAttributesInvalid, "давхардсан: %s", a)
-		}
-		seen[a] = true
-	}
-	return nil
-}
-
-func isQRAttribute(a string) bool {
-	for _, c := range QRAttributes {
-		if a == c {
-			return true
-		}
-	}
-	return false
-}
-
-// QRConfig — Config.QR: presentation шалгалтын тохиргоо. Тэг утга = анхдагч (prod CA).
+// QRConfig — Config.QR. Тэг утга = prod CA.
 type QRConfig struct {
-	// JWKSURL — "" = DefaultQRJWKSURL. https (http зөвхөн loopback).
-	JWKSURL string
-	// Issuer — хүлээгдэх iss; "" = DefaultQRIssuer.
+	// Issuer — хүлээгдэх iss; "" = DefaultQRIssuer (тест орчинд л).
 	Issuer string
-	// JWKSCacheTTL — 0 = DefaultQRJWKSCacheTTL.
-	JWKSCacheTTL time.Duration
-	// MaxAge — iat-аас хойшхи дээд хугацаа; 0 = DefaultQRMaxAge.
-	MaxAge time.Duration
 }
 
 // QRStartRequest — QR.Start-ийн оролт.
 type QRStartRequest struct {
-	// QR — сканнердсан агуулга ("EIDMN-QR1:<token>") эсвэл ParseQR-ийн токен.
+	// QR — сканнердсан агуулга ("EIDMN-QR1:<token>").
 	QR string
-	// Attributes — хүсэх аттрибутууд (QRAttributes-ийн дэд олонлог, давхардалгүй, ≥ 1). RP-д QR_ATTR:<нэр> эрх бүгдэд нь.
-	Attributes []string
-	// Nonce — RP-ийн өөрийн nonce (сонголттой); JWS-ийн nonce-д буцаж ирнэ. "" бол rpChallenge.
+	// Nonce — RP-ийн nonce (16–128 тэмдэгт, хэвлэгдэх ASCII 0x21–0x7E; ж: захиалгын дугаар); JWS-д яг буцаж ирнэ.
+	// "" бол base64url(16 санамсаргүй байт) — 22 тэмдэгт.
 	Nonce string
+	// RelyingPartyName — дэд системийн шошго (ж: «Касс 3», лог); "" = Credentials.RPName. Иргэнд харагдах нэр нь CA-ийн
+	// бүртгэлийнх (JWS-ийн rp_name).
+	RelyingPartyName string
 }
 
-// QRSession — QR.Start-ийн хариу. VC-г кассын дэлгэцэнд харуулна (иргэний утсанд ижил код). Энэ бүтцийг (JSON-оор
-// сериалчилж болно) QR.Result-д дамжуулна — nonce ба хүссэн аттрибутыг шалгалтад хэрэглэнэ.
+// QRSession — QR.Start-ийн хариу. JSON-оор хадгалж (stateless RP) QR.Result / Check / Verify-д дамжуулна.
 type QRSession struct {
-	SessionID  string    `json:"sessionID"`
-	VC         string    `json:"vc"`
-	Nonce      string    `json:"nonce"`
-	Attributes []string  `json:"attributes"`
-	ExpiresAt  time.Time `json:"expiresAt,omitzero"`
+	SessionID string `json:"sessionID"`
+	Nonce     string `json:"nonce"`
 }
 
-// QRFullName — full_name аттрибут (кирилл).
-type QRFullName struct {
-	Surname   string `json:"surname"`
-	GivenName string `json:"givenName"`
+// QRData — JWS payload-ийн data: иргэний аппын «Миний мэдээлэл» (хэвээр, нэр солиогүй).
+type QRData struct {
+	Source string            `json:"source"`
+	Fields map[string]string `json:"fields"`
+	Photo  string            `json:"photo,omitempty"`
 }
 
-// QRAttrs — баталгаажсан аттрибутууд; хүсээгүй эсвэл байхгүй (unavailable) нь nil.
-type QRAttrs struct {
-	AgeOver18 *bool       `json:"age_over_18,omitempty"`
-	AgeOver21 *bool       `json:"age_over_21,omitempty"`
-	FullName  *QRFullName `json:"full_name,omitempty"`
-	Phone     *string     `json:"phone,omitempty"`
-	BirthDate *string     `json:"birth_date,omitempty"`
-	CivilID   *string     `json:"civil_id,omitempty"`
+// QRClaims — шалгагдсан JWS payload.
+type QRClaims struct {
+	Iss       string `json:"iss"`
+	Sub       string `json:"sub"`
+	Aud       string `json:"aud"`
+	RPName    string `json:"rp_name"`
+	Sid       string `json:"sid"`
+	Nonce     string `json:"nonce"`
+	Iat       int64  `json:"iat"`
+	Exp       int64  `json:"exp"`
+	Statement string `json:"statement"`
+	Data      QRData `json:"data"`
 }
 
-// QRPresentation — шалгагдсан presentation.
+// QRSigner — гарын үсэг зурсан иргэн (x5c[0]-ээс; нэрс латин, гэрчилгээнийх).
+type QRSigner struct {
+	Certificate                          *x509.Certificate
+	ETSI, GivenName, Surname, CommonName string
+}
+
+// QRPresentation — шалгагдсан «Миний QR» presentation.
 type QRPresentation struct {
-	// Subject — sub: энэ RP-д зориулсан тогтмол pairwise id (иргэний дугаар биш); ижил иргэн → ижил утга.
-	Subject string
-	// Attrs — хүссэн, байгаа аттрибутууд.
-	Attrs QRAttrs
-	// Unavailable — хүссэн боловч иргэний бүртгэлд байхгүй аттрибутууд (алдаа биш).
-	Unavailable []string
-	SessionID   string
-	IssuedAt    time.Time
-	// JWS — түүхий compact JWS (аудит / дахин шалгахад хадгалж болно).
-	JWS string
+	// JWS — түүхий compact JWS (маргаан / аудитад хадгалж болно — иргэний гарын үсэгтэй нотолгоо).
+	JWS    string
+	Claims QRClaims
+	// Data — data.fields (түлхүүр нь эх сурвалжийнх, хэвээр); Keys — payload-ийн дараалал (Go map дарааллыг алддаг).
+	Data map[string]string
+	Keys []string
+	// Source — data.source (dan, passport, citizenid, gsign, guardian, unknown …).
+	Source string
+	// Photo — нүүрний зураг (JPEG байт); байхгүй бол nil.
+	Photo    []byte
+	Signer   QRSigner
+	SignedAt time.Time
+	// SHA256 — hex(SHA-256(signing input)) жижиг үсгээр = CA-ийн аудитын qrsha (маргааныг тулгахад).
+	SHA256 string
 }
 
 // QRExpect — VerifyQRPresentation-ийн хүлээлт.
 type QRExpect struct {
-	Issuer     string   // "" = DefaultQRIssuer
-	Audience   string   // RP UUID
-	SessionID  string   // QRSession.SessionID
-	Nonce      string   // QRSession.Nonce
-	Attributes []string // QRSession.Attributes
-	Now        time.Time
-	MaxAge     time.Duration // 0 = DefaultQRMaxAge
-}
-
-// JWK — EC (P-256) нийтийн түлхүүр.
-type JWK struct {
-	Kty string `json:"kty"`
-	Crv string `json:"crv"`
-	X   string `json:"x"`
-	Y   string `json:"y"`
-	Kid string `json:"kid"`
-	Alg string `json:"alg,omitempty"`
-	Use string `json:"use,omitempty"`
-}
-
-// JWKS — {"keys":[…]}.
-type JWKS struct {
-	Keys []JWK `json:"keys"`
-}
-
-// ParseJWKS — JWKS JSON-ийг задална (түлхүүрүүдийг kid-ээр хайхад VerifyQRPresentation шалгана).
-func ParseJWKS(raw []byte) (*JWKS, error) {
-	var k JWKS
-	if err := json.Unmarshal(raw, &k); err != nil {
-		return nil, &QRError{Code: CodeQRJWKSUnavailable, Reason: "JWKS JSON биш", Cause: err}
-	}
-	return &k, nil
-}
-
-// key — kid-тэй ES256 түлхүүр; олдохгүй / тохирохгүй бол nil.
-func (k *JWKS) key(kid string) (*ecdsa.PublicKey, error) {
-	if k == nil {
-		return nil, nil
-	}
-	for _, j := range k.Keys {
-		if j.Kid != kid {
-			continue
-		}
-		if j.Kty != "EC" || j.Crv != "P-256" || (j.Alg != "" && j.Alg != "ES256") || (j.Use != "" && j.Use != "sig") {
-			return nil, qrErr(CodeQRPresentationInvalid, "kid %q нь ES256 P-256 түлхүүр биш", kid)
-		}
-		x, errX := base64.RawURLEncoding.DecodeString(j.X)
-		y, errY := base64.RawURLEncoding.DecodeString(j.Y)
-		if errX != nil || errY != nil || len(x) != 32 || len(y) != 32 {
-			return nil, qrErr(CodeQRPresentationInvalid, "kid %q: x/y буруу", kid)
-		}
-		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, x...), y...))
-		if err != nil {
-			return nil, qrErr(CodeQRPresentationInvalid, "kid %q: цэг муруй дээр алга", kid)
-		}
-		return pub, nil
-	}
-	return nil, nil
-}
-
-// errQRUnknownKid — JWKS-д kid алга (QRService дахин татна).
-var errQRUnknownKid = errors.New("unknown kid")
-
-// VerifyQRPresentation — compact JWS-ийг jwks-ээр шалгаж (ES256, kid), claim-уудыг exp-тэй тулгана: iss, aud (RP UUID),
-// sid, nonce, iat (≤ now+QRClockSkew, ≥ now−MaxAge), exp (байвал), attrs ∪ unavailable = хүссэн аттрибутууд яг,
-// аттрибут бүрийн төрөл. Алдаа бол *QRError{CodeQRPresentationInvalid} — хариунд ИТГЭХГҮЙ. Сүлжээгүй, цэвэр функц
-// (хадгалсан presentation-ийг дахин шалгах, тестэд).
-func VerifyQRPresentation(jws string, jwks *JWKS, exp QRExpect) (*QRPresentation, error) {
-	p, err := verifyQR(jws, jwks, exp)
-	if errors.Is(err, errQRUnknownKid) {
-		return nil, qrErr(CodeQRPresentationInvalid, "JWKS-д kid алга")
-	}
-	return p, err
-}
-
-func verifyQR(jws string, jwks *JWKS, exp QRExpect) (*QRPresentation, error) {
-	bad := func(format string, a ...any) error { return qrErr(CodeQRPresentationInvalid, format, a...) }
-	if len(jws) == 0 || len(jws) > qrMaxJWS {
-		return nil, bad("JWS хоосон эсвэл хэт урт")
-	}
-	parts := strings.Split(jws, ".")
-	if len(parts) != 3 {
-		return nil, bad("compact JWS биш")
-	}
-	hb, err1 := base64.RawURLEncoding.DecodeString(parts[0])
-	pb, err2 := base64.RawURLEncoding.DecodeString(parts[1])
-	sig, err3 := base64.RawURLEncoding.DecodeString(parts[2])
-	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, bad("base64url буруу")
-	}
-	var hdr map[string]any
-	if json.Unmarshal(hb, &hdr) != nil {
-		return nil, bad("header JSON биш")
-	}
-	if hdr["alg"] != "ES256" {
-		return nil, bad("alg ES256 биш")
-	}
-	if _, ok := hdr["crit"]; ok {
-		return nil, bad("crit дэмжихгүй")
-	}
-	kid, _ := hdr["kid"].(string)
-	if kid == "" {
-		return nil, bad("kid алга")
-	}
-	pub, err := jwks.key(kid)
-	if err != nil {
-		return nil, err
-	}
-	if pub == nil {
-		return nil, errQRUnknownKid
-	}
-	if len(sig) != 64 {
-		return nil, bad("ES256 гарын үсэг 64 байт биш")
-	}
-	h := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-	if !ecdsa.Verify(pub, h[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
-		return nil, bad("гарын үсэг таарсангүй")
-	}
-	return checkQRClaims(pb, jws, exp)
-}
-
-func checkQRClaims(payload []byte, jws string, exp QRExpect) (*QRPresentation, error) {
-	bad := func(format string, a ...any) error { return qrErr(CodeQRPresentationInvalid, format, a...) }
-	dec := json.NewDecoder(bytes.NewReader(payload))
-	dec.UseNumber()
-	var c map[string]any
-	if dec.Decode(&c) != nil || c == nil {
-		return nil, bad("payload JSON объект биш")
-	}
-	iss := orDefault(exp.Issuer, DefaultQRIssuer)
-	if c["iss"] != iss {
-		return nil, bad("iss таарсангүй")
-	}
-	// aud = RP UUID (CA жижиг үсгээр бичнэ) — том/жижиг үсэг ялгахгүй.
-	if aud, _ := c["aud"].(string); exp.Audience == "" || !strings.EqualFold(aud, exp.Audience) {
-		return nil, bad("aud (RP UUID) таарсангүй")
-	}
-	if exp.SessionID == "" || c["sid"] != exp.SessionID {
-		return nil, bad("sid таарсангүй")
-	}
-	if exp.Nonce == "" || c["nonce"] != exp.Nonce {
-		return nil, bad("nonce таарсангүй")
-	}
-	sub, _ := c["sub"].(string)
-	if sub == "" {
-		return nil, bad("sub алга")
-	}
-	now := exp.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
-	maxAge := exp.MaxAge
-	if maxAge <= 0 {
-		maxAge = DefaultQRMaxAge
-	}
-	iat, ok := numericDate(c["iat"])
-	if !ok {
-		return nil, bad("iat алга")
-	}
-	if iat.After(now.Add(QRClockSkew)) {
-		return nil, bad("iat ирээдүйд")
-	}
-	if now.Sub(iat) > maxAge {
-		return nil, bad("presentation хуучирсан")
-	}
-	if v, present := c["exp"]; present {
-		e, ok := numericDate(v)
-		if !ok || !now.Before(e.Add(QRClockSkew)) {
-			return nil, bad("exp дууссан")
-		}
-	}
-
-	want := make(map[string]bool, len(exp.Attributes))
-	for _, a := range exp.Attributes {
-		want[a] = true
-	}
-	got := make(map[string]bool, len(want))
-	attrs, ok := c["attrs"].(map[string]any)
-	if !ok {
-		if _, present := c["attrs"]; present {
-			return nil, bad("attrs объект биш")
-		}
-		attrs = map[string]any{}
-	}
-	out := &QRPresentation{Subject: sub, SessionID: exp.SessionID, IssuedAt: iat, JWS: jws, Unavailable: []string{}}
-	for name, v := range attrs {
-		if !want[name] {
-			return nil, bad("хүсээгүй аттрибут: %s", name)
-		}
-		if err := setQRAttr(&out.Attrs, name, v); err != nil {
-			return nil, err
-		}
-		got[name] = true
-	}
-	if raw, present := c["unavailable"]; present {
-		list, ok := raw.([]any)
-		if !ok {
-			return nil, bad("unavailable массив биш")
-		}
-		for _, x := range list {
-			name, _ := x.(string)
-			if !want[name] || got[name] {
-				return nil, bad("unavailable буруу: %v", x)
-			}
-			got[name] = true
-			out.Unavailable = append(out.Unavailable, name)
-		}
-	}
-	if len(got) != len(want) {
-		return nil, bad("хүссэн аттрибутын хариу дутуу")
-	}
-	return out, nil
-}
-
-var (
-	qrPhoneRe = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
-	qrDateRe  = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
-)
-
-func setQRAttr(a *QRAttrs, name string, v any) error {
-	bad := func() error { return qrErr(CodeQRPresentationInvalid, "%s-ийн төрөл буруу", name) }
-	str := func() (*string, error) {
-		s, ok := v.(string)
-		if !ok || s == "" {
-			return nil, bad()
-		}
-		return &s, nil
-	}
-	var err error
-	switch name {
-	case QRAttrAgeOver18, QRAttrAgeOver21:
-		b, ok := v.(bool)
-		if !ok {
-			return bad()
-		}
-		if name == QRAttrAgeOver18 {
-			a.AgeOver18 = &b
-		} else {
-			a.AgeOver21 = &b
-		}
-	case QRAttrFullName:
-		o, ok := v.(map[string]any)
-		if !ok {
-			return bad()
-		}
-		sn, ok1 := o["surname"].(string)
-		gn, ok2 := o["givenName"].(string)
-		if !ok1 || !ok2 || gn == "" {
-			return bad()
-		}
-		a.FullName = &QRFullName{Surname: sn, GivenName: gn}
-	case QRAttrPhone:
-		if a.Phone, err = str(); err == nil && !qrPhoneRe.MatchString(*a.Phone) {
-			return bad()
-		}
-	case QRAttrBirthDate:
-		if a.BirthDate, err = str(); err == nil {
-			if _, perr := time.Parse("2006-01-02", *a.BirthDate); perr != nil || !qrDateRe.MatchString(*a.BirthDate) {
-				return bad()
-			}
-		}
-	case QRAttrCivilID:
-		a.CivilID, err = str()
-	default:
-		return bad()
-	}
-	return err
-}
-
-// numericDate — JSON NumericDate (секунд, бутархай байж болно).
-func numericDate(v any) (time.Time, bool) {
-	n, ok := v.(json.Number)
-	if !ok {
-		return time.Time{}, false
-	}
-	f, err := n.Float64()
-	if err != nil || f <= 0 || f > 1e11 {
-		return time.Time{}, false
-	}
-	return time.Unix(0, int64(f*1e9)), true
-}
-
-// QRService — «Миний QR»: Parse → Start → Result. Goroutine-safe (JWKS кэш дотроо).
-type QRService struct {
-	h     *httpDoer
-	creds Credentials
-	cfg   QRConfig
-
-	mu          sync.Mutex
-	jwks        *JWKS
-	fetchedAt   time.Time
-	lastAttempt time.Time
-}
-
-// Parse — ParseQR.
-func (s *QRService) Parse(scanned string) (string, error) { return ParseQR(scanned) }
-
-type qrStartBody struct {
-	QR                          string         `json:"qr"`
-	Attributes                  []string       `json:"attributes"`
-	RelyingPartyUUID            string         `json:"relyingPartyUUID"`
-	RelyingPartyName            string         `json:"relyingPartyName"`
-	SignatureProtocol           string         `json:"signatureProtocol"`
-	SignatureProtocolParameters qrStartProtoPP `json:"signatureProtocolParameters"`
-	Nonce                       string         `json:"nonce,omitempty"`
-}
-
-type qrStartProtoPP struct {
-	RPChallenge string `json:"rpChallenge"`
-}
-
-// Start — POST /authentication/qr: QR-ийн токеныг (нэг удаа хэрэглэгдэнэ) CA-д өгч, иргэний утас руу хүсэлт илгээнэ.
-// Хариуны VC-г кассын дэлгэцэнд харуул. Алдаа: *QRError (FORMAT / ATTRIBUTES — CA руу илгээхгүй), 404 *APIError
-// QR_TOKEN_INVALID (errors.Is(err, ErrQRTokenInvalid) — шинэ QR гаргуул), 403 *ForbiddenError (QR_PRESENT /
-// QR_ATTR:* эрх алга).
-func (s *QRService) Start(ctx context.Context, req QRStartRequest) (*QRSession, error) {
-	token, err := ParseQR(req.QR)
-	if err != nil {
-		return nil, err
-	}
-	if err := checkQRAttributes(req.Attributes); err != nil {
-		return nil, err
-	}
-	challenge, err := RandomChallenge(32)
-	if err != nil {
-		return nil, err
-	}
-	nonce := strings.TrimSpace(req.Nonce)
-	body := qrStartBody{
-		QR:                          QRPrefix + token,
-		Attributes:                  append([]string(nil), req.Attributes...),
-		RelyingPartyUUID:            s.creds.RPUUID,
-		RelyingPartyName:            s.creds.RPName,
-		SignatureProtocol:           "ACSP_V2",
-		SignatureProtocolParameters: qrStartProtoPP{RPChallenge: challenge},
-		Nonce:                       nonce,
-	}
-	var r sessionStartResponse
-	if err := s.h.postJSON(ctx, routeAuthQR.expand(), body, &r); err != nil {
-		return nil, err
-	}
-	if r.SessionID == "" {
-		return nil, fmt.Errorf("eid: POST %s: sessionID алга", routeAuthQR.path)
-	}
-	if nonce == "" {
-		nonce = challenge
-	}
-	return &QRSession{SessionID: r.SessionID, VC: string(r.VC), Nonce: nonce, Attributes: body.Attributes, ExpiresAt: r.caExpiresAt()}, nil
-}
-
-// Result — session дуустал long-poll хийж (WaitOptions nil бол sess.ExpiresAt-аар), presentation-ийг CA-ийн JWKS-ээр
-// шалгана. Иргэн татгалзсан / хугацаа дууссан бол *SessionFailedError (USER_REFUSED, TIMEOUT г.м.). Шалгалт унавал
-// *QRError{CodeQRPresentationInvalid} — ИТГЭХГҮЙ; JWKS татагдахгүй бол *QRError{CodeQRJWKSUnavailable} (дахин
-// оролдож болно).
-func (s *QRService) Result(ctx context.Context, sess *QRSession, o *WaitOptions) (*QRPresentation, error) {
-	if sess == nil || sess.SessionID == "" {
-		return nil, errors.New("eid: QR.Result: QRSession шаардлагатай")
-	}
-	if o == nil {
-		o = &WaitOptions{ExpiresAt: sess.ExpiresAt}
-	}
-	r, err := (&SessionService{h: s.h}).WaitForResult(ctx, sess.SessionID, o)
-	if err != nil {
-		return nil, err
-	}
-	if r.State != StateComplete {
-		return nil, qrErr(CodeQRPending, "иргэн хараахан хариулаагүй")
-	}
-	return s.finish(ctx, r, sess)
+	RPUUID    string // aud (том/жижиг үсэг ялгахгүй)
+	SessionID string // QRSession.SessionID
+	Nonce     string // QRSession.Nonce (яг)
+	Issuer    string // "" = DefaultQRIssuer
+	Now       time.Time
 }
 
 // QRCheck — QR.Check-ийн хариу: Complete == false бол иргэн хараахан хариулаагүй (Presentation nil).
@@ -591,9 +234,103 @@ type QRCheck struct {
 	Presentation *QRPresentation
 }
 
-// Check — нэг удаагийн шалгалт (polling UI-д): GET /session/{id} (serverPoll хүртэл; ≤ 0 бол 1 с). Иргэн хараахан
-// хариулаагүй бол QRCheck{Complete: false}; зөвшөөрсөн бол JWS/JWKS-ээр шалгасан presentation. Татгалзсан / CA-ийн
-// хугацаа дууссан бол *SessionFailedError; бусад алдаа Result-тэй ижил.
+// QRService — «Миний QR»: ParseQR → Start → Result / Check. Goroutine-safe.
+type QRService struct {
+	h      *httpDoer
+	creds  Credentials
+	issuer string
+	trust  TrustConfig
+
+	ocspOnce sync.Once
+	ocsp     RevocationChecker
+}
+
+// Parse — ParseQR.
+func (s *QRService) Parse(scanned string) (string, error) { return ParseQR(scanned) }
+
+type qrStartBody struct {
+	QR               string `json:"qr"`
+	RelyingPartyUUID string `json:"relyingPartyUUID"`
+	RelyingPartyName string `json:"relyingPartyName"`
+	Nonce            string `json:"nonce"`
+}
+
+// Start — POST /authentication/qr: QR-ийн токеныг (нэг удаагийн) CA-д өгч иргэний утас руу PIN2 хүсэлт илгээнэ. VC
+// байхгүй (иргэний утсанд зөвхөн нэг өгүүлбэр харагдана). Алдаа: *QRError — FORMAT_INVALID (сүлжээгүй), CA-ийн 404
+// QR_TOKEN_INVALID (Cause = *APIError); 403 *ForbiddenError (PERMISSION_DENIED — QR_PRESENT эрх алга, RP_REQUIRED);
+// 409 *APIError NO_SIGNING_CERTIFICATE; 400 REQUEST_INVALID (nonce буруу); 429 RATE_LIMITED.
+func (s *QRService) Start(ctx context.Context, req QRStartRequest) (*QRSession, error) {
+	token, err := ParseQR(req.QR)
+	if err != nil {
+		return nil, err
+	}
+	nonce := req.Nonce
+	if nonce == "" {
+		if nonce, err = qrNonce(); err != nil {
+			return nil, err
+		}
+	}
+	body := qrStartBody{
+		QR:               QRPrefix + token,
+		RelyingPartyUUID: s.creds.RPUUID,
+		RelyingPartyName: orDefault(req.RelyingPartyName, s.creds.RPName),
+		Nonce:            nonce,
+	}
+	var r sessionStartResponse
+	if err := s.h.postJSON(ctx, routeAuthQR.expand(), body, &r); err != nil {
+		return nil, qrServerErr(err)
+	}
+	if r.SessionID == "" {
+		return nil, fmt.Errorf("eid: POST %s: sessionID алга", routeAuthQR.path)
+	}
+	return &QRSession{SessionID: r.SessionID, Nonce: nonce}, nil
+}
+
+// qrNonce — base64url(16 CSPRNG байт), 22 тэмдэгт.
+func qrNonce() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("eid: nonce: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// qrServerErr — CA-ийн QR кодуудыг *QRError болгоно (Cause = анхны *APIError, errors.As-аар авна): 410 →
+// QR_PRESENTATION_GONE (биеийн кодоос үл хамааран), QR_TOKEN_INVALID. Бусад алдаа хэвээр.
+func qrServerErr(err error) error {
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		return err
+	}
+	switch {
+	case ae.Status == http.StatusGone:
+		return &QRError{Code: CodeQRPresentationGone, Reason: "presentation аль хэдийн уншигдсан эсвэл хугацаа дууссан — шинэ QR уншуулна уу", Cause: err}
+	case ae.Code == CodeQRTokenInvalid:
+		return &QRError{Code: ae.Code, Reason: fmt.Sprintf("CA %d", ae.Status), Cause: err}
+	}
+	return err
+}
+
+// Result — session дуустал GET /session/{id}-ийг long-poll хийж (opts nil бол discovery-ийн session TTL-ээр),
+// presentation-ийг VerifyQRPresentation-аар шалгана (Config.Trust; Revocation nil бол NewOCSPChecker, hard-fail). Иргэн
+// татгалзсан / CA-ийн TIMEOUT → *SessionFailedError; хүлээх хугацаа дууссан ч session идэвхтэй → ErrQRPending;
+// 410 → ErrQRPresentationGone (presentation нэг л удаа уншигдана); шалгалт унавал *QRError (§6.2) — ИТГЭХГҮЙ.
+func (s *QRService) Result(ctx context.Context, sess *QRSession, opts *WaitOptions) (*QRPresentation, error) {
+	if sess == nil || sess.SessionID == "" {
+		return nil, errors.New("eid: QR.Result: QRSession шаардлагатай")
+	}
+	r, err := (&SessionService{h: s.h}).WaitForResult(ctx, sess.SessionID, opts)
+	if err != nil {
+		return nil, qrServerErr(err)
+	}
+	if r.State != StateComplete {
+		return nil, qrErr(CodeQRPending, "иргэн хараахан хариулаагүй")
+	}
+	return s.finish(ctx, r, sess)
+}
+
+// Check — нэг удаагийн шалгалт (polling UI): GET /session/{id} (serverPoll хүртэл; ≤ 0 бол 1 с). Иргэн хараахан
+// хариулаагүй бол QRCheck{Complete: false}; бусад нь Result-тэй ижил.
 func (s *QRService) Check(ctx context.Context, sess *QRSession, serverPoll time.Duration) (*QRCheck, error) {
 	if sess == nil || sess.SessionID == "" {
 		return nil, errors.New("eid: QR.Check: QRSession шаардлагатай")
@@ -603,105 +340,475 @@ func (s *QRService) Check(ctx context.Context, sess *QRSession, serverPoll time.
 	}
 	r, err := (&SessionService{h: s.h}).Poll(ctx, sess.SessionID, serverPoll)
 	if err != nil {
-		return nil, err
+		return nil, qrServerErr(err)
 	}
 	if r.State != StateComplete {
 		return &QRCheck{}, nil
 	}
-	p, err := s.finish(ctx, r, sess)
+	res, err := s.finish(ctx, r, sess)
 	if err != nil {
 		return nil, err
 	}
-	return &QRCheck{Complete: true, Presentation: p}, nil
+	return &QRCheck{Complete: true, Presentation: res}, nil
 }
 
 func (s *QRService) finish(ctx context.Context, r *SessionResult, sess *QRSession) (*QRPresentation, error) {
-	if r.EndResult != "OK" {
-		return nil, &SessionFailedError{EndResult: r.EndResult}
+	if r.EndResult != EndResultOK {
+		er := r.EndResult
+		if er == "" {
+			er = "UNKNOWN"
+		}
+		return nil, &SessionFailedError{EndResult: er}
 	}
 	if r.Presentation == nil || r.Presentation.JWS == "" {
-		return nil, qrErr(CodeQRPresentationInvalid, "хариунд presentation алга")
+		return nil, qrErr(CodeQRJWSMalformed, "хариунд presentation алга")
 	}
 	return s.Verify(ctx, r.Presentation.JWS, sess)
 }
 
-// Verify — хадгалсан presentation JWS-ийг QRSession-тэй тулгаж шалгана (JWKS кэшээр; танихгүй kid → дахин татна).
+// Verify — хадгалсан presentation JWS-ийг QRSession-тэй тулгаж шалгана (Config.Trust, Config.QR.Issuer).
 func (s *QRService) Verify(ctx context.Context, jws string, sess *QRSession) (*QRPresentation, error) {
-	exp := QRExpect{
-		Issuer: s.cfg.Issuer, Audience: s.creds.RPUUID, SessionID: sess.SessionID, Nonce: sess.Nonce,
-		Attributes: sess.Attributes, MaxAge: s.cfg.MaxAge,
+	if sess == nil {
+		return nil, errors.New("eid: QR.Verify: QRSession шаардлагатай")
 	}
-	keys, err := s.keys(ctx, false)
-	if err != nil {
-		return nil, err
+	t := s.trust
+	if t.Revocation == nil {
+		s.ocspOnce.Do(func() { s.ocsp = NewOCSPChecker(OCSPOptions{}) })
+		t.Revocation = s.ocsp
 	}
-	p, err := verifyQR(jws, keys, exp)
-	if !errors.Is(err, errQRUnknownKid) {
-		return p, err
-	}
-	// Түлхүүр солигдсон байж болно — нэг удаа шинээр татна.
-	if keys, err = s.keys(ctx, true); err != nil {
-		return nil, err
-	}
-	return VerifyQRPresentation(jws, keys, exp)
+	return VerifyQRPresentation(ctx, jws, QRExpect{RPUUID: s.creds.RPUUID, SessionID: sess.SessionID, Nonce: sess.Nonce, Issuer: s.issuer}, t)
 }
 
-// keys — кэштэй JWKS; force бол (сүүлийн оролдлогоос ≥ qrJWKSMinRefresh өнгөрсөн бол) дахин татна.
-func (s *QRService) keys(ctx context.Context, force bool) (*JWKS, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ttl := s.cfg.JWKSCacheTTL
-	if ttl <= 0 {
-		ttl = DefaultQRJWKSCacheTTL
+// VerifyQRPresentation — «Миний QR» presentation-ийг (иргэний PS256 JWS) CA гэрээний §6.1-ийн дарааллаар шалгана;
+// эхний алдаагаар *QRError{Code} буцна. Итгэл (trust):
+//
+//   - TrustAnchorsPEM хоосон бол SDK-д суусан NationalRootCAPEM (AllowUntrusted энд үйлчлэхгүй — гинж үргэлж);
+//     IntermediatesPEM nil бол CitizenIntermediatesPEM; x5c[1] нь зөвхөн завсрын нэр дэвшигч, anchor биш;
+//   - AllowedIssuerSKIs хоосон бол CitizenIssuingCASKI (AllowAnyIssuer-аар унтарна); RequiredLevel "" = QUALIFIED;
+//     leaf-ийн KeyUsage contentCommitment (SkipKeyUsageCheck-ээр л алгасна); RSA ≥ 2048; цаг ± 60 с;
+//   - Revocation nil бол NewOCSPChecker (сүлжээ); RevocationMode "" = hard-fail (unknown / алдаа → QR_REVOCATION_UNKNOWN).
+//
+// TrustConfig-ийн PEM / SKI буруу бол энгийн error (тохиргооны алдаа). Сүлжээ зөвхөн OCSP-д.
+func VerifyQRPresentation(ctx context.Context, jws string, exp QRExpect, trust TrustConfig) (*QRPresentation, error) {
+	if len(trust.TrustAnchorsPEM) == 0 {
+		trust.TrustAnchorsPEM = []string{NationalRootCAPEM}
 	}
-	now := time.Now()
-	fresh := s.jwks != nil && now.Sub(s.fetchedAt) < ttl
-	if fresh && (!force || now.Sub(s.lastAttempt) < qrJWKSMinRefresh) {
-		return s.jwks, nil
+	if trust.Revocation == nil {
+		trust.Revocation = NewOCSPChecker(OCSPOptions{})
 	}
-	s.lastAttempt = now
-	k, err := s.fetchJWKS(ctx)
+	v, err := NewValidator(trust)
 	if err != nil {
 		return nil, err
 	}
-	s.jwks, s.fetchedAt = k, now
-	return k, nil
+	return verifyQR(ctx, jws, exp, v)
 }
 
-func (s *QRService) fetchJWKS(ctx context.Context) (*JWKS, error) {
-	u := orDefault(s.cfg.JWKSURL, DefaultQRJWKSURL)
-	fail := func(cause error, format string, a ...any) error {
-		return &QRError{Code: CodeQRJWKSUnavailable, Reason: fmt.Sprintf(format, a...), Cause: cause}
+var b64urlSegRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+func verifyQR(ctx context.Context, jws string, exp QRExpect, v *Validator) (*QRPresentation, error) {
+	// 1. Хэлбэр.
+	if len(jws) == 0 || len(jws) > qrMaxJWS {
+		return nil, qrErr(CodeQRJWSMalformed, "JWS хоосон эсвэл %d байтаас урт", qrMaxJWS)
 	}
-	pu, err := url.Parse(u)
-	if err != nil || (pu.Scheme != "https" && !(pu.Scheme == "http" && isLoopback(pu.Hostname()))) {
-		return nil, fail(err, "JWKSURL https байх ёстой")
+	seg := strings.Split(jws, ".")
+	if len(seg) != 3 {
+		return nil, qrErr(CodeQRJWSMalformed, "compact JWS (3 хэсэг) биш")
 	}
-	ctx, cancel := s.h.withTimeout(ctx, 0)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, fail(err, "хүсэлт")
+	for _, s := range seg {
+		if !b64urlSegRe.MatchString(s) {
+			return nil, qrErr(CodeQRJWSMalformed, "JWS-ийн хэсэг base64url биш")
+		}
 	}
-	req.Header.Set("Accept", "application/json") // RP secret ЭНД ИЛГЭЭХГҮЙ — нийтийн түлхүүр
-	res, err := s.h.hc.Do(req)
-	if err != nil {
-		return nil, fail(unwrapURL(err), "татагдсангүй")
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fail(nil, "HTTP %d", res.StatusCode)
-	}
-	raw, err := readLimited(res, qrMaxJWKS, http.MethodGet, pu.Path)
-	if err != nil {
-		return nil, fail(err, "уншигдсангүй")
-	}
-	k, err := ParseJWKS(raw)
+	// 2–3. Header + x5c.
+	leaf, inter, err := parseQRHeader(seg[0])
 	if err != nil {
 		return nil, err
 	}
-	if len(k.Keys) == 0 {
-		return nil, fail(nil, "JWKS хоосон")
+	now := exp.Now
+	if now.IsZero() {
+		now = time.Now()
 	}
-	return k, nil
+	// 4. Гинж.
+	issuer, err := v.qrChain(leaf, inter, now)
+	if err != nil {
+		return nil, err
+	}
+	// 5. Цуцлалт.
+	if err := v.qrRevocation(ctx, leaf, issuer); err != nil {
+		return nil, err
+	}
+	// 6. Гарын үсэг: RSASSA-PSS SHA-256, MGF1-SHA-256, salt 32 — ирсэн ASCII байт дээр (дахин сериалчлахгүй).
+	input := seg[0] + "." + seg[1]
+	digest := sha256.Sum256([]byte(input))
+	sig, err := base64.RawURLEncoding.Strict().DecodeString(seg[2])
+	if err != nil {
+		return nil, qrErr(CodeQRSignatureInvalid, "гарын үсэг base64url буруу")
+	}
+	pub := leaf.PublicKey.(*rsa.PublicKey) // qrChain RSA гэдгийг шалгасан
+	if rsa.VerifyPSS(pub, crypto.SHA256, digest[:], sig, &rsa.PSSOptions{SaltLength: qrSaltLength, Hash: crypto.SHA256}) != nil {
+		return nil, qrErr(CodeQRSignatureInvalid, "PS256 гарын үсэг таарсангүй")
+	}
+	// 7–12. Payload.
+	pb, err := base64.RawURLEncoding.Strict().DecodeString(seg[1])
+	if err != nil || !utf8.Valid(pb) {
+		return nil, qrErr(CodeQRJWSMalformed, "payload base64url / UTF-8 буруу")
+	}
+	c, keys, photo, err := parseQRPayload(pb, leaf, exp, now)
+	if err != nil {
+		return nil, err
+	}
+	// 13.
+	subj := ParseSubject(leaf)
+	return &QRPresentation{
+		JWS:      jws,
+		Claims:   *c,
+		Data:     maps.Clone(c.Data.Fields),
+		Keys:     keys,
+		Source:   c.Data.Source,
+		Photo:    photo,
+		Signer:   QRSigner{Certificate: leaf, ETSI: c.Sub, GivenName: subj.GivenName, Surname: subj.Surname, CommonName: subj.CommonName},
+		SignedAt: time.Unix(c.Iat, 0),
+		SHA256:   hex.EncodeToString(digest[:]),
+	}, nil
+}
+
+// parseQRHeader — §6.1 алхам 2–3: яг {alg: PS256, typ: eidmn-myqr+jwt, x5c: [2 мөр]}; x5c стандарт base64 DER.
+func parseQRHeader(seg string) (leaf, inter *x509.Certificate, err error) {
+	bad := func(format string, a ...any) error { return qrErr(CodeQRHeaderInvalid, format, a...) }
+	hb, err := base64.RawURLEncoding.Strict().DecodeString(seg)
+	if err != nil || !utf8.Valid(hb) {
+		return nil, nil, bad("header base64url / UTF-8 буруу")
+	}
+	members, err := jsonObject(hb)
+	if err != nil {
+		return nil, nil, bad("header JSON объект биш")
+	}
+	if len(members) != 3 {
+		return nil, nil, bad("header нь яг alg, typ, x5c байх ёстой")
+	}
+	m := memberMap(members)
+	if alg, ok := jsonString(m["alg"]); !ok || alg != "PS256" {
+		return nil, nil, bad("alg PS256 биш")
+	}
+	if typ, ok := jsonString(m["typ"]); !ok || typ != QRJWSType {
+		return nil, nil, bad("typ %s биш", QRJWSType)
+	}
+	raw, ok := m["x5c"]
+	var arr []json.RawMessage
+	if !ok || len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &arr) != nil || len(arr) != 2 {
+		return nil, nil, bad("x5c нь яг 2 гэрчилгээтэй массив биш")
+	}
+	certs := make([]*x509.Certificate, 2)
+	for i, r := range arr {
+		s, ok := jsonString(r)
+		if !ok || s == "" {
+			return nil, nil, bad("x5c[%d] хоосон эсвэл мөр биш", i)
+		}
+		der, err := strictStdBase64(s)
+		if err != nil {
+			return nil, nil, bad("x5c[%d] стандарт base64 биш", i)
+		}
+		if certs[i], err = x509.ParseCertificate(der); err != nil {
+			return nil, nil, bad("x5c[%d] X.509 биш", i)
+		}
+	}
+	return certs[0], certs[1], nil
+}
+
+// qrChain — §6.1 алхам 4: leaf CA биш, RSA ≥ 2048, хугацаа ± QRClockSkew, KU contentCommitment, түвшин (QcStatements),
+// гинж leaf → (x5c[1] ∪ intermediates) → anchors, шууд issuer-ийн SKI allowlist-д. Шууд issuer-ийг буцаана.
+func (v *Validator) qrChain(leaf, extra *x509.Certificate, now time.Time) (*x509.Certificate, error) {
+	bad := func(format string, a ...any) error { return qrErr(CodeQRChainInvalid, format, a...) }
+	if leaf.IsCA {
+		return nil, bad("x5c[0] нь CA гэрчилгээ")
+	}
+	if pub, ok := leaf.PublicKey.(*rsa.PublicKey); !ok || pub.N.BitLen() < 2048 {
+		return nil, bad("гэрчилгээний түлхүүр RSA ≥ 2048 биш")
+	}
+	if now.Add(QRClockSkew).Before(leaf.NotBefore) || now.Add(-QRClockSkew).After(leaf.NotAfter) {
+		return nil, bad("гэрчилгээ хүчинтэй хугацаанд биш (serial %s)", certSerial(leaf))
+	}
+	if v.checkKeyUsage && leaf.KeyUsage&x509.KeyUsageContentCommitment == 0 {
+		return nil, bad("гарын үсгийн гэрчилгээнд KeyUsage contentCommitment алга")
+	}
+	level, err := CertificateLevelOf(leaf, "RAW_DIGEST_SIGNATURE")
+	if err != nil {
+		return nil, bad("qcStatements буруу")
+	}
+	if err := v.checkLevel(string(level)); err != nil {
+		return nil, bad("гэрчилгээний түвшин %s хүрэлцэхгүй", level)
+	}
+	if len(v.anchors) == 0 {
+		return nil, bad("trust anchor алга")
+	}
+	roots := x509.NewCertPool()
+	for _, a := range v.anchors {
+		roots.AddCert(a)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(extra)
+	for _, c := range v.intermediates {
+		pool.AddCert(c)
+	}
+	// EKU-г гэрээ шаарддаггүй (§6.1) — TS / .NET-тэй ижил үр дүнгийн тулд Any.
+	chains, err := leaf.Verify(x509.VerifyOptions{
+		Roots: roots, Intermediates: pool, CurrentTime: chainTime(leaf, now),
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	})
+	if err != nil {
+		return nil, &QRError{Code: CodeQRChainInvalid, Reason: chainError(err).(*ValidationError).Reason, Cause: err}
+	}
+	for _, ch := range chains {
+		if len(ch) < 2 {
+			continue
+		}
+		is := ch[1]
+		if len(v.allowedIssuers) == 0 {
+			return is, nil
+		}
+		ski := is.SubjectKeyId
+		if len(ski) == 0 {
+			ski = leaf.AuthorityKeyId
+		}
+		if len(ski) > 0 && v.allowedIssuers[hex.EncodeToString(ski)] {
+			return is, nil
+		}
+	}
+	return nil, bad("гэрчилгээг гаргасан CA зөвшөөрөгдсөн иргэний issuer биш (AllowedIssuerSKIs)")
+}
+
+// qrRevocation — §6.1 алхам 5: revoked → QR_CERT_REVOKED; unknown / алдаа → hard-fail бол QR_REVOCATION_UNKNOWN,
+// soft-fail бол зөвшөөрнө.
+func (v *Validator) qrRevocation(ctx context.Context, leaf, issuer *x509.Certificate) error {
+	var (
+		status RevocationStatus
+		err    error
+	)
+	if v.revocation != nil {
+		status, err = v.revocation(ctx, leaf, issuer)
+	}
+	switch {
+	case status == RevocationRevoked:
+		return qrErr(CodeQRCertRevoked, "гэрчилгээ цуцлагдсан (serial %s)", certSerial(leaf))
+	case err == nil && status == RevocationGood:
+		return nil
+	case v.revocationMode == RevocationSoftFail:
+		return nil
+	}
+	return &QRError{Code: CodeQRRevocationUnknown, Reason: "гэрчилгээний цуцлалтын төлөв тогтоогдсонгүй (hard-fail)", Cause: err}
+}
+
+const (
+	qrStatementPrefix = "Та "
+	qrStatementSuffix = "-д «Миний мэдээлэл» хэсгийн бүх мэдээллийг хуваалцах гэж байна"
+)
+
+var qrSourceRe = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
+
+// parseQRPayload — §6.1 алхам 7–12.
+func parseQRPayload(pb []byte, leaf *x509.Certificate, exp QRExpect, now time.Time) (*QRClaims, []string, []byte, error) {
+	members, err := jsonObject(pb)
+	if err != nil {
+		return nil, nil, nil, qrErr(CodeQRJWSMalformed, "payload JSON объект биш")
+	}
+	m := memberMap(members)
+	claims := func(format string, a ...any) error { return qrErr(CodeQRClaimsInvalid, format, a...) }
+	var c QRClaims
+	strs := []struct {
+		name string
+		dst  *string
+	}{{"iss", &c.Iss}, {"sub", &c.Sub}, {"aud", &c.Aud}, {"rp_name", &c.RPName}, {"sid", &c.Sid}, {"nonce", &c.Nonce}, {"statement", &c.Statement}}
+	for _, f := range strs {
+		s, ok := jsonString(m[f.name])
+		if !ok {
+			return nil, nil, nil, claims("%s мөр биш", f.name)
+		}
+		*f.dst = s
+	}
+	var ok1, ok2 bool
+	c.Iat, ok1 = jsonInt(m["iat"])
+	c.Exp, ok2 = jsonInt(m["exp"])
+	if !ok1 || !ok2 {
+		return nil, nil, nil, claims("iat / exp бүхэл тоо биш")
+	}
+	if c.Iss != orDefault(exp.Issuer, DefaultQRIssuer) {
+		return nil, nil, nil, claims("iss таарсангүй")
+	}
+	if c.Sub == "" || c.Sub != leaf.Subject.SerialNumber {
+		return nil, nil, nil, claims("sub гэрчилгээний serialNumber-тэй таарсангүй")
+	}
+	if c.Statement != qrStatementPrefix+c.RPName+qrStatementSuffix {
+		return nil, nil, nil, claims("statement rp_name-тэй таарсангүй")
+	}
+	if exp.RPUUID == "" || !strings.EqualFold(c.Aud, exp.RPUUID) {
+		return nil, nil, nil, qrErr(CodeQRAudienceMismatch, "aud (RP UUID) таарсангүй")
+	}
+	if exp.SessionID == "" || c.Sid != exp.SessionID {
+		return nil, nil, nil, qrErr(CodeQRSessionMismatch, "sid таарсангүй")
+	}
+	if exp.Nonce == "" || c.Nonce != exp.Nonce {
+		return nil, nil, nil, qrErr(CodeQRNonceMismatch, "nonce таарсангүй")
+	}
+	if d := c.Exp - c.Iat; d <= 0 || d > int64(QRMaxAge/time.Second) {
+		return nil, nil, nil, claims("exp − iat нь (0, 300] биш")
+	}
+	if time.Unix(c.Iat, 0).After(now.Add(QRClockSkew)) {
+		return nil, nil, nil, qrErr(CodeQRNotYetValid, "iat ирээдүйд")
+	}
+	if !now.Before(time.Unix(c.Exp, 0).Add(QRClockSkew)) {
+		return nil, nil, nil, qrErr(CodeQRExpired, "presentation-ийн хугацаа дууссан")
+	}
+	keys, photo, err := parseQRData(m["data"], &c.Data)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &c, keys, photo, nil
+}
+
+// parseQRData — §6.1 алхам 12 (§1.3-ийн хязгаар). Алдааны текстэд түлхүүр / утга орохгүй.
+func parseQRData(raw json.RawMessage, d *QRData) ([]string, []byte, error) {
+	bad := func(format string, a ...any) error { return qrErr(CodeQRDataInvalid, format, a...) }
+	members, err := jsonObject(raw)
+	if err != nil {
+		return nil, nil, bad("data объект биш")
+	}
+	m := memberMap(members)
+	for _, mb := range members {
+		if mb.Key != "source" && mb.Key != "fields" && mb.Key != "photo" {
+			return nil, nil, bad("data-д илүү гишүүн")
+		}
+	}
+	src, ok := jsonString(m["source"])
+	if !ok || !qrSourceRe.MatchString(src) {
+		return nil, nil, bad("source буруу")
+	}
+	fields, err := jsonObject(m["fields"])
+	if err != nil {
+		return nil, nil, bad("fields объект биш")
+	}
+	if len(fields) > qrMaxFields {
+		return nil, nil, bad("fields > %d", qrMaxFields)
+	}
+	d.Source, d.Fields = src, make(map[string]string, len(fields))
+	keys := make([]string, 0, len(fields))
+	for i, f := range fields {
+		if n := utf8.RuneCountInString(f.Key); n == 0 || n > qrMaxKeyRunes || !utf8.ValidString(f.Key) {
+			return nil, nil, bad("fields[%d]: түлхүүр 1–%d тэмдэгт биш", i, qrMaxKeyRunes)
+		}
+		for _, r := range f.Key {
+			if r <= 0x1F || (r >= 0x7F && r <= 0x9F) {
+				return nil, nil, bad("fields[%d]: түлхүүрт удирдах тэмдэгт", i)
+			}
+		}
+		val, ok := jsonString(f.Val)
+		if !ok {
+			return nil, nil, bad("fields[%d]: утга мөр биш", i)
+		}
+		if len(val) > qrMaxValueBytes || strings.IndexByte(val, 0) >= 0 {
+			return nil, nil, bad("fields[%d]: утга > %d байт эсвэл U+0000", i, qrMaxValueBytes)
+		}
+		d.Fields[f.Key] = val
+		keys = append(keys, f.Key)
+	}
+	var photo []byte
+	if raw, present := m["photo"]; present {
+		s, ok := jsonString(raw)
+		if !ok {
+			return nil, nil, bad("photo мөр биш")
+		}
+		if photo, err = strictStdBase64(s); err != nil {
+			return nil, nil, bad("photo стандарт base64 биш")
+		}
+		if len(photo) > qrMaxPhotoBytes {
+			return nil, nil, bad("photo > %d байт", qrMaxPhotoBytes)
+		}
+		if !bytes.HasPrefix(photo, []byte{0xFF, 0xD8, 0xFF}) {
+			return nil, nil, bad("photo JPEG биш")
+		}
+		d.Photo = s
+	}
+	if len(fields) == 0 && photo == nil {
+		return nil, nil, bad("fields хоосон, photo ч алга")
+	}
+	return keys, photo, nil
+}
+
+// strictStdBase64 — RFC 4648 §4, padding-тай, мөр таслалгүй (Go-ийн decoder CR/LF-ийг алгасдаг тул тусад нь хаана).
+func strictStdBase64(s string) ([]byte, error) {
+	if strings.ContainsAny(s, "\r\n") {
+		return nil, errors.New("base64-д мөр таслал")
+	}
+	return base64.StdEncoding.Strict().DecodeString(s)
+}
+
+// jsonMember — JSON объектын нэг гишүүн (дарааллаа хадгална).
+type jsonMember struct {
+	Key string
+	Val json.RawMessage
+}
+
+// jsonObject — нэг JSON объектыг гишүүдийн дарааллаар задална; давхардсан түлхүүр, илүү өгөгдөл → алдаа.
+func jsonObject(raw []byte) ([]jsonMember, error) {
+	if len(raw) == 0 {
+		return nil, errors.New("хоосон")
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '{' {
+		return nil, errors.New("JSON объект биш")
+	}
+	var out []jsonMember
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		k, ok := tok.(string)
+		if !ok || seen[k] {
+			return nil, errors.New("түлхүүр буруу / давхардсан")
+		}
+		seen[k] = true
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, jsonMember{Key: k, Val: v})
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("JSON-ийн дараа илүү өгөгдөл")
+	}
+	return out, nil
+}
+
+func memberMap(ms []jsonMember) map[string]json.RawMessage {
+	m := make(map[string]json.RawMessage, len(ms))
+	for _, x := range ms {
+		m[x.Key] = x.Val
+	}
+	return m
+}
+
+// jsonString — raw нь JSON мөр бол утга (null / тоо → false).
+func jsonString(raw json.RawMessage) (string, bool) {
+	if len(raw) == 0 || raw[0] != '"' {
+		return "", false
+	}
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		return "", false
+	}
+	return s, true
+}
+
+// jsonInt — raw нь бутархай / зэрэггүй JSON бүхэл тоо бол утга.
+func jsonInt(raw json.RawMessage) (int64, bool) {
+	n, err := strconv.ParseInt(string(raw), 10, 64)
+	return n, err == nil
 }

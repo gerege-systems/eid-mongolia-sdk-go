@@ -49,7 +49,7 @@ type Config struct {
 	// SignSessionTTL — sign / certificate-choice session-ий ExpiresAt-ийг тооцоолох хугацаа (SessionExpiry). 0 =
 	// DefaultSignSessionTTL (600s, CA-ийн анхдагч). CA-ийн админ тохиргоог өөрчилсөн бол үүнийг тааруул.
 	SignSessionTTL time.Duration
-	// QR — «Миний QR»-ийн presentation шалгалт (JWKS URL, issuer, кэш). Тэг утга = prod CA.
+	// QR — «Миний QR»-ийн presentation шалгалт (issuer). Тэг утга = prod CA. Итгэл = Trust.
 	QR QRConfig
 	// Language — хүнд харуулах текстийн хэл (RoleLabel г.м.): дуудлага бүрд Accept-Language болж илгээгдэнэ
 	// ("mn" | "en"). "" = илгээхгүй (сервер mn).
@@ -63,7 +63,7 @@ type Config struct {
 //	PDF          — клиент талын PAdES-ийн CMS бүртгэл (RegisterSignature); угсралт = pades
 //	Organization — иргэний төлөөлөх байгууллагууд
 //	Person       — иргэний PKI самбар (PKI_READ эрх): гэрчилгээ, төхөөрөмж, үйл ажиллагаа, тоо, хүүхдүүд
-//	QR           — «Миний QR» (биечлэн шалгах): иргэний QR → хүссэн аттрибутууд, CA-ийн ES256 presentation
+//	QR           — «Миний QR»: иргэний QR → «Миний мэдээлэл» бүхэлд нь, иргэний PIN2 (PS256, x5c) гарын үсэгтэй
 //	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
 //	Session      — үр дүн long-poll
 //	Validator    — хариуг крипто-баталгаажуулах (гинж + гарын үсэг)
@@ -126,7 +126,7 @@ func NewClient(cfg Config) (*Client, error) {
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
 		Token:        &TokenService{h: h, creds: cfg.Credentials, v: v},
-		QR:           &QRService{h: h, creds: cfg.Credentials, cfg: cfg.QR},
+		QR:           &QRService{h: h, creds: cfg.Credentials, issuer: cfg.QR.Issuer, trust: cfg.Trust},
 		Session:      &SessionService{h: h},
 		Validator:    v,
 		rpName:       cfg.Credentials.RPName,
