@@ -31,7 +31,7 @@ import (
 // myqrVectorsSHA256 (MYQR_VECTORS_SHA256) — testdata/myqr_vectors.json-ийн SHA-256 (hex). Файл нь CA-ийн
 // server/internal/service/memory/testdata/myqr_vectors.json-тэй байт-ижил хуулбар (CA гэрээ §7.1). Файлыг хуулахдаа
 // энд pin хийнэ — хоосон бол файл байгаа үед тест унаж hash-ийг хэвлэнэ.
-const myqrVectorsSHA256 = ""
+const myqrVectorsSHA256 = "7620ad6a14bd337cd8ccb94d2d27e8f82189f5ac3ec6ece9542f8f2922b92eab"
 
 const (
 	myqrVectorsFile = "testdata/myqr_vectors.json"
