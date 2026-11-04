@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -330,11 +331,14 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 	}, nil
 }
 
-// encrypted — trailer-д /Encrypt (digitorus panic-ийг recover).
+// encrypted — trailer-д /Encrypt түлхүүр бий эсэх. Keys() — /Encrypt-ийг resolve хийхгүй: AES-128 (V4/AESV2)-д
+// digitorus O/U мөрийг тайлах гэж panic хийдэг тул урьд нь recover → false болж шифрлэгдсэн баримт scanSignatures руу
+// орж, тайлсан ObjStm-ийг (CheckStructure зөвхөн ciphertext-ийг харсан) задалдаг байв (zip bomb, v0.21.1-д засав).
+// digitorus нээж чадахгүй / panic хийвэл түүхий байтын encryptKey-ээр — аль ч тохиолдолд татгалзалт (ангилал л).
 func encrypted(doc []byte) (enc bool) {
 	defer func() {
 		if recover() != nil {
-			enc = false
+			enc = encryptKey.Match(doc)
 		}
 	}()
 	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
@@ -342,7 +346,7 @@ func encrypted(doc []byte) (enc bool) {
 		// digitorus нь зарим шифрлэлтийг (AES-256) нээж чадахгүй — trailer/xref stream-ийн /Encrypt түлхүүрээр.
 		return encryptKey.Match(doc)
 	}
-	return !r.Trailer().Key("Encrypt").IsNull()
+	return slices.Contains(r.Trailer().Keys(), "Encrypt")
 }
 
 // cleanFileName — CA-тай ижил: Cc/Cf/Zl/Zp хасаж NFC, trim; ≤ 120 тэмдэгт.
