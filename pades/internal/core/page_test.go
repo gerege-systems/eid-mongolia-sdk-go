@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/assets"
 

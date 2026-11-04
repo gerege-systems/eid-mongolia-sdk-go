@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // outPages — the output's pages in /Pages order: whether each is this document's verify page and how many signature

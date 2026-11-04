@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // desktopDir — eid-desktop-ийн Swift port-ын golden (pades/testdata/golden/desktop/README.md). Swift нь CA-ийн

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/digitorus/pdf"
 	"github.com/digitorus/pkcs7"
+	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 )

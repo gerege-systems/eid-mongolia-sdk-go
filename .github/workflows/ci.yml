@@ -29,6 +29,10 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
+      # Production code must import only the hardened github.com/gerege-systems/pdf; upstream digitorus/pdf is for the
+      # pdfsign-based tests (go list -deps ignores test imports).
+      - name: no upstream digitorus/pdf in production code
+        run: "! go list -deps ./... | grep -qx github.com/digitorus/pdf"
       - run: go test -race ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
   # Статик шинжилгээ ба мэдэгдэж буй эмзэг байдал — хувилбар pin хийсэн, олдвор бүр улаан. govulncheck нь stdlib-ийн

@@ -18,7 +18,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // PlaceholderBytes — /Contents-ийн тогтмол багтаамж (binary CMS байт; файлд 2× hex тэмдэгт). Тогтмол нь

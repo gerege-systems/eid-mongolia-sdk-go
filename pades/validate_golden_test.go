@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/ocsp"
 )
 

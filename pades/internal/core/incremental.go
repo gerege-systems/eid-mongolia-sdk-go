@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // ErrPDF — оролтын PDF задарсангүй / дэмжигдээгүй бүтэцтэй (шифрлэгдсэн г.м.).
