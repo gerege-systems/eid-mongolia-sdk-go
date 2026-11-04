@@ -19,9 +19,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/digitorus/pdf"
 	"github.com/digitorus/pkcs7"
 	"github.com/digitorus/timestamp"
+	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 )

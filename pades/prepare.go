@@ -18,7 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"

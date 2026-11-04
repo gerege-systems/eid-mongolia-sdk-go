@@ -1,6 +1,6 @@
 package core
 
-import "github.com/digitorus/pdf"
+import "github.com/gerege-systems/pdf"
 
 // Stamp placement — PLACEMENT_SPEC.md §6. The requested rect (visible page space, h100) is the first candidate; when it
 // collides with the page's occupancy the stamp moves to the first free candidate in a fixed order.

@@ -7,7 +7,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // Occupancy scanner — PLACEMENT_SPEC.md §2–§4. A pure function of the page objects: it never renders, never loads a

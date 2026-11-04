@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 const maxSerializeDepth = 32

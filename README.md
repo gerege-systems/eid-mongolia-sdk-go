@@ -9,7 +9,8 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 > браузер/гар утсанд хэзээ ч бүү гарга — браузерт зөвхөн таны backend-ийн өгсөн холбоос / QR / товч харагдана.
 
 - Go ≥ 1.25. `eid`, `eidlogin` нь стандарт сан + `golang.org/x/crypto/ocsp` (OCSP цуцлалт) импортлодог; `pades` (PDF)
-  нь digitorus/pdf, pkcs7, timestamp, `golang.org/x/crypto`, `golang.org/x/text`.
+  нь `github.com/gerege-systems/pdf` (digitorus/pdf v0.1.2-ийн DoS засвартай fork), digitorus pkcs7, timestamp,
+  `golang.org/x/crypto`, `golang.org/x/text`.
 - Багц: `eid` (RP-API, device link, validator, PDF бүртгэл), `eidlogin` (`github.com/gerege-systems/eid-mongolia-sdk-go/eidlogin`
   — «eID-ээр нэвтрэх» товчны net/http handler),
   `pades` (клиент талын PAdES — PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
@@ -22,12 +23,9 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.21.1
 ```
 
-`pades` багцыг ашиглавал өөрийн `go.mod`-д дараах мөрийг нэм — Go нь хамаарлын `replace`-ийг дамжуулдаггүй тул
-SDK-ийн засвартай PDF lexer зөвхөн ингэж танай build-д орно (хаагдаагүй массив/мөр дээр мөнхийн давталтаас сэргийлнэ):
-
-```
-replace github.com/digitorus/pdf => github.com/craftzbay/pdf v0.1.3-eid.2
-```
+`pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
+v0.21.x хүртэлх README-ийн `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` мөрийг `go.mod`-оосоо
+устгана уу — v0.22.0-аас SDK `github.com/digitorus/pdf`-ийг импортлохгүй тул тэр мөр юуг ч засахгүй.
 
 ```go
 import (
@@ -847,7 +845,9 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 ## English
 
 Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
-standard library plus `golang.org/x/crypto/ocsp`; `pades` also digitorus pdf/pkcs7/timestamp and `golang.org/x/text`).
+standard library plus `golang.org/x/crypto/ocsp`; `pades` also `github.com/gerege-systems/pdf` (hardened digitorus/pdf
+fork, no `replace` needed — delete the old `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` line),
+digitorus pkcs7/timestamp and `golang.org/x/text`).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
   (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.

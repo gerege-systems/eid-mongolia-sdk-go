@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // DSS — нэг гарын үсгийн LTV өгөгдөл (DER). Хуучин DSS-ийн stream-тэй байт-ижил зүйлийг дахин бичихгүй

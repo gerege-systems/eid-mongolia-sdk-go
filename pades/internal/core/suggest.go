@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // PageSize — a page's visible size (CropBox, else MediaBox, after /Rotate), h100. OK = false when the page geometry

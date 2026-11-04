@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"reflect"
 
-	"github.com/digitorus/pdf"
+	"github.com/gerege-systems/pdf"
 )
 
 // checkObjStmGraph — digitorus Reader.resolve нь ObjStm доторх объектыг уншихдаа агуулагч stream-ийг (мөн толгойн

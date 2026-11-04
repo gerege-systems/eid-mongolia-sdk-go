@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitorus/pdf"
+	"github.com/digitorus/pdf" // pdfsign (test-only signer) takes upstream's *pdf.Reader; production code imports github.com/gerege-systems/pdf
 	"github.com/digitorus/pdfsign/sign"
 )
 

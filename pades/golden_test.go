@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitorus/pdf"
 	"github.com/digitorus/timestamp"
+	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
