@@ -360,23 +360,38 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 	return s.objStmData(data, info)
 }
 
+// objStmData — толгойн «дугаар offset» хос бүрийн объектыг шалгана. Offset-ийг digitorus-тэй яг ижлээр тооцно
+// (read.go: `off, _ := b.readToken().(int64)`, `seekForward(first + off)`): бүхэл бус токен (`2.5`, `1e9`, `[`, `/N`,
+// `(…)`, EOF) = 0, сөрөг offset ба /First, int64-ийн wrap хэвээр — өмнө нь эдгээрийг алгасдаг байсан тул бүхэл бус
+// offset-оор `first`-ээс, сөрөгөөр толгойн дотроос уншигдах гүн объект шалгалтгүй үлдэж stack overflow өгдөг байв
+// (2026-11-04). Өгөгдлийн төгсгөлөөс цаашхийг digitorus уншихгүй (EOF); сөрөг байрлал → ErrStructure.
 func (s *nestScan) objStmData(data []byte, info objStmInfo) error {
 	l := &nestLex{b: data}
+	firstDone := false // бүхэл бус offset олон байж болно — `first`-ийг нэг л удаа шалгана
 	for i := int64(0); i < info.nCount; i++ {
 		if l.next() == tEOF {
 			break
 		}
-		if l.next() != tWord {
+		var off int64 // бүхэл биш → 0 (хэт их бүхэлд digitorus panic хийнэ — 0 нь илүү шалгана)
+		if l.next() == tWord {
+			if v, err := strconv.ParseInt(l.val, 10, 64); err == nil {
+				off = v
+			}
+		}
+		at := info.first + off // int64 wrap — digitorus-тай ижил
+		if at < 0 {
+			// digitorus seekForward-ийн `b.offset-offset` дахин давж, дараагийн 4 KiB хэсгээс уншиж болно — шалгаж
+			// чадахгүй байрлал, хууль ёсны баримтад гардаггүй (fail-closed).
+			return ErrStructure
+		}
+		if at >= int64(len(data)) || at == info.first && firstDone {
 			continue
 		}
-		off, err := strconv.ParseInt(l.val, 10, 64)
-		if err != nil || info.first < 0 || off < 0 || info.first+off >= int64(len(data)) {
-			continue
-		}
+		firstDone = firstDone || at == info.first
 		if s.budget < 0 {
 			return ErrStructure
 		}
-		if err := s.object(data, int(info.first+off), false); err != nil {
+		if err := s.object(data, int(at), false); err != nil {
 			return err
 		}
 	}
