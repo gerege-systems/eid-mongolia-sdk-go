@@ -17,12 +17,13 @@ import (
 // задалсан) толгойд заасан offset бүрээс — digitorus-ийн лексерийг (lex.go: хоосон зай, %-тайлбар, (…) мөр, <…> hex,
 // /нэр #xx, << >> [ ]) давтаж, ЭХНИЙ объект дуусах хүртэл давхарлалтын гүнийг тоолно. Гүн > MaxNesting, нийт
 // уншсан байт > nestScanFactor×len(doc)+1 MiB, задалсан ObjStm > maxObjStmBytes, эсвэл digitorus тайлж чадах
-// боловч бид давтаагүй ObjStm (/DecodeParms) бол ErrStructure (fail-closed). Шифрлэгдсэн баримтын ObjStm-ийг
-// (ciphertext) алгасна — Extract/precheck нь шифрлэгдсэн баримтыг объект resolve хийхээс өмнө татгалздаг.
+// боловч бид давтаагүй ObjStm (/DecodeParms, олон шүүлтүүр) бол ErrStructure (fail-closed). Шифрлэгдсэн баримтын ObjStm-ийг ч мөн
+// адил шалгана (алгасахгүй): ciphertext нь zlib болж задрахгүй тул хууль ёсны баримтыг татгалзахгүй, харин /Encrypt-ийг
+// түүхий байтаар (тайлбар, мөр, stream дотор) таних нь бүх ObjStm шалгалтыг унтраах тойруу зам байсан (2026-11-04).
 //
 // Энэ нь хамгаалалтын нэг давхарга — итгэлгүй PDF задлалыг бүхэлд нь аюулгүй болгохгүй (README «Итгэлгүй PDF»).
 func CheckStructure(doc []byte) error {
-	s := &nestScan{budget: nestScanFactor*len(doc) + 1<<20, inflateLeft: maxObjStmBytes, encrypted: encryptRef.Match(doc)}
+	s := &nestScan{budget: nestScanFactor*len(doc) + 1<<20, inflateLeft: maxObjStmBytes}
 	for _, kw := range [][]byte{[]byte("obj"), []byte("trailer")} {
 		for i := 0; ; {
 			j := bytes.Index(doc[i:], kw)
@@ -68,7 +69,6 @@ var ErrStructure = errors.New("PDF-ийн бүтэц хэт гүн давхар�
 type nestScan struct {
 	budget      int
 	inflateLeft int
-	encrypted   bool
 	bigSize     bool // дээд түвшний /Size > maxXrefSize
 }
 
@@ -237,6 +237,9 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 			if len(stack) == 1 && stack[0].dict && stack[0].key == "DecodeParms" {
 				info.parms = true
 			}
+			if len(stack) == 1 && stack[0].dict && stack[0].key == "Filter" {
+				info.filter, info.filters = "", 0 // digitorus: давхар түлхүүрийн сүүлийнх; массивын нэрсийг доор тоолно
+			}
 			stack = append(stack, nestFrame{dict: tok == tDict, expectKey: tok == tDict})
 			continue
 		case tArrEnd:
@@ -254,6 +257,11 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 							case "Type", "Filter", "DecodeParms", "N", "First":
 								info.indirect = true
 							}
+						}
+						// /Filter [6 0 R] — digitorus Index()-ээр resolve хийж задална (DecodeParms-ийн гүн дэх лавлагаа,
+						// жишээ нь /JBIG2Globals, хууль ёсны тул зөвхөн Filter).
+						if len(stack) == 2 && stack[0].dict && stack[0].key == "Filter" {
+							info.indirect = true
 						}
 						break // лавлагаа = нэг утга
 					} else if t3 == tWord && l.val == "obj" {
@@ -288,6 +296,8 @@ func (s *nestScan) noteScalar(stack []nestFrame, info *objStmInfo, tok nestTok, 
 		case "Filter":
 			if tok == tName {
 				info.filter, info.filters = val, 1
+			} else {
+				info.filter, info.filters = "", 0 // null → digitorus шүүлтүүргүй (түүхийгээр) уншина; давхар түлхүүрийн сүүлийнх
 			}
 		case "DecodeParms":
 			if !(tok == tWord && val == "null") {
@@ -311,7 +321,7 @@ func (s *nestScan) noteScalar(stack []nestFrame, info *objStmInfo, tok nestTok, 
 // objStm — `stream` түлхүүр үгийн араас FlateDecode өгөгдлийг (Length-ээс үл хамааран zlib өөрөө төгсөнө) задалж,
 // толгойн offset бүрээс объектыг шалгана.
 func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
-	if l.next() != tWord || l.val != "stream" || s.encrypted {
+	if l.next() != tWord || l.val != "stream" {
 		return nil
 	}
 	if info.indirect {
@@ -330,7 +340,9 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 	switch {
 	case info.filters == 0:
 		return s.objStmData(b[p:], info) // шахаагүй ObjStm — өгөгдөл нь файлын үлдсэн хэсэг (дээд хязгаар)
-	case info.filters != 1 || info.filter != "FlateDecode":
+	case info.filters > 1:
+		return ErrStructure // digitorus [/FlateDecode /FlateDecode …]-г гинжлэн задалдаг — давтахгүй, fail-closed
+	case info.filter != "FlateDecode":
 		return nil // digitorus дэмжихгүй шүүлтүүр → panic (recover)
 	case info.parms:
 		return ErrStructure // predictor-тэй ObjStm-ийг давтахгүй — fail-closed
