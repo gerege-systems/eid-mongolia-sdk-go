@@ -24,8 +24,9 @@ go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.21.1
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
-v0.21.x хүртэлх README-ийн `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` мөрийг `go.mod`-оосоо
-устгана уу — v0.22.0-аас SDK `github.com/digitorus/pdf`-ийг импортлохгүй тул тэр мөр юуг ч засахгүй.
+v0.21.x хүртэлх README-ийн `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` мөр SDK-д хэрэггүй болсон
+(v0.22.0-аас SDK `github.com/digitorus/pdf`-ийг импортлохгүй) — устгана уу. Харин танай код өөрөө `github.com/digitorus/pdf`
+эсвэл `github.com/digitorus/pdfsign`-ийг импортолдог бол тэдгээрийг засвартай байлгахын тулд мөрийг үлдээнэ.
 
 ```go
 import (
@@ -846,7 +847,8 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 
 Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
 standard library plus `golang.org/x/crypto/ocsp`; `pades` also `github.com/gerege-systems/pdf` (hardened digitorus/pdf
-fork, no `replace` needed — delete the old `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` line),
+fork, no `replace` needed — delete the old `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` line unless
+your own code imports digitorus/pdf or digitorus/pdfsign),
 digitorus pkcs7/timestamp and `golang.org/x/text`).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
