@@ -598,8 +598,8 @@ CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE`
    завсрын CA-д EKU байвал түүнд багтах), үл таних **critical extension** → татгалзана, гарын үсэг, хугацаа (гинжийг
    leaf-ийн хүчинтэй хугацаанд, `ClockSkew`-ийн хүрээнд). Trust anchor тохируулаагүй бол **fail-closed**
    (`AllowUntrusted` зөвхөн dev/тест). OS-ийн trust store-д итгэхгүй. Хариунд гинж ирдэггүй — `IntermediatesPEM` nil
-   бол SDK-д суусан 02, 03, 04 (`eid.CitizenIntermediatesPEM`, v0.6.0-аас). certificatePolicies-ийг шалгахгүй
-   (CA-ийн гинжинд policyConstraints алга).
+   бол SDK-д суусан 02, 03, 04 (`eid.CitizenIntermediatesPEM`, v0.6.0-аас). Гинжинд certificatePolicies-ийг
+   шалгахгүй (CA-ийн гинжинд policyConstraints алга; түвшинд — 3).
 3. Гэрчилгээ хүчинтэй хугацаанд (`ClockSkew`) + шаардсан түвшин (`RequiredLevel`, анхдагч `QUALIFIED`; `QSCD` хангана).
    **v0.6.0-аас түвшинг гэрчилгээнээс тогтооно** (`eid.CertificateLevelOf`): гарын үсгийн гэрчилгээнд qcStatements
    QcCompliance → QUALIFIED (+ QcSSCD → QSCD; утас ба 2026-11-06-аас хойш олгосон USB токен QUALIFIED), qcStatements-гүй
