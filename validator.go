@@ -544,7 +544,7 @@ func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate
 }
 
 // verifyTokenAuthCertificate — токены нэвтрэлтийн гэрчилгээ (TokenService.AuthVerify): хугацаа, зориулалт (auth),
-// гинж, issuer. Түвшинг шалгахгүй (USB токен ADVANCED).
+// гинж, issuer. Түвшинг шалгахгүй (2026-11-06-аас өмнө олгосон токен CA-д ADVANCED).
 func (v *Validator) verifyTokenAuthCertificate(leaf *x509.Certificate) error {
 	now := v.now()
 	if err := v.checkValidity(leaf, now); err != nil {
@@ -579,12 +579,16 @@ var (
 	oidQcStatementsExt = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 3}
 	oidQcCompliance    = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 1}
 	oidQcSSCD          = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 4}
+	// oidNationalPolicy — Монголын үндэсний PKI-ийн certificate policy (CA crypto/ca_policy.go NationalPolicyOID).
+	oidNationalPolicy = asn1.ObjectIdentifier{2, 16, 496, 1, 101, 1, 2, 8}
 )
 
 // CertificateLevelOf — гэрчилгээнээс тогтоох түвшин (CA crypto/ca_profile.go): qcStatements-д QcCompliance →
-// QUALIFIED (+ QcSSCD → QSCD); qcStatements алга бол — гарын үсгийн гэрчилгээ ADVANCED (USB токен), нэвтрэлтийн
-// гэрчилгээ (CA AUTH-д qcStatements бичдэггүй) KeyUsage-аар: keyEncipherment-тэй (утасны P-CITIZEN-AUTH) → QUALIFIED,
-// үгүй (токены P-CITIZEN-AUTH-TOKEN) → ADVANCED. protocol — "ACSP_V2" (auth) эсвэл "RAW_DIGEST_SIGNATURE" (sign).
+// QUALIFIED (+ QcSSCD → QSCD); qcStatements алга бол — гарын үсгийн гэрчилгээ ADVANCED (2026-11-06-аас өмнө олгосон
+// USB токен), нэвтрэлтийн гэрчилгээ (CA AUTH-д qcStatements бичдэггүй) профайлаар → QUALIFIED: KeyUsage
+// keyEncipherment (утасны P-CITIZEN-AUTH), эсвэл EKU clientAuth + emailProtection ба үндэсний policy
+// 2.16.496.1.101.1.2.8 (токены P-CITIZEN-AUTH-TOKEN, EC — keyEncipherment үгүй); бусад → ADVANCED. Хариуны түвшин
+// (effectiveLevel) үүнээс бага бол хариуных хүчинтэй. protocol — "ACSP_V2" (auth) эсвэл "RAW_DIGEST_SIGNATURE" (sign).
 // qcStatements гэмтсэн бол *ValidationError. TS SDK-ийн certificateLevelOf-тэй ижил.
 func CertificateLevelOf(c *x509.Certificate, protocol string) (CertificateLevel, error) {
 	for _, e := range c.Extensions {
@@ -615,10 +619,18 @@ func CertificateLevelOf(c *x509.Certificate, protocol string) (CertificateLevel,
 		}
 		return LevelQualified, nil
 	}
-	if protocol == "ACSP_V2" && c.KeyUsage&x509.KeyUsageKeyEncipherment != 0 {
+	if protocol == "ACSP_V2" && (c.KeyUsage&x509.KeyUsageKeyEncipherment != 0 || isCitizenAuthToken(c)) {
 		return LevelQualified, nil
 	}
 	return LevelAdvanced, nil
+}
+
+// isCitizenAuthToken — P-CITIZEN-AUTH-TOKEN-ийн профайл: EKU clientAuth + emailProtection (иргэний AUTH-ийн хос) ба
+// certificatePolicies-д үндэсний OID.
+func isCitizenAuthToken(c *x509.Certificate) bool {
+	return slices.Contains(c.ExtKeyUsage, x509.ExtKeyUsageClientAuth) &&
+		slices.Contains(c.ExtKeyUsage, x509.ExtKeyUsageEmailProtection) &&
+		slices.ContainsFunc(c.PolicyIdentifiers, oidNationalPolicy.Equal)
 }
 
 // effectiveLevel — хариуны түвшин гэрчилгээнийхээс өндөр бол *ValidationError (хуурамч/proxy хариу); бага бол

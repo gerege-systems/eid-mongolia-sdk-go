@@ -221,7 +221,7 @@ type SignatureReport struct {
 	// (мэдээллийн; indication-ийг өөрчлөхгүй — §8.3). Гэрчилгээ задраагүй бол nil.
 	LTV *LTVInfo `json:"ltv,omitempty"`
 	// CertificateLevel — гарын үсэг зурагчийн гэрчилгээний түвшин (eid.CertificateLevelOf, гарын үсгийн протокол):
-	// qcStatements-д QcCompliance → QUALIFIED (+ QcSSCD → QSCD), бусад → ADVANCED (USB токен). Гинж итгэмжлэгдээгүй
+	// qcStatements-д QcCompliance → QUALIFIED (+ QcSSCD → QSCD), бусад → ADVANCED (2026-11-06-аас өмнө олгосон USB токен). Гинж итгэмжлэгдээгүй
 	// эсвэл qcStatements гэмтсэн бол хоосон. SDK бөглөнө (pades.ValidatePDF); CA-д нэмэх санал.
 	CertificateLevel string `json:"certificate_level,omitempty"`
 }
