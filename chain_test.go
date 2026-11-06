@@ -30,10 +30,7 @@ import (
 //
 // Name constraints, policyConstraints, inhibitAnyPolicy, завсрын CA-ийн EKU — гинжинд алга.
 
-var (
-	oidNationalPolicy = asn1.ObjectIdentifier{2, 16, 496, 1, 101, 1, 2, 8}
-	oidSDA            = asn1.ObjectIdentifier{2, 5, 29, 9}
-)
+var oidSDA = asn1.ObjectIdentifier{2, 5, 29, 9}
 
 type chainPKI struct {
 	root, mddc, gerege, issuing *testCA
@@ -228,24 +225,51 @@ func TestCertificateLevelFromCertificate(t *testing.T) {
 	if level(mkCert(t, tmpl, p.issuing, &qk.PublicKey, qk), "RAW_DIGEST_SIGNATURE") != LevelQSCD {
 		t.Fatal("QSCD")
 	}
-	// Утасны AUTH (KU keyEncipherment) → QUALIFIED; токены AUTH (KU DS) → ADVANCED.
+	// Утасны AUTH (KU keyEncipherment) → QUALIFIED; токены AUTH (P-CITIZEN-AUTH-TOKEN: KU DS, EKU clientAuth +
+	// emailProtection, үндэсний policy, EC P-256) → QUALIFIED (CA 2026-11-06).
 	if level(citizenLeaf(t, p.issuing, false, newKey(t)), "ACSP_V2") != LevelQualified {
 		t.Fatal("AUTH")
 	}
-	tmpl = leafTmpl()
-	tmpl.KeyUsage, tmpl.ExtKeyUsage, tmpl.ExtraExtensions = x509.KeyUsageDigitalSignature,
-		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}, nil
+	tokAuthTmpl := func(eku []x509.ExtKeyUsage, policy bool) *x509.Certificate {
+		tmpl := leafTmpl()
+		tmpl.KeyUsage, tmpl.ExtKeyUsage, tmpl.ExtraExtensions = x509.KeyUsageDigitalSignature, eku, nil
+		if policy {
+			// CA-тай ижил Policies (Go 1.24+ CreateCertificate PolicyIdentifiers-ийг үл тоомсорлодог).
+			o, err := x509.OIDFromInts([]uint64{2, 16, 496, 1, 101, 1, 2, 8})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tmpl.Policies = []x509.OID{o}
+		}
+		return tmpl
+	}
+	authEKU := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}
 	ek, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	tokAuth := mkCert(t, tmpl, p.issuing, &ek.PublicKey, ek)
-	if level(tokAuth, "ACSP_V2") != LevelAdvanced {
+	tokAuth := mkCert(t, tokAuthTmpl(authEKU, true), p.issuing, &ek.PublicKey, ek)
+	if level(tokAuth, "ACSP_V2") != LevelQualified {
 		t.Fatal("token AUTH")
 	}
+	if level(tokAuth, "RAW_DIGEST_SIGNATURE") != LevelAdvanced {
+		t.Fatal("token AUTH as sign")
+	}
 	r, acsp := signedAuth(t, "QR", authOpts{leaf: tokAuth, alg: "ecdsa-with-SHA256"})
-	_, err = v.ValidateAuth(r, acsp, ValidateAuthOptions{})
-	wantInvalid(t, err, "өндөр")
+	if id, err := v.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil || id.CertificateLevel != "QUALIFIED" {
+		t.Fatal(id, err)
+	}
+	// 2026-11-06-аас өмнө олгосон токен — CA ADVANCED гэж зарлана → хариуных (бага нь).
 	r.CertificateLevel = "ADVANCED"
 	if id, err := adv.ValidateAuth(r, acsp, ValidateAuthOptions{}); err != nil || id.CertificateLevel != "ADVANCED" {
 		t.Fatal(id, err)
+	}
+	// Үндэсний policy-гүй, эсвэл EKU emailProtection-гүй (KE-гүй) нэвтрэлтийн гэрчилгээ → ADVANCED.
+	for name, tmpl := range map[string]*x509.Certificate{
+		"no policy":          tokAuthTmpl(authEKU, false),
+		"no emailProtection": tokAuthTmpl([]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, true),
+	} {
+		k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if level(mkCert(t, tmpl, p.issuing, &k.PublicKey, k), "ACSP_V2") != LevelAdvanced {
+			t.Fatal(name)
+		}
 	}
 	// Гэмтсэн qcStatements → *ValidationError
 	tmpl = leafTmpl()

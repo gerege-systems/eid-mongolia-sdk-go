@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.22.1
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.22.2
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -602,9 +602,11 @@ CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE`
    (CA-ийн гинжинд policyConstraints алга).
 3. Гэрчилгээ хүчинтэй хугацаанд (`ClockSkew`) + шаардсан түвшин (`RequiredLevel`, анхдагч `QUALIFIED`; `QSCD` хангана).
    **v0.6.0-аас түвшинг гэрчилгээнээс тогтооно** (`eid.CertificateLevelOf`): гарын үсгийн гэрчилгээнд qcStatements
-   QcCompliance → QUALIFIED (+ QcSSCD → QSCD), qcStatements-гүй (USB токен) → ADVANCED; нэвтрэлтийн гэрчилгээнд CA
-   qcStatements бичдэггүй тул профайлаар — KeyUsage keyEncipherment (утасны P-CITIZEN-AUTH) → QUALIFIED, үгүй (токены)
-   → ADVANCED. Хариуны `CertificateLevel` түүнээс өндөр бол татгалзана; бага бол хариуныхыг авна.
+   QcCompliance → QUALIFIED (+ QcSSCD → QSCD; утас ба 2026-11-06-аас хойш олгосон USB токен QUALIFIED), qcStatements-гүй
+   (түүнээс өмнө олгосон токен) → ADVANCED; нэвтрэлтийн гэрчилгээнд CA qcStatements бичдэггүй тул профайлаар → QUALIFIED:
+   KeyUsage keyEncipherment (утасны P-CITIZEN-AUTH), эсвэл EKU clientAuth + emailProtection ба үндэсний policy
+   `2.16.496.1.101.1.2.8` (токены P-CITIZEN-AUTH-TOKEN, v0.22.2-оос); бусад → ADVANCED. Хариуны `CertificateLevel`
+   түүнээс өндөр бол татгалзана; бага бол хариуныхыг авна (хуучин токены AUTH-ийг CA ADVANCED гэж зарлана).
    `VerifiedIdentity` / `VerifiedSignature` / `Signer`-ийн `CertificateLevel` = энэ утга.
 4. Гарын үсэг (`rsassa-pss` / `shaNNNWithRSAEncryption` / `ecdsa-with-SHA256`):
    - **auth** → ACSP_V2 payload (`smart-id|ACSP_V2|serverRandom|rpChallenge|userChallenge|B64(rpName)|B64(brokeredRpName)|B64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType`),
