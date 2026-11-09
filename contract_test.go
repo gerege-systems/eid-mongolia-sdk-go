@@ -281,3 +281,18 @@ func TestContractCertChoiceDTO(t *testing.T) {
 		t.Fatalf("certChoiceRequest талбар %v, CA %v", got, want)
 	}
 }
+
+// TestContractSealDTO — CA dto.SealRequest-ийн талбарууд (POST /seal/{orgEtsi}; CA DisallowUnknownFields):
+// SDK digest + hashType л илгээнэ (relyingPartyUUID/Name нь CA-д заавал биш).
+func TestContractSealDTO(t *testing.T) {
+	want := []string{"digest", "hashType"}
+	var got []string
+	rt := reflect.TypeOf(sealRequest{})
+	for i := 0; i < rt.NumField(); i++ {
+		got = append(got, strings.Split(rt.Field(i).Tag.Get("json"), ",")[0])
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sealRequest талбар %v, CA %v", got, want)
+	}
+}

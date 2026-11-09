@@ -63,6 +63,7 @@ type Config struct {
 //	PDF          — клиент талын PAdES-ийн CMS бүртгэл (RegisterSignature); угсралт = pades
 //	Organization — иргэний төлөөлөх байгууллагууд
 //	Person       — иргэний PKI самбар (PKI_READ эрх): гэрчилгээ, төхөөрөмж, үйл ажиллагаа, тоо, хүүхдүүд
+//	Seal         — байгууллагын цахим тамга (SEAL:<orgEtsi> эрх): тамганы гэрчилгээ, digest тамгалах (pades.SealPDF)
 //	QR           — «Миний QR»: иргэний QR → «Миний мэдээлэл» бүхэлд нь, иргэний PIN2 (PS256, x5c) гарын үсэгтэй
 //	Token        — USB токены гэрчилгээ олголт (TOKEN_ISSUE) ба токеноор нэвтрэлт (AUTH)
 //	Session      — үр дүн long-poll
@@ -77,6 +78,7 @@ type Client struct {
 	PDF          *PDFService
 	Organization *OrganizationService
 	Person       *PersonService
+	Seal         *SealService
 	Token        *TokenService
 	QR           *QRService
 	Session      *SessionService
@@ -125,6 +127,7 @@ func NewClient(cfg Config) (*Client, error) {
 		PDF:          &PDFService{h: h, timeout: pt},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
+		Seal:         &SealService{h: h},
 		Token:        &TokenService{h: h, creds: cfg.Credentials, v: v},
 		QR:           &QRService{h: h, creds: cfg.Credentials, issuer: cfg.QR.Issuer, trust: cfg.Trust},
 		Session:      &SessionService{h: h},
