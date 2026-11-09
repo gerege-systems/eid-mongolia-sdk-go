@@ -157,6 +157,9 @@ type DeviceLinkSession struct {
 	Sign *SignContext `json:"sign,omitempty"`
 	// RelyingPartyName — certificate-choice session-ий хүсэлтэд илгээсэн нэр (cert холбоосын authCode-д).
 	RelyingPartyName string `json:"relyingPartyName,omitempty"`
+	// CallbackURL — certificate-choice device-link хүсэлтэд илгээсэн түүхий initialCallbackUrl ("" = QR-only); cert
+	// Web2App/App2App холбоосын authCode-д орно.
+	CallbackURL string `json:"callbackUrl,omitempty"`
 	// ExpiresAt — session дуусах мөч: CA-ийн start хариуны expiresAt; хуучин CA-д sign / certificate-choice-д
 	// тооцоолсон (SessionExpiry), auth-д тэг.
 	ExpiresAt time.Time `json:"expiresAt"`

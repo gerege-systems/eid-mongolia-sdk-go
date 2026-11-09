@@ -2,8 +2,11 @@ package eid
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
+	"strings"
 	"time"
 )
 
@@ -22,14 +25,20 @@ import (
 type CertChoiceOptions struct {
 	// CertificateLevel — "" = Client-ийн анхдагч.
 	CertificateLevel CertificateLevel
+	// CallbackURL — ЗӨВХӨН CertificateChoiceDeviceLink: ижил төхөөрөмжийн буцах https URL (initialCallbackUrl). Өгвөл
+	// Web2App/App2App холбоос боломжтой болж, утас linked SIGN дууссаны дараа л энэ URL-ийг нээнэ (query: RP-ийн өөрийн
+	// параметр + sessionSecretDigest + sessionId — SessionSecretDigest, VerifySessionSecretDigest). Host нь RP-ийн
+	// callbackHosts-д байх ёстой (эс бөгөөс CA талбарыг хаяж session QR-only болно). CertificateChoiceByEtsi үүнийг илгээхгүй.
+	CallbackURL string
 }
 
-// certChoiceRequest — CA dto.CertificateChoiceRequest (үл мэдэгдэх талбарыг CA 400-аар татгалздаг — interactions,
-// initialCallbackUrl БАЙХГҮЙ).
+// certChoiceRequest — CA dto.CertificateChoiceRequest (үл мэдэгдэх талбарыг CA 400-аар татгалздаг — interactions
+// БАЙХГҮЙ; initialCallbackUrl зөвхөн device-link).
 type certChoiceRequest struct {
-	RelyingPartyUUID string           `json:"relyingPartyUUID"`
-	RelyingPartyName string           `json:"relyingPartyName"`
-	CertificateLevel CertificateLevel `json:"certificateLevel,omitempty"`
+	RelyingPartyUUID   string           `json:"relyingPartyUUID"`
+	RelyingPartyName   string           `json:"relyingPartyName"`
+	CertificateLevel   CertificateLevel `json:"certificateLevel,omitempty"`
+	InitialCallbackURL string           `json:"initialCallbackUrl,omitempty"`
 }
 
 func (s *SignService) certChoiceBody(o *CertChoiceOptions) certChoiceRequest {
@@ -54,11 +63,15 @@ func (s *SignService) CertificateChoiceByEtsi(ctx context.Context, id string, o 
 	return &NotificationSession{SessionID: r.SessionID, VC: string(r.VC), ExpiresAt: r.expiresAt(sent, s.ttl)}, nil
 }
 
-// CertificateChoiceDeviceLink — QR: иргэн хэн болохыг урьдчилж мэдэхгүй үед гэрчилгээ сонгуулах. CA-ийн
-// certificate-choice хүсэлт initialCallbackUrl авдаггүй тул ЗӨВХӨН QR холбоос (s.LinkInput(LinkQR, …)). CERT эрх.
+// CertificateChoiceDeviceLink — device link: иргэн хэн болохыг урьдчилж мэдэхгүй үед гэрчилгээ сонгуулах. QR
+// (s.LinkInput(LinkQR, …)); CertChoiceOptions.CallbackURL-тай бол Web2App/App2App-ийг ч (ижил төхөөрөмж дээрх linked
+// гарын үсгийн буцах зам — README «Утсан дээр linked гарын үсэг»). CERT эрх.
 func (s *SignService) CertificateChoiceDeviceLink(ctx context.Context, o *CertChoiceOptions) (*DeviceLinkSession, error) {
 	sent := time.Now()
 	body := s.certChoiceBody(o)
+	if o != nil {
+		body.InitialCallbackURL = strings.TrimSpace(o.CallbackURL)
+	}
 	var r sessionStartResponse
 	if err := s.h.postJSON(ctx, routeCertChoiceDeviceLink.expand(), body, &r); err != nil {
 		return nil, err
@@ -72,8 +85,45 @@ func (s *SignService) CertificateChoiceDeviceLink(ctx context.Context, o *CertCh
 		ReceivedAt:       time.Now(),
 		SessionType:      SessionCert,
 		RelyingPartyName: body.RelyingPartyName,
+		CallbackURL:      body.InitialCallbackURL,
 		ExpiresAt:        r.expiresAt(sent, s.ttl),
 	}, nil
+}
+
+// decodeSessionSecret — sessionSecret: стандарт base64 (CA-ийн хэлбэр), үгүй бол base64url (padding-тэй/гүй).
+func decodeSessionSecret(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, dlErr("sessionSecret хоосон")
+	}
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		if b, err := enc.DecodeString(s); err == nil && len(b) > 0 {
+			return b, nil
+		}
+	}
+	return nil, dlErr("sessionSecret base64 биш")
+}
+
+// SessionSecretDigest — linked signing-ийн callback-ийн `sessionSecretDigest` параметр:
+// BASE64URL-NOPAD(SHA-256(base64-decode(sessionSecret))). sessionSecret — certificate-choice device-link session-ий
+// (DeviceLinkSession.SessionSecret). Оролт base64 биш бол *DeviceLinkError.
+func SessionSecretDigest(sessionSecret string) (string, error) {
+	b, err := decodeSessionSecret(sessionSecret)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(b)
+	return base64.RawURLEncoding.EncodeToString(h[:]), nil
+}
+
+// VerifySessionSecretDigest — callback-ээр ирсэн sessionSecretDigest нь sessionSecret-ийнхтэй таарч байгааг тогтмол
+// хугацаанд шалгана. Буруу хэлбэртэй оролт бол false.
+func VerifySessionSecretDigest(digest, sessionSecret string) bool {
+	want, err := SessionSecretDigest(sessionSecret)
+	if err != nil || digest == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(digest), []byte(want)) == 1
 }
 
 // Signer — certificate-choice-оор баталгаажсан гарын үсэг зурагч: гарын үсгийн гэрчилгээ + түүнийг эзэмшдэг ЯГ ТЭР
