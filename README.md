@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.22.2
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.23.0
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -359,7 +359,7 @@ certificate-choice, дараа нь digest-ийг **яг тэр төхөөрөм
 etsi-ээр эхлүүлбэл өөр утас зурж, гарын үсэг гэрчилгээтэйгээ таарахгүй.
 
 ```go
-cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // эсвэл CertificateChoiceDeviceLink (зөвхөн QR)
+cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // эсвэл CertificateChoiceDeviceLink (QR; CallbackURL-тай бол Web2App/App2App)
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID) // Signer{Certificate, DocumentNumber}
 dtbs := buildDTBS(signer.Certificate)                                 // 32 байт SHA-256, стандарт base64
@@ -376,6 +376,34 @@ sig, err := c.Validator.ValidateSign(r, s.Sign.Digest, s.Sign.HashAlgorithm, eid
 `DigestForSigner` / `DeviceLinkForSigner`-ийн анхдагч: `sha256WithRSAEncryption` + `SHA-256` (CA SplitKey RSA нь хүссэн
 алгоритмаар, PKCS#1 v1.5; хуучин threshold-ECDSA credential нь үргэлж `ecdsa-with-SHA256` — `ExpectedAlgorithm` үүнийг
 зөвхөн EC P-256 гэрчилгээтэй үед зөвшөөрнө). Digest-ийн урт hash-тай таарахгүй бол хүсэлт явахгүй.
+
+**Утсан дээр linked гарын үсэг (v0.23.0)** — иргэн нэг утсан дээр RP-ийн сайтад байхад: certificate-choice device link-ийг
+`CertChoiceOptions.CallbackURL`-тай эхлүүлбэл Web2App/App2App холбоос боломжтой болно (CA талбарыг `callbackHosts`
+allowlist-ээр шалгаж, замыг `/auth/eid/callback` болгоно; allowlist-д байхгүй бол хаяж session QR-only болно).
+`CertificateChoiceByEtsi` (push) callback илгээхгүй. Утас callback-ийг зөвхөн **linked SIGN дууссаны дараа** нээнэ
+(linked SIGN session өөрөө callback-гүй); query: RP-ийн өөрийн параметр (ж: `value=<санамсаргүй>`) өөрчлөгдөхгүй +
+`sessionSecretDigest` + `sessionId` (certificate-choice session), `userChallengeVerifier` байхгүй.
+
+```go
+// 1. Эхлүүл: value-г браузерийн cookie-д хадгал.
+cc, err := c.Sign.CertificateChoiceDeviceLink(ctx, &eid.CertChoiceOptions{
+	CallbackURL: "https://rp.example.mn/auth/eid/callback?value=" + value,
+})
+link, err := eid.BuildDeviceLink(cc.LinkInput(eid.LinkWeb2App, "mon")) // эсвэл LinkApp2App; QR-д LinkQR
+// 2. Certificate choice-ийг шалгаад linked sign эхлүүл (DeviceLinkForSigner / DigestForSigner — дээрх жишээ).
+r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
+signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
+// 3. /auth/eid/callback дээр:
+//    - query-ийн `value` нь браузерийн cookie-той тэнцүү эсэх;
+//    - eid.VerifySessionSecretDigest(q.Get("sessionSecretDigest"), cc.SessionSecret) — cc нь server-side хадгалсан
+//      certificate-choice session (sessionId-аар олно), SessionSecret браузерт хэзээ ч очихгүй;
+//    - callback-ийг ЗӨВХӨН НЭГ УДАА хүлээн ав (хоёр дахь удаа татгалз);
+//    - дараа нь linked SIGN session-ий үр дүнг уншиж (c.Session.WaitForResult → ValidateSign) дүгнэ.
+```
+
+`eid.SessionSecretDigest(secret)` = `BASE64URL-NOPAD(SHA-256(base64-decode(secret)))`; `VerifySessionSecretDigest` нь
+тогтмол хугацаанд харьцуулж, буруу хэлбэртэй оролтод `false` буцаана. Callback ирсэн нь гарын үсэг зурагдсан гэсэн үг
+БИШ — үр дүнг үргэлж session-ээс уншиж `ValidateSign`-аар шалга.
 
 ### 3.4. Байгууллагын нэрийн өмнөөс
 

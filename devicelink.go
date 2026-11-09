@@ -177,8 +177,8 @@ func BuildDeviceLink(p DeviceLinkInput) (string, error) {
 }
 
 // LinkInput — session start-ын хариу + хүсэлтийн утгуудаас BuildDeviceLink / TickQRDeviceLink-ийн оролт (auth: ACSP,
-// sign: Sign, cert: RelyingPartyName). lang — ISO 639-2 (mon, eng). Web2App/App2App-д session нь CallbackURL-тай
-// эхэлсэн байх ёстой (эс бөгөөс BuildDeviceLink *DeviceLinkError).
+// sign: Sign, cert: RelyingPartyName + CallbackURL). lang — ISO 639-2 (mon, eng). Web2App/App2App-д session нь CallbackURL-тай
+// (cert-д CertChoiceOptions.CallbackURL) эхэлсэн байх ёстой (эс бөгөөс BuildDeviceLink *DeviceLinkError).
 func (s *DeviceLinkSession) LinkInput(t DeviceLinkType, lang string) DeviceLinkInput {
 	in := DeviceLinkInput{
 		DeviceLinkBase: s.DeviceLinkBase, DeviceLinkType: t, SessionToken: s.SessionToken, SessionSecret: s.SessionSecret,
@@ -189,7 +189,7 @@ func (s *DeviceLinkSession) LinkInput(t DeviceLinkType, lang string) DeviceLinkI
 		in.Digest, in.RelyingPartyName = s.Sign.Digest, s.Sign.RelyingPartyName
 		in.Interactions, in.InitialCallbackURL = s.Sign.Interactions, s.Sign.InitialCallbackURL
 	case s.SessionType == SessionCert:
-		in.RelyingPartyName = s.RelyingPartyName
+		in.RelyingPartyName, in.InitialCallbackURL = s.RelyingPartyName, s.CallbackURL
 	case s.ACSP != nil: // auth (хуучин хадгалсан session-д SessionType "")
 		in.SessionType = SessionAuth
 		in.RPChallenge, in.RelyingPartyName = s.ACSP.RPChallenge, s.ACSP.RelyingPartyName

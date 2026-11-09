@@ -266,3 +266,18 @@ func TestContractPDFRegisterErrorCodes(t *testing.T) {
 		t.Fatalf("CA ↔ SDK кодын олонлог зөрсөн:\nCA  %s\nSDK %s", got, want)
 	}
 }
+
+// TestContractCertChoiceDTO — CA dto.CertificateChoiceRequest-ийн талбарууд (үл мэдэгдэх талбарыг CA 400-аар
+// татгалздаг): relyingPartyUUID, relyingPartyName, certificateLevel?, initialCallbackUrl? (зөвхөн device-link).
+func TestContractCertChoiceDTO(t *testing.T) {
+	want := []string{"certificateLevel", "initialCallbackUrl", "relyingPartyName", "relyingPartyUUID"}
+	var got []string
+	rt := reflect.TypeOf(certChoiceRequest{})
+	for i := 0; i < rt.NumField(); i++ {
+		got = append(got, strings.Split(rt.Field(i).Tag.Get("json"), ",")[0])
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("certChoiceRequest талбар %v, CA %v", got, want)
+	}
+}
