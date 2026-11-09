@@ -247,10 +247,10 @@ var OnBehalfErrorCodes = []string{
 	CodeRepresentationRevoked,
 }
 
-// identifierInPath — замын хувь хүн/төхөөрөмжийн таних тэмдэг (PNOMN-…, РД, documentNumber).
-var identifierInPath = regexp.MustCompile(`/(etsi|document|linked)/[^/?#\s]+`)
+// identifierInPath — замын хувь хүн/төхөөрөмж/байгууллагын таних тэмдэг (PNOMN-…, РД, documentNumber, NTRMN-…).
+var identifierInPath = regexp.MustCompile(`/(etsi|document|linked|seal(?:/certificate)?)/[^/?#\s]+`)
 
-// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…} → "…", query хасагдана.
+// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…}, /seal/[certificate/]{…} → "…", query хасагдана.
 func maskPath(p string) string {
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		p = p[:i]

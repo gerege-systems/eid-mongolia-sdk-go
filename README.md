@@ -612,6 +612,27 @@ CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE`
 `REQUEST_INVALID`, 403 `PERMISSION_DENIED` / `RP_REQUIRED` (`*ForbiddenError`), 409 `NO_SIGNING_CERTIFICATE`, 429
 `RATE_LIMITED` (`*APIError`). `Config.QR.Issuer` — тест орчинд л.
 
+### 3.10. Байгууллагын цахим тамга (e-Seal) — `c.Seal` (v0.24.0)
+
+Байгууллагын нэрийн өмнөөс **хүнгүй, автомат** систем баримт тамгална (нэхэмжлэх, тодорхойлолт, хуулга): түлхүүр eID-ийн
+серверт, иргэн/PIN/апп оролцохгүй, хариу шууд (session-гүй). RP-д тухайн байгууллагын **`SEAL:<orgEtsi>`** эрх хэрэгтэй
+(eID-ийн оператор олгоно; эрхгүй бол `*ForbiddenError` 403). Иргэн байгууллагын нэрийн өмнөөс зурах бол §3.4 (тамга биш).
+
+```go
+sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — идэвхтэй тамганы cert
+r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{orgEtsi} — {digest, hashType}
+// r.Signature — ECDSA (DER) digest дээр, r.Certificate — тамганы cert (DER), r.SealedAt
+```
+
+- `Seal` хариуг шалгана: гарын үсэг хариуны гэрчилгээгээр digest дээр таарч, гэрчилгээ нь e-Seal профайл
+  (`eid.IsSealCertificate`: KeyUsage = зөвхөн nonRepudiation, EKU-гүй) байх ёстой — эс бөгөөс `*ValidationError`. Гинж ба
+  цуцлалтыг `pades.SealPDF` (OCSP/CRL + self-validation) шалгана.
+- `hashType`: `eid.SHA256` (анхдагч) | `SHA384` | `SHA512`; digest-ийн урт таарахгүй бол сүлжээнд гарахгүй.
+- **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин. 404 — байгууллага олдсонгүй;
+  409 — байгууллага ACTIVE биш, эсвэл идэвхтэй тамганы гэрчилгээ алга/цуцлагдсан.
+- PDF-ийг тамгалах: §7.3 `pades.SealPDF`. Тамганы гэрчилгээ олгох (`POST /seal/certificate/{orgEtsi}`) энэ хувилбарт
+  алга — байгууллагын захирлын баталгаажуулалттай олголтын урсгал CA-д нэвтэрмэгц нэмэгдэнэ.
+
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
 `EndResult == "OK"` гэдэгт **дангаар нь итгэхгүй** — RP-API эвдэрсэн/proxy хийгдсэн бол хуурамч OK ирж болзошгүй.
@@ -849,6 +870,24 @@ Go нь **reference хэрэгжүүлэлт** (бүрэн шалгагч `Verif
 Golden vector: `pades/testdata/golden/` (README, tag `pades-golden-v6`) — native SDK бүрийн CI тулгана; энэ репогийн CI
 гаралт бүрийг qpdf (`--check`) ба pyHanko-оор (INTACT/VALID/TRUSTED, DSS-ээс LT, харагдах эсэх) бие даан шалгана.
 
+### 7.3. Байгууллагын тамгаар PDF тамгалах — `pades.SealPDF` (v0.24.0)
+
+```go
+done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOptions{Reason: "Нэхэмжлэх"})
+// done.PDF — PAdES-BASELINE-LT, байгууллагын тамгатай
+```
+
+Урсгал: тамганы гэрчилгээ → `Prepare` (SignerCert = тамганы cert) → 32 байт DTBS-ийг `POST /seal/{orgEtsi}`-ээр (SHA-256)
+тамгалуулна → `Complete`. PDF eID руу очихгүй. **RFC 3161 timestamp заавал** (eID TSA, `SealOptions.Complete.TSAURL`):
+TSA хүрэхгүй бол `TSA_UNAVAILABLE`, тамгагүй/цагийн тэмдэггүй файл буцаахгүй; OCSP/CRL + DSS → B-LT, дараа нь
+self-validation. Тамга үл харагдах, баталгаажуулалтын (QR) хуудасгүй — тамга иргэний гарын үсгийн бүртгэлд
+(`POST /pdf/signatures`) ордоггүй тул `/verify/{docID}` холбоос өгөхгүй. Шалгагч (`pades.ValidatePDF`, CA
+`/v3/validate/pdf`) энэ гарын үсгийг `certificate.usage = "seal"` гэж ангилна — хэрэглэгчид «Байгууллагын тамга» гэж
+харуулна уу.
+Алдаа: `CodeSignerInvalid` (cert e-Seal биш, эсвэл тамгалах хооронд cert солигдсон — дахин оролд),
+`CodeSignatureInvalid`, `CodeTSAUnavailable`/`CodeLTVUnavailable` (түр), RP-API-ийн алдаа (`*ForbiddenError`, `*APIError`)
+хэвээр. `pades.Sealer` интерфейс (`*eid.SealService` хангана) — тестэд орлуулж болно.
+
 ## Хөгжүүлэлт
 
 ```bash
@@ -883,6 +922,12 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
 
 - `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
   (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
+- Organization e-Seal (v0.24.0): `c.Seal.Certificate(ctx, orgEtsi)` (GET /seal/certificate/{orgEtsi}) and
+  `c.Seal.Seal(ctx, orgEtsi, digest, eid.SHA256)` (POST /seal/{orgEtsi}; non-interactive, needs the RP permission
+  `SEAL:<orgEtsi>`; 429 → `*APIError.Retryable()`); the response signature is verified against the returned e-Seal
+  certificate (`eid.IsSealCertificate`). `pades.SealPDF(ctx, c.Seal, orgEtsi, pdf, pades.SealOptions{…})` seals a PDF
+  as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page, invisible); validators report
+  `usage: "seal"`. Seal-certificate issuance is not in this release.
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
