@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.25.0 — 2026-11-09
+
+### Added — тамганы гэрчилгээ олгуулах: `RequestCertificate` / `CertificateRequest` / `WaitForCertificate`
+
+- **Юу:** `c.Seal.RequestCertificate(ctx, orgEtsi)` — `POST /seal/certificate/{orgEtsi}` → 202 `*SealCertificateRequest` (`RequestID`, `Status` PENDING, `ExpiresAt`, `Approvers`); `c.Seal.CertificateRequest(ctx, orgEtsi, requestID)` — `GET /seal/certificate/{orgEtsi}/requests/{requestId}` (`SealRequestStatus`: PENDING | APPROVED | ISSUED + `Certificate` | REJECTED | EXPIRED | FAILED + `Failure`); `c.Seal.WaitForCertificate(ctx, orgEtsi, requestID, *SealWaitOptions{Timeout = 15 мин, Interval = 3 с})` — ISSUED болтол асууж `*SealCertificate` буцаана, 429/503 Retry-After-ийг дагана. Typed алдаа: `ErrSealApproverUnavailable` (409 `SEAL_APPROVER_UNAVAILABLE`), `ErrSealRequestNotFound` (404 `SEAL_REQUEST_NOT_FOUND`) — `*APIError.Is`; `*SealRequestError` (`Outcome` REJECTED / EXPIRED / FAILED / `SealRequestTimeout`). `Certificate`-ийн тайлбар: одоогийн олгогдсон гэрчилгээг буцаана, шинээр олгохгүй.
+- **Яагаад:** CA !483 (`6ae854ab`, 2026-11-09) тамганы гэрчилгээний олголтыг байгууллагын ADMIN-ий PIN2 батлалттай болгосон — `POST /seal/certificate/{orgEtsi}` нь 200 + cert-ийн оронд 202 + хүсэлт буцаана (ORG_ONBOARDING §4.3).
+- **Хаана:** `seal.go`, `routes.go` (төлөвийн зам discovery-д хараахан алга тул `rpRoutesUndiscovered`), `errors.go`; тест `seal_test.go` (бичлэгт хариу: бүх төгсгөлийн төлөв, 409/404/403/429, Retry-After, timeout, ctx цуцлалт); README §3.10.
+- **Шалгасан:** локалд `go vet ./...`, `go test -race ./...`, `GOOS=linux GOARCH=amd64 go build ./...`; GitHub Actions CI.
+
 ## v0.24.0 — 2026-11-09
 
 ### Added — байгууллагын цахим тамга (e-Seal): `c.Seal` ба `pades.SealPDF`

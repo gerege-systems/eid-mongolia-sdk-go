@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.24.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.25.0
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -619,7 +619,7 @@ CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE`
 (eID-ийн оператор олгоно; эрхгүй бол `*ForbiddenError` 403). Иргэн байгууллагын нэрийн өмнөөс зурах бол §3.4 (тамга биш).
 
 ```go
-sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — идэвхтэй тамганы cert
+sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — одоогийн олгогдсон тамганы cert
 r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{orgEtsi} — {digest, hashType}
 // r.Signature — ECDSA (DER) digest дээр, r.Certificate — тамганы cert (DER), r.SealedAt
 ```
@@ -630,8 +630,38 @@ r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{o
 - `hashType`: `eid.SHA256` (анхдагч) | `SHA384` | `SHA512`; digest-ийн урт таарахгүй бол сүлжээнд гарахгүй.
 - **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин. 404 — байгууллага олдсонгүй;
   409 — байгууллага ACTIVE биш, эсвэл идэвхтэй тамганы гэрчилгээ алга/цуцлагдсан.
-- PDF-ийг тамгалах: §7.3 `pades.SealPDF`. Тамганы гэрчилгээ олгох (`POST /seal/certificate/{orgEtsi}`) энэ хувилбарт
-  алга — байгууллагын захирлын баталгаажуулалттай олголтын урсгал CA-д нэвтэрмэгц нэмэгдэнэ.
+- `Certificate` нь байгууллагын **одоогийн (олгогдсон, идэвхтэй)** гэрчилгээг буцаана — шинээр олгохгүй; идэвхтэй cert
+  алга / цуцлагдсан бол 409. PDF-ийг тамгалах: §7.3 `pades.SealPDF`.
+
+#### Тамганы гэрчилгээ олгуулах (v0.25.0)
+
+Гэрчилгээг RP ч, оператор ч шууд гаргахгүй — **хүсэлт** үүсгэнэ. Байгууллагын хүчинтэй **ADMIN** төлөөлөгч бүр (идэвхтэй
+eID төхөөрөмжтэй, ≤ 5) eID аппад хүсэлт хүлээн авч **PIN2**-оор батална. Нэг ADMIN баталмагц гэрчилгээ гарна (`ISSUED`);
+татгалзвал `REJECTED`; батлах хугацаа (гарын үсгийн session TTL + 2 мин) дуусвал `EXPIRED`.
+
+```go
+req, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972") // 202: req.RequestID, req.Status == eid.SealRequestPending
+if errors.Is(err, eid.ErrSealApproverUnavailable) {
+	// байгууллагад идэвхтэй eID-тэй ADMIN алга
+}
+sc, err := c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", req.RequestID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
+var se *eid.SealRequestError
+if errors.As(err, &se) {
+	// se.Outcome: REJECTED | EXPIRED | FAILED → шинэ хүсэлт; eid.SealRequestTimeout → ижил RequestID-аар дахин хүлээж болно
+}
+```
+
+- `RequestCertificate` — `POST /seal/certificate/{orgEtsi}` → `*SealCertificateRequest` (`RequestID`, `Status`,
+  `CreatedAt`, `ExpiresAt`, `Approvers`). Байгууллагад PENDING хүсэлт байвал CA түүнийг буцаана (шинэ push үгүй).
+- `CertificateRequest(ctx, org, requestID)` — `GET /seal/certificate/{orgEtsi}/requests/{requestId}`: `Status` = `PENDING` |
+  `APPROVED` (олгогдож байна) | `ISSUED` (`Certificate` бөглөгдсөн) | `REJECTED` | `EXPIRED` | `FAILED` (`Failure`:
+  `SEAL_ISSUANCE_FAILED` | `PUSH_FAILED`).
+- `WaitForCertificate(ctx, org, requestID, *SealWaitOptions{Timeout = 15 мин, Interval = 3 с})` — ISSUED болтол асууж
+  `*SealCertificate` буцаана; REJECTED / EXPIRED / FAILED / хугацаа дууссан → `*SealRequestError`. 429/503 + Retry-After
+  (`*APIError.Retryable()`) — `RetryAfter`-ийг хүлээгээд үргэлжилнэ; `ctx` цуцлагдвал `ctx.Err()`.
+- Алдаа: **409 `SEAL_APPROVER_UNAVAILABLE`** (`errors.Is(err, eid.ErrSealApproverUnavailable)`); 409 (code-гүй) — байгууллага
+  ACTIVE биш; **404 `SEAL_REQUEST_NOT_FOUND`** (`eid.ErrSealRequestNotFound`; өөр байгууллагын id ч мөн); 403
+  `*ForbiddenError` (`SEAL:<orgEtsi>` эрхгүй); **429 `RATE_LIMITED`** + `RetryAfter` — байгууллагад цагт 5 хүсэлт.
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -927,7 +957,9 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   `SEAL:<orgEtsi>`; 429 → `*APIError.Retryable()`); the response signature is verified against the returned e-Seal
   certificate (`eid.IsSealCertificate`). `pades.SealPDF(ctx, c.Seal, orgEtsi, pdf, pades.SealOptions{…})` seals a PDF
   as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page, invisible); validators report
-  `usage: "seal"`. Seal-certificate issuance is not in this release.
+  `usage: "seal"`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
+  approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
+  `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`).
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
