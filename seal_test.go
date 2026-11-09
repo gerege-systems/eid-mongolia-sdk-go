@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -104,8 +105,8 @@ func TestSeal_HashTypes(t *testing.T) {
 		}
 	}
 	// Урт таарахгүй → сервер рүү явахгүй.
-	n := len(rc.reqs)
-	if _, err := c.Seal.Seal(context.Background(), "NTRMN-6235972", make([]byte, 32), SHA384); err == nil || len(rc.reqs) != n {
+	n := rc.count()
+	if _, err := c.Seal.Seal(context.Background(), "NTRMN-6235972", make([]byte, 32), SHA384); err == nil || rc.count() != n {
 		t.Fatal("length mismatch accepted", err)
 	}
 }
@@ -171,5 +172,187 @@ func TestIsSealCertificate(t *testing.T) {
 	b, _ := x509.ParseCertificate(sign)
 	if !IsSealCertificate(a) || IsSealCertificate(b) || IsSealCertificate(nil) {
 		t.Fatal()
+	}
+}
+
+// ── Тамганы гэрчилгээний олголт (CA !483): POST → 202 PENDING, GET …/requests/{id} → ISSUED/REJECTED/EXPIRED/FAILED ──
+
+const sealReqID = "5f0c2b1e-7a40-4c11-9a51-2f6e0d3c9b11"
+
+// sealReqBody — CA dto.SealCertificateRequestResponse (бичлэг); extra нь `,"key":…` хэлбэрийн нэмэлт талбарууд.
+func sealReqBody(status, extra string) string {
+	return `{"requestId":"` + sealReqID + `","orgEtsi":"NTRMN-6235972","status":"` + status +
+		`","createdAt":"2026-11-09T05:00:00Z","expiresAt":"2026-11-09T05:07:00Z"` + extra + `}`
+}
+
+func sealIssuedBody(certDER []byte) string {
+	return sealReqBody("ISSUED", fmt.Sprintf(`,"decidedAt":"2026-11-09T05:01:00Z","certificate":{"orgEtsi":"NTRMN-6235972",`+
+		`"certificate":%q,"serialNumber":"88002","subjectDn":"CN=Gerege Systems LLC","issuerDn":"CN=eID Mongolia Organization Issuing CA",`+
+		`"notBefore":"2026-11-09T05:01:00Z","notAfter":"2029-11-09T05:01:00Z","certificateLevel":"QUALIFIED"}`, base64.StdEncoding.EncodeToString(certDER)))
+}
+
+func (r *rec) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.reqs)
+}
+
+type sealStep struct {
+	status int
+	body   string
+	header map[string]string
+}
+
+// sealSeq — дарааллаар хариулна (сүүлийнхийг давтана).
+func sealSeq(steps ...sealStep) http.HandlerFunc {
+	var mu sync.Mutex
+	i := 0
+	return func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		s := steps[min(i, len(steps)-1)]
+		i++
+		mu.Unlock()
+		for k, v := range s.header {
+			w.Header().Set(k, v)
+		}
+		w.WriteHeader(s.status)
+		_, _ = w.Write([]byte(s.body))
+	}
+}
+
+func TestSeal_RequestCertificate(t *testing.T) {
+	c, rc := server(t, jsonReply(202, sealReqBody("PENDING", `,"approvers":2`)))
+	r, err := c.Seal.RequestCertificate(context.Background(), "NTRMN-6235972")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := rc.last()
+	if req.Method != http.MethodPost || req.URL.Path != "/seal/certificate/NTRMN-6235972" || req.Header.Get("Authorization") != "Bearer "+creds.APISecret {
+		t.Fatal(req.Method, req.URL.Path)
+	}
+	if r.RequestID != sealReqID || r.Status != SealRequestPending || r.Approvers != 2 || r.ExpiresAt.Minute() != 7 || r.Certificate != nil {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestSeal_CertificateRequestIssued(t *testing.T) {
+	_, certDER := sealTestCert(t, x509.KeyUsageContentCommitment)
+	c, rc := server(t, jsonReply(200, sealIssuedBody(certDER)))
+	r, err := c.Seal.CertificateRequest(context.Background(), "NTRMN-6235972", sealReqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req, _ := rc.last(); req.Method != http.MethodGet || req.URL.Path != "/seal/certificate/NTRMN-6235972/requests/"+sealReqID {
+		t.Fatal(req.Method, req.URL.Path)
+	}
+	if r.Status != SealRequestIssued || r.DecidedAt == nil || r.Certificate == nil || !bytes.Equal(r.Certificate.Certificate, certDER) ||
+		r.Certificate.SerialNumber != "88002" || r.Certificate.CertificateLevel != LevelQualified {
+		t.Fatalf("%+v", r)
+	}
+	// ISSUED боловч certificate-гүй, эсвэл requestId-гүй → *ValidationError.
+	for _, body := range []string{sealReqBody("ISSUED", ""), `{"status":"PENDING"}`} {
+		c, _ := server(t, jsonReply(200, body))
+		var ve *ValidationError
+		if _, err := c.Seal.CertificateRequest(context.Background(), "NTRMN-6235972", sealReqID); !errors.As(err, &ve) {
+			t.Fatalf("%s: %v", body, err)
+		}
+	}
+}
+
+func TestSeal_WaitForCertificate(t *testing.T) {
+	_, certDER := sealTestCert(t, x509.KeyUsageContentCommitment)
+	c, rc := server(t, sealSeq(
+		sealStep{status: 200, body: sealReqBody("PENDING", "")},
+		sealStep{status: 200, body: sealReqBody("APPROVED", `,"decidedAt":"2026-11-09T05:01:00Z"`)},
+		sealStep{status: 200, body: sealIssuedBody(certDER)},
+	))
+	sc, err := c.Seal.WaitForCertificate(context.Background(), "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	if err != nil || !bytes.Equal(sc.Certificate, certDER) || sc.NotAfter.Year() != 2029 {
+		t.Fatal(err, sc)
+	}
+	if n := rc.count(); n != 3 {
+		t.Fatalf("poll %d", n)
+	}
+}
+
+func TestSeal_WaitForCertificateTerminal(t *testing.T) {
+	for _, tc := range []struct {
+		status  SealRequestStatus
+		extra   string
+		failure string
+	}{
+		{SealRequestRejected, `,"decidedAt":"2026-11-09T05:01:00Z"`, ""},
+		{SealRequestExpired, `,"failure":"EXPIRED"`, "EXPIRED"},
+		{SealRequestFailed, `,"decidedAt":"2026-11-09T05:01:00Z","failure":"SEAL_ISSUANCE_FAILED"`, "SEAL_ISSUANCE_FAILED"},
+	} {
+		c, rc := server(t, sealSeq(sealStep{status: 200, body: sealReqBody("PENDING", "")}, sealStep{status: 200, body: sealReqBody(string(tc.status), tc.extra)}))
+		_, err := c.Seal.WaitForCertificate(context.Background(), "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+		var se *SealRequestError
+		if !errors.As(err, &se) || se.Outcome != tc.status || se.RequestID != sealReqID || se.Failure != tc.failure {
+			t.Fatalf("%s: %v", tc.status, err)
+		}
+		if n := rc.count(); n != 2 {
+			t.Fatalf("%s: poll %d", tc.status, n)
+		}
+	}
+}
+
+func TestSeal_WaitForCertificateTimeoutAndCancel(t *testing.T) {
+	c, _ := server(t, jsonReply(200, sealReqBody("PENDING", "")))
+	_, err := c.Seal.WaitForCertificate(context.Background(), "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: 5 * time.Millisecond, Timeout: 30 * time.Millisecond})
+	var se *SealRequestError
+	if !errors.As(err, &se) || se.Outcome != SealRequestTimeout || se.Failure != "" {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: 10 * time.Second}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+}
+
+func TestSeal_WaitForCertificateRetryAfter(t *testing.T) {
+	_, certDER := sealTestCert(t, x509.KeyUsageContentCommitment)
+	c, rc := server(t, sealSeq(
+		sealStep{status: 429, body: `{"error":"хэт олон","code":"RATE_LIMITED"}`, header: map[string]string{"Retry-After": "1"}},
+		sealStep{status: 200, body: sealIssuedBody(certDER)},
+	))
+	t0 := time.Now()
+	sc, err := c.Seal.WaitForCertificate(context.Background(), "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	if err != nil || !bytes.Equal(sc.Certificate, certDER) {
+		t.Fatal(err)
+	}
+	if time.Since(t0) < 950*time.Millisecond || rc.count() != 2 {
+		t.Fatalf("Retry-After дагаагүй: %v, %d", time.Since(t0), rc.count())
+	}
+	// 404 SEAL_REQUEST_NOT_FOUND — давтахгүй, шууд.
+	c, rc = server(t, jsonReply(404, `{"error":"олдсонгүй","code":"SEAL_REQUEST_NOT_FOUND"}`))
+	_, err = c.Seal.WaitForCertificate(context.Background(), "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	var ae *APIError
+	if !errors.Is(err, ErrSealRequestNotFound) || !errors.As(err, &ae) || ae.Status != 404 || rc.count() != 1 {
+		t.Fatal(err)
+	}
+}
+
+func TestSeal_RequestCertificateErrors(t *testing.T) {
+	ctx := context.Background()
+	c, _ := server(t, jsonReply(409, `{"error":"ADMIN алга","code":"SEAL_APPROVER_UNAVAILABLE"}`))
+	_, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972")
+	var ae *APIError
+	if !errors.Is(err, ErrSealApproverUnavailable) || !errors.As(err, &ae) || ae.Status != 409 || ae.Retryable() {
+		t.Fatal(err)
+	}
+	c, _ = server(t, jsonReply(409, `{"error":"байгууллага ACTIVE биш"}`))
+	if _, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972"); errors.Is(err, ErrSealApproverUnavailable) || !errors.As(err, &ae) || ae.Status != 409 {
+		t.Fatal(err)
+	}
+	c, _ = server(t, jsonReply(403, `{"error":"SEAL эрхгүй","code":"PERMISSION_DENIED"}`))
+	var fe *ForbiddenError
+	if _, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972"); !errors.As(err, &fe) {
+		t.Fatal(err)
+	}
+	c, _ = server(t, sealSeq(sealStep{status: 429, body: `{"error":"хэт олон","code":"RATE_LIMITED"}`, header: map[string]string{"Retry-After": "3600"}}))
+	if _, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972"); !errors.As(err, &ae) || ae.Status != 429 || !ae.Retryable() || ae.RetryAfter != time.Hour {
+		t.Fatal(err)
 	}
 }

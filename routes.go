@@ -39,7 +39,10 @@ var (
 	routeTokenAuthVerify          = rpRoute{"POST", "/token/auth/verify"}
 	routeShare                    = rpRoute{"POST", "/share"}
 	routeSealCertificate          = rpRoute{"GET", "/seal/certificate/{orgEtsi}"}
-	routeSeal                     = rpRoute{"POST", "/seal/{orgEtsi}"}
+	routeSealCertificateRequest   = rpRoute{"POST", "/seal/certificate/{orgEtsi}"}
+	// routeSealCertificateRequestStatus — CA !483 (ORG_ONBOARDING §4.3); discovery-д хараахан алга.
+	routeSealCertificateRequestStatus = rpRoute{"GET", "/seal/certificate/{orgEtsi}/requests/{requestId}"}
+	routeSeal                         = rpRoute{"POST", "/seal/{orgEtsi}"}
 )
 
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
@@ -56,13 +59,12 @@ var rpRoutes = []rpRoute{
 	routeTokenCertificate, routeTokenCertificateResult,
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 	routeShare,
-	routeSealCertificate, routeSeal,
+	routeSealCertificate, routeSealCertificateRequest, routeSeal,
 }
 
 // rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
-// Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ. Одоогоор хоосон —
-// /token/auth/* discovery-ийн endpoints.token.auth_challenge / auth_verify-д орсон тул rpRoutes-д.
-var rpRoutesUndiscovered = []rpRoute{}
+// Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ.
+var rpRoutesUndiscovered = []rpRoute{routeSealCertificateRequestStatus}
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.
 func (r rpRoute) expand(args ...string) string {
