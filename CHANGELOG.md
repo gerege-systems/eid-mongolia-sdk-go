@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.23.0 — 2026-11-09
+
+### Docs — v0.22.2 тэмдэглэлийн засвар
+
+- **Юу:** v0.22.2-ын «Яагаад» хэсэг session-ий хариу токены AUTH-ийг `QUALIFIED` гэж зарладаг гэсэн нь буруу тайлбар байсан. Бодит өөрчлөлт: `eid.CertificateLevelOf(c, "ACSP_V2")` токены AUTH гэрчилгээг (EC, `keyEncipherment`-гүй) EKU clientAuth + emailProtection ба үндэсний policy OID `2.16.496.1.101.1.2.8`-ээр таньж `ADVANCED`-ийн оронд `QUALIFIED` буцаана.
+- **Хаана:** `CHANGELOG.md` v0.22.2 хэсэг (энэ фрагмент дараагийн release-д орно); код өөрчлөгдөөгүй, шинэ tag гаргахгүй.
+- **Шалгасан:** validator код/тесттэй тулгасан.
+### Added — certificate-choice device link-д initialCallbackUrl (утсан дээр linked гарын үсэг)
+
+- **Юу:** `CertChoiceOptions.CallbackURL` (зөвхөн `CertificateChoiceDeviceLink`) нь `initialCallbackUrl`-ийг (хоосон бол илгээхгүй) CA руу дамжуулна; `DeviceLinkSession.CallbackURL` дээр түүхий утгыг хадгалж `LinkInput` cert session-д Web2App/App2App холбоос угсрах боломжтой болгосон (өмнө cert зөвхөн QR). `CertificateChoiceByEtsi` callback илгээхгүй. Шинэ: `eid.SessionSecretDigest(sessionSecret) (string, error)`, `eid.VerifySessionSecretDigest(digest, sessionSecret) bool` — callback-ийн `sessionSecretDigest` = BASE64URL-NOPAD(SHA-256(base64-decode(secret))).
+- **Яагаад:** Smart-ID v3 linked signing-ийн утсан дээрх буцах зам: утас linked SIGN дууссаны дараа callback-ийг `sessionSecretDigest` + `sessionId`-тэй нээнэ; RP digest-ийг шалгаж callback-ийг баталгаажуулна. CA (ca-eidmongolia-mn) `initialCallbackUrl`-ийг callbackHosts allowlist-ээр шалгана.
+- **Хаана:** `certchoice.go`, `types.go` (`DeviceLinkSession.CallbackURL`), `devicelink.go` (`LinkInput`), README §3.3; тест `certchoice_callback_test.go`, `contract_test.go` (`TestContractCertChoiceDTO`).
+- **Шалгасан:** `go test ./...`, `go vet ./...`, gofmt, `GOOS=linux GOARCH=amd64 go build ./...`.
+
 ## v0.22.2 — 2026-11-06
 
 ### Fixed — USB токены AUTH гэрчилгээ QUALIFIED (CA !472-тэй нийцэл)
