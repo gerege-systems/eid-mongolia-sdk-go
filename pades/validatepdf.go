@@ -96,6 +96,23 @@ func ValidatePDF(ctx context.Context, doc []byte, o ValidateOptions) (*Report, e
 	return rep, nil
 }
 
+// SignatureReport.KeyMedium-ийн утгууд (CA POST /v3/validate/pdf-ийн key_medium). ValidatePDF нь гэрчилгээнээс л
+// KeyMediumPhone | KeyMediumUnknown тавина; KeyMediumToken ба сервер талын хоёр утгыг зөвхөн CA бүртгэлээсээ тогтооно.
+const (
+	// KeyMediumToken — USB токен.
+	KeyMediumToken = "token"
+	// KeyMediumPhone — eID апп (утас).
+	KeyMediumPhone = "phone"
+	// KeyMediumServerSoftware — eID-ийн олгосон байгууллагын тамга: түлхүүр сервер талд, программын түлхүүр (CA
+	// 2026-11-12). QSCD гэсэн мэдэгдэл биш.
+	KeyMediumServerSoftware = "server_software"
+	// KeyMediumServerHSM — eID-ийн олгосон байгууллагын тамга: түлхүүр сервер талын HSM-д (CA 2026-11-12). QSCD гэсэн
+	// мэдэгдэл биш.
+	KeyMediumServerHSM = "server_hsm"
+	// KeyMediumUnknown — тогтоох боломжгүй (eID-ийнх биш гэрчилгээ г.м.).
+	KeyMediumUnknown = "unknown"
+)
+
 // keyMedium — CA !377 key_medium-ийн локал хувилбар: CA нь бүртгэлээс (pdf_signatures.medium / certificates.key_medium)
 // тогтооно; энд зөвхөн гэрчилгээнээс — eID-ийн олгосон SIGN гэрчилгээ qcStatements QcCompliance-тэй (QUALIFIED/QSCD) бол
 // "phone" (USB токены P-CITIZEN-SIGN-TOKEN нь qcStatements-гүй); бусад (токен ба хуучин утасны гэрчилгээг гэрчилгээнээс
@@ -103,9 +120,9 @@ func ValidatePDF(ctx context.Context, doc []byte, o ValidateOptions) (*Report, e
 func keyMedium(s *SignatureReport) string {
 	if c := s.Certificate; c != nil && c.IssuedByEID && c.Usage == "sign" &&
 		(s.CertificateLevel == string(eid.LevelQualified) || s.CertificateLevel == string(eid.LevelQSCD)) {
-		return "phone"
+		return KeyMediumPhone
 	}
-	return "unknown"
+	return KeyMediumUnknown
 }
 
 // onlineStatus — validate.StatusSource: eID олгогчийн гаргасан гэрчилгээний ОДООГИЙН төлвийг (CA өөрийн бүртгэлээс

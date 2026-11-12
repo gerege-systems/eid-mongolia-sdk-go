@@ -288,6 +288,45 @@ func TestContractSealSwitches(t *testing.T) {
 	t.Logf("seal.issuanceEnabled=%v seal.sealingEnabled=%v", *s.IssuanceEnabled, *s.SealingEnabled)
 }
 
+// TestContractSealErrorCodes — CA 2026-11-12: тамганы 409 бүр тогтвортой code-той, GET /seal/certificate идэвхтэй
+// гэрчилгээгүй бол 409. Discovery-ийн endpoints.seal.*-ийн тайлбарт нэрлэсэн code бүр SealErrorCodes-д байх ёстой
+// (*APIError.Is-ийн sentinel-ууд), шинэ code-ууд тайлбарт байх ёстой. TS SDK-ийн contract тесттэй ижил.
+func TestContractSealErrorCodes(t *testing.T) {
+	var d struct {
+		Endpoints struct {
+			Seal map[string]string `json:"seal"`
+		} `json:"endpoints"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	codeRe := regexp.MustCompile(`\b(?:ORG_NOT_ACTIVE|SEAL_[A-Z_]+)\b`)
+	known := map[string]bool{}
+	for _, c := range SealErrorCodes {
+		known[c] = true
+	}
+	named := map[string]map[string]bool{}
+	for key, desc := range d.Endpoints.Seal {
+		named[key] = map[string]bool{}
+		for _, c := range codeRe.FindAllString(desc, -1) {
+			named[key][c] = true
+			if !known[c] {
+				t.Errorf("endpoints.seal.%s: SDK-д танигдаагүй code %s", key, c)
+			}
+		}
+	}
+	for key, want := range map[string][]string{
+		"seal": {CodeOrgNotActive, CodeSealNotIssued, CodeSealCertRevoked, CodeSealKeyUnavailable, CodeSealCertExpired,
+			CodeSealCertNotYetValid, CodeSealServiceDisabled},
+		"certificate_get":   {CodeSealNotIssued, CodeSealCertRevoked, CodeSealCertExpired, CodeSealCertNotYetValid},
+		"certificate_issue": {CodeOrgNotActive, CodeSealApproverUnavailable, CodeSealServiceDisabled},
+	} {
+		for _, c := range want {
+			if !named[key][c] {
+				t.Errorf("endpoints.seal.%s-д %s алга: %q", key, c, d.Endpoints.Seal[key])
+			}
+		}
+	}
+}
+
 // TestContractCertChoiceDTO — CA dto.CertificateChoiceRequest-ийн талбарууд (үл мэдэгдэх талбарыг CA 400-аар
 // татгалздаг): relyingPartyUUID, relyingPartyName, certificateLevel?, initialCallbackUrl? (зөвхөн device-link).
 func TestContractCertChoiceDTO(t *testing.T) {

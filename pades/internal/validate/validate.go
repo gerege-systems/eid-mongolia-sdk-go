@@ -203,8 +203,10 @@ type SignatureReport struct {
 	SessionID string `json:"session_id,omitempty"`
 	// DocID — дуудагч pdf_signatures-аас олсон үед: баримтын ID (нэгдсэн /verify/{docID}).
 	DocID string `json:"doc_id,omitempty"`
-	// KeyMedium — зурагчийн түлхүүрийн байршил: "token" (USB токен) | "phone" (eID апп) | "unknown" (CA !377). CA нь
-	// бүртгэлээс тавина; SDK (pades.ValidatePDF) зөвхөн гэрчилгээнээс — validatepdf.go keyMedium.
+	// KeyMedium — зурагчийн түлхүүрийн байршил: "token" (USB токен) | "phone" (eID апп) | "server_software" |
+	// "server_hsm" (eID-ийн олгосон байгууллагын тамга: түлхүүр сервер талд — программын түлхүүр / HSM; QSCD гэсэн
+	// мэдэгдэл биш) | "unknown" (CA !377, 2026-11-12). CA нь бүртгэлээс тавина; SDK (pades.ValidatePDF) зөвхөн
+	// гэрчилгээнээс ("phone" | "unknown") — validatepdf.go keyMedium, утгууд pades.KeyMedium*.
 	KeyMedium string `json:"key_medium"`
 	// ClaimedRoles — CMS-ийн signer-attributes-v2 (0.4.0.19122.1.1) claimedAttributes / id-at-role: гарын үсэг
 	// зурагчийн мэдүүлсэн үүрэг (гарын үсгээр хамгаалагдсан, гэхдээ өөрөө баталгаа биш). eID-ийн байгууллагын нэрийн

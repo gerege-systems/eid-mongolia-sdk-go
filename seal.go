@@ -11,9 +11,13 @@ import (
 	"time"
 )
 
-// SealService — байгууллагын цахим тамга (e-Seal): байгууллагын HSM дэх түлхүүрээр digest тамгална. Интерактив биш
-// (иргэн, PIN, апп оролцохгүй) — хариу шууд (session-гүй). RP-д тухайн байгууллагын `SEAL:<orgEtsi>` эрх хэрэгтэй (үгүй бол
-// *ForbiddenError, 403). Хэт олон хүсэлтэд CA 429 буцаана — *APIError.Retryable() / RetryAfter-ийн дараа дахин.
+// SealService — байгууллагын цахим тамга (e-Seal): eID-ийн серверт хадгалагдах байгууллагын түлхүүрээр digest тамгална.
+// Интерактив биш (иргэн, PIN, апп оролцохгүй) — хариу шууд (session-гүй). RP-д тухайн байгууллагын `SEAL:<orgEtsi>` эрх
+// хэрэгтэй (үгүй бол *ForbiddenError, 403) — эрхийг байгууллагын улсын бүртгэлээр баталгаажсан ADMIN eID аппаараа PIN2-оор
+// зөвшөөрсний дараа л авна (CA 2026-11-12; хүсэлтийг eID-ийн оператор үүсгэнэ). Хэт олон хүсэлтэд CA 429 буцаана —
+// *APIError.Retryable() / RetryAfter-ийн дараа дахин. 409 бүр тогтвортой code-той (SealErrorCodes) — sentinel:
+// ErrOrgNotActive, ErrSealNotIssued, ErrSealCertRevoked, ErrSealKeyUnavailable, ErrSealCertExpired,
+// ErrSealCertNotYetValid, ErrSealApproverUnavailable.
 //
 // PDF-ийг тамгалах бол pades.SealPDF (PAdES-BASELINE-LT, RFC 3161 timestamp заавал).
 //
@@ -89,8 +93,20 @@ type SealCertificateRequest struct {
 	Certificate *SealCertificate `json:"certificate,omitempty"`
 }
 
-// Тамганы гэрчилгээний олголтын CA алдааны кодууд — APIError.Code.
+// Тамганы замуудын (/seal/*) CA алдааны кодууд — APIError.Code (CA 2026-11-12-оос 409 бүр code-той; HTTP статус хэвээр).
 const (
+	// CodeSealNotIssued — 409 (Seal, Certificate): байгууллагад тамганы гэрчилгээ олгогдоогүй → RequestCertificate.
+	CodeSealNotIssued = "SEAL_NOT_ISSUED"
+	// CodeSealCertRevoked — 409 (Seal, Certificate): тамганы гэрчилгээ цуцлагдсан. Цуцлалтаас өмнө (цагийн тэмдэгтэй)
+	// тамгалсан баримт хүчинтэй хэвээр; цааш тамгалахад шинэ гэрчилгээ (RequestCertificate).
+	CodeSealCertRevoked = "SEAL_CERT_REVOKED"
+	// CodeSealKeyUnavailable — 409 (Seal): тамганы түлхүүр eID-ийн одоогийн тохиргоонд алга (серверийн тал) — RP засах
+	// зүйлгүй, eID-ийн тусламжид хандана.
+	CodeSealKeyUnavailable = "SEAL_KEY_UNAVAILABLE"
+	// CodeSealCertExpired — 409 (Seal, Certificate): тамганы гэрчилгээний хугацаа дууссан → шинэ RequestCertificate.
+	CodeSealCertExpired = "SEAL_CERT_EXPIRED"
+	// CodeSealCertNotYetValid — 409 (Seal, Certificate): гэрчилгээний хүчинтэй хугацаа эхлээгүй (NotBefore ирээдүйд).
+	CodeSealCertNotYetValid = "SEAL_CERT_NOT_YET_VALID"
 	// CodeSealApproverUnavailable — 409 (RequestCertificate): байгууллагад идэвхтэй eID төхөөрөмжтэй ADMIN төлөөлөгч алга.
 	CodeSealApproverUnavailable = "SEAL_APPROVER_UNAVAILABLE"
 	// CodeSealRequestNotFound — 404 (CertificateRequest): хүсэлт олдсонгүй (эсвэл өөр байгууллагынх).
@@ -110,8 +126,30 @@ const (
 	SealServiceSealing = "sealing"
 )
 
+// SealErrorCodes — тамганы замуудын тогтвортой CA кодууд (TS SDK SEAL_ERROR_CODES-тэй ижил дараалал). 429
+// CodeRateLimited (RetryableCodes) ба 403 *ForbiddenError (RP-д SEAL:<orgEtsi> эрхгүй) энд орохгүй.
+var SealErrorCodes = []string{
+	CodeOrgNotActive,
+	CodeSealNotIssued,
+	CodeSealCertRevoked,
+	CodeSealKeyUnavailable,
+	CodeSealCertExpired,
+	CodeSealCertNotYetValid,
+	CodeSealApproverUnavailable,
+	CodeSealRequestNotFound,
+	CodeSealServiceDisabled,
+}
+
 // errors.Is-ийн sentinel-ууд (*APIError.Is нь Code-оор тулгана).
 var (
+	// ErrOrgNotActive — байгууллага ACTIVE биш: 409 *APIError (Seal, RequestCertificate, pades.SealPDF) ба OnBehalfOf
+	// урсгалын 403 *ForbiddenError хоёуланд нь таарна.
+	ErrOrgNotActive            = errors.New("eid: " + CodeOrgNotActive)
+	ErrSealNotIssued           = errors.New("eid: " + CodeSealNotIssued)
+	ErrSealCertRevoked         = errors.New("eid: " + CodeSealCertRevoked)
+	ErrSealKeyUnavailable      = errors.New("eid: " + CodeSealKeyUnavailable)
+	ErrSealCertExpired         = errors.New("eid: " + CodeSealCertExpired)
+	ErrSealCertNotYetValid     = errors.New("eid: " + CodeSealCertNotYetValid)
 	ErrSealApproverUnavailable = errors.New("eid: " + CodeSealApproverUnavailable)
 	ErrSealRequestNotFound     = errors.New("eid: " + CodeSealRequestNotFound)
 	// ErrSealServiceDisabled — 503 *APIError (RequestCertificate, Seal, pades.SealPDF) ба FAILED *SealRequestError
@@ -177,7 +215,9 @@ type sealResponse struct {
 }
 
 // Certificate — GET /seal/certificate/{orgEtsi}: байгууллагын одоогийн (хамгийн сүүлд олгогдсон, идэвхтэй) тамганы
-// гэрчилгээ (PAdES-ийн SignerCert). Шинээр олгохгүй — олголт RequestCertificate. Идэвхтэй cert алга / цуцлагдсан бол 409.
+// гэрчилгээ (PAdES-ийн SignerCert). Шинээр олгохгүй — олголт RequestCertificate. Идэвхтэй гэрчилгээ алга бол 409 (200 биш,
+// CA 2026-11-12): ErrSealNotIssued (олгогдоогүй), ErrSealCertRevoked (цуцлагдсан), ErrSealCertExpired /
+// ErrSealCertNotYetValid (хугацааны гадна).
 func (s *SealService) Certificate(ctx context.Context, orgEtsi string) (*SealCertificate, error) {
 	var c SealCertificate
 	if err := s.h.getJSON(ctx, routeSealCertificate.expand(orgEtsi), 0, &c); err != nil {
@@ -192,7 +232,7 @@ func (s *SealService) Certificate(ctx context.Context, orgEtsi string) (*SealCer
 // RequestCertificate — POST /seal/certificate/{orgEtsi}: тамганы гэрчилгээний ХҮСЭЛТ (202, Status PENDING). Байгууллагын
 // ADMIN төлөөлөгч(ид) eID аппаараа PIN2-оор батална; WaitForCertificate / CertificateRequest-ээр асууна. Байгууллагад
 // PENDING хүсэлт байвал CA түүнийг буцаана (шинэ push үгүй). Алдаа: 409 ErrSealApproverUnavailable (идэвхтэй төхөөрөмжтэй
-// ADMIN алга), 409 *APIError (байгууллага ACTIVE биш), 403 *ForbiddenError (SEAL:<orgEtsi> эрхгүй), 404 (байгууллага
+// ADMIN алга), 409 ErrOrgNotActive (байгууллага ACTIVE биш), 403 *ForbiddenError (SEAL:<orgEtsi> эрхгүй), 404 (байгууллага
 // олдсонгүй), 429 RATE_LIMITED (байгууллагад цагт 5; RetryAfter), 503 ErrSealServiceDisabled (олголт унтраалттай;
 // *APIError.Service = SealServiceIssuance, давтахгүй).
 func (s *SealService) RequestCertificate(ctx context.Context, orgEtsi string) (*SealCertificateRequest, error) {
@@ -277,8 +317,10 @@ func (s *SealService) WaitForCertificate(ctx context.Context, orgEtsi, requestID
 // Seal — POST /seal/{orgEtsi}: digest-ийг байгууллагын тамгаар тамгална. hash: SHA256 | SHA384 | SHA512 ("" = SHA256);
 // digest-ийн урт түүнтэй таарна. Хариуны гарын үсгийг хариуны гэрчилгээгээр digest дээр шалгаж, e-Seal гэрчилгээ
 // (KeyUsage = зөвхөн nonRepudiation) мөн эсэхийг тулгана — таарахгүй бол *ValidationError. Гинж/цуцлалтыг энэ шалгахгүй
-// (pades.SealPDF нь OCSP/CRL + self-validation хийнэ). Алдаа: 403 *ForbiddenError, 429 RATE_LIMITED (Retryable), 503
-// ErrSealServiceDisabled (тамгалалт унтраалттай; *APIError.Service = SealServiceSealing, Retry-After-гүй — давтахгүй).
+// (pades.SealPDF нь OCSP/CRL + self-validation хийнэ). Алдаа: 403 *ForbiddenError (RP-д SEAL:<orgEtsi> эрхгүй —
+// байгууллага зөвшөөрөөгүй / эрх хасагдсан), 429 RATE_LIMITED (RP-д минутад 300; Retryable), 503 ErrSealServiceDisabled
+// (тамгалалт унтраалттай; *APIError.Service = SealServiceSealing, Retry-After-гүй — давтахгүй), 409 ErrOrgNotActive /
+// ErrSealNotIssued / ErrSealCertRevoked / ErrSealKeyUnavailable / ErrSealCertExpired / ErrSealCertNotYetValid.
 func (s *SealService) Seal(ctx context.Context, orgEtsi string, digest []byte, hash HashAlgorithm) (*SealResult, error) {
 	if hash == "" {
 		hash = SHA256

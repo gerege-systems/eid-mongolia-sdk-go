@@ -130,6 +130,12 @@ func TestSealPDFRejects(t *testing.T) {
 		!errors.Is(err, eid.ErrSealServiceDisabled) || disabled.Retryable() {
 		t.Fatalf("seal disabled: %v", err)
 	}
+	// Тамганы гэрчилгээ цуцлагдсан (409 SEAL_CERT_REVOKED) — хэвээр дамжина, Retryable биш.
+	revoked := &eid.APIError{Status: 409, Code: eid.CodeSealCertRevoked}
+	if _, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key, err: revoked}, "NTRMN-6235972", pdf, sealOpts(p, leaf)); !errors.Is(err, revoked) ||
+		!errors.Is(err, eid.ErrSealCertRevoked) || errors.Is(err, eid.ErrSealCertExpired) || revoked.Retryable() {
+		t.Fatalf("seal revoked: %v", err)
+	}
 	// TSA заавал: TSA хүрэхгүй бол тамгагүй файл буцаахгүй.
 	o := sealOpts(p, leaf)
 	o.Complete.TSAURL = "http://tsa.unreachable.test/"

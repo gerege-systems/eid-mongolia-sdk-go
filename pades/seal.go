@@ -37,7 +37,9 @@ type SealOptions struct {
 // (байгууллагын тамга) гэж ангилна.
 //
 // Алдаа: *Error (CodeSignerInvalid — гэрчилгээ e-Seal биш эсвэл тамгалах хооронд гэрчилгээ солигдсон; Prepare/Complete-ийн
-// бусад код) эсвэл Sealer-ийн алдаа хэвээр (*eid.ForbiddenError — SEAL эрхгүй; *eid.APIError 429 — Retryable(); 503
+// бусад код) эсвэл Sealer-ийн алдаа хэвээр (*eid.ForbiddenError — SEAL эрхгүй; *eid.APIError 429 — Retryable(); 409
+// eid.ErrSealNotIssued / ErrSealCertRevoked / ErrSealCertExpired / ErrSealCertNotYetValid / ErrSealKeyUnavailable /
+// ErrOrgNotActive — идэвхтэй тамга алга; 503
 // eid.ErrSealServiceDisabled — тамгалалтыг оператор унтраасан: SealPDF давтахгүй, тамгагүй файл буцаахгүй, RP ч автоматаар
 // давтахгүй).
 func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOptions) (*Completed, error) {

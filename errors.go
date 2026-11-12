@@ -49,6 +49,11 @@ type ForbiddenError struct {
 	Header http.Header
 }
 
+// Is — errors.Is(err, ErrOrgNotActive): OnBehalfOf урсгалын 403 CodeOrgNotActive (тамганы замд энэ код 409 *APIError).
+func (e *ForbiddenError) Is(target error) bool {
+	return target == ErrOrgNotActive && e.Code == CodeOrgNotActive
+}
+
 func (e *ForbiddenError) Error() string {
 	if e.Message == "" {
 		return "eid: IP allowlist эсвэл mTLS зөвшөөрөөгүй (403)"
@@ -79,7 +84,8 @@ type APIError struct {
 func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.Status, e.Body) }
 
 // Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid / ErrQRTokenInvalid /
-// ErrSealApproverUnavailable / ErrSealRequestNotFound / ErrSealServiceDisabled): серверийн Code-оор.
+// ErrSealApproverUnavailable / ErrSealRequestNotFound / ErrSealServiceDisabled / ErrOrgNotActive / ErrSealNotIssued /
+// ErrSealCertRevoked / ErrSealKeyUnavailable / ErrSealCertExpired / ErrSealCertNotYetValid): серверийн Code-оор.
 func (e *APIError) Is(target error) bool {
 	switch target {
 	case ErrNoSigningCertificate:
@@ -96,6 +102,18 @@ func (e *APIError) Is(target error) bool {
 		return e.Code == CodeSealRequestNotFound
 	case ErrSealServiceDisabled:
 		return e.Code == CodeSealServiceDisabled
+	case ErrOrgNotActive:
+		return e.Code == CodeOrgNotActive
+	case ErrSealNotIssued:
+		return e.Code == CodeSealNotIssued
+	case ErrSealCertRevoked:
+		return e.Code == CodeSealCertRevoked
+	case ErrSealKeyUnavailable:
+		return e.Code == CodeSealKeyUnavailable
+	case ErrSealCertExpired:
+		return e.Code == CodeSealCertExpired
+	case ErrSealCertNotYetValid:
+		return e.Code == CodeSealCertNotYetValid
 	}
 	return false
 }
@@ -238,7 +256,8 @@ const (
 	CodeRepresentationPending = "REPRESENTATION_PENDING"
 	// CodeRepresentationExpired — 403: хугацааны гадна.
 	CodeRepresentationExpired = "REPRESENTATION_EXPIRED"
-	// CodeOrgNotActive — 403: байгууллага eID-д идэвхгүй.
+	// CodeOrgNotActive — байгууллага eID-д ACTIVE биш: OnBehalfOf урсгалд 403 (*ForbiddenError), тамганы замд
+	// (Seal, RequestCertificate) 409 (*APIError). Аль алинд errors.Is(err, ErrOrgNotActive).
 	CodeOrgNotActive = "ORG_NOT_ACTIVE"
 	// CodeSignerUnidentified — 403: anonymous session.
 	CodeSignerUnidentified = "SIGNER_UNIDENTIFIED"
