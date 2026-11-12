@@ -289,7 +289,20 @@ func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader
 	case http.StatusForbidden:
 		return nil, &ForbiddenError{Code: code, Message: msg, RetryAfter: retry, Header: res.Header}
 	}
-	return nil, &APIError{Status: res.StatusCode, Body: string(raw), Code: code, RetryAfter: retry, Header: res.Header}
+	return nil, &APIError{Status: res.StatusCode, Body: string(raw), Code: code, Service: errorService(raw), RetryAfter: retry,
+		Header: res.Header}
+}
+
+// errorService — серверийн алдааны JSON-ийн {"service"} (503 SEAL_SERVICE_DISABLED); байхгүй / мөр биш бол "".
+func errorService(raw []byte) string {
+	var v struct {
+		Service any `json:"service"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return ""
+	}
+	s, _ := v.Service.(string)
+	return s
 }
 
 // errorBody — серверийн алдааны JSON {"error","code"}; JSON биш (proxy) бол хоосон.

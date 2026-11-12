@@ -267,6 +267,27 @@ func TestContractPDFRegisterErrorCodes(t *testing.T) {
 	}
 }
 
+// TestContractSealSwitches — discovery-ийн seal блок (CA 2026-11-12): issuanceEnabled / sealingEnabled (амьд утга) байгаа,
+// disabledCode == CodeSealServiceDisabled (503 ба FAILED хүсэлтийн failure-ийн код).
+func TestContractSealSwitches(t *testing.T) {
+	var d struct {
+		Seal *struct {
+			IssuanceEnabled *bool  `json:"issuanceEnabled"`
+			SealingEnabled  *bool  `json:"sealingEnabled"`
+			DisabledCode    string `json:"disabledCode"`
+		} `json:"seal"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	s := d.Seal
+	if s == nil {
+		t.Fatal("discovery-д seal блок алга")
+	}
+	if s.IssuanceEnabled == nil || s.SealingEnabled == nil || s.DisabledCode != CodeSealServiceDisabled {
+		t.Fatalf("seal блок: issuanceEnabled=%v sealingEnabled=%v disabledCode=%q", s.IssuanceEnabled, s.SealingEnabled, s.DisabledCode)
+	}
+	t.Logf("seal.issuanceEnabled=%v seal.sealingEnabled=%v", *s.IssuanceEnabled, *s.SealingEnabled)
+}
+
 // TestContractCertChoiceDTO — CA dto.CertificateChoiceRequest-ийн талбарууд (үл мэдэгдэх талбарыг CA 400-аар
 // татгалздаг): relyingPartyUUID, relyingPartyName, certificateLevel?, initialCallbackUrl? (зөвхөн device-link).
 func TestContractCertChoiceDTO(t *testing.T) {

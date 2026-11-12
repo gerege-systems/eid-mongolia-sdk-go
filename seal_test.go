@@ -356,3 +356,79 @@ func TestSeal_RequestCertificateErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// 503 SEAL_SERVICE_DISABLED (CA 2026-11-12): оператор олголт / тамгалалтыг унтраасан — Retry-After-гүй, давтахгүй.
+func TestSeal_ServiceDisabled(t *testing.T) {
+	ctx := context.Background()
+	d := sha256.Sum256([]byte("doc"))
+	var ae *APIError
+
+	c, rc := server(t, jsonReply(503, `{"error":"тамганы гэрчилгээ олгох үйлчилгээ түр унтраалттай байна","code":"SEAL_SERVICE_DISABLED","service":"issuance"}`))
+	_, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972")
+	if !errors.Is(err, ErrSealServiceDisabled) || !errors.As(err, &ae) || ae.Status != 503 || ae.Code != CodeSealServiceDisabled ||
+		ae.Service != SealServiceIssuance || ae.RetryAfter != 0 || ae.Retryable() || rc.count() != 1 {
+		t.Fatalf("issuance: %v", err)
+	}
+	if errors.Is(err, ErrSealApproverUnavailable) || errors.Is(err, ErrSealRequestNotFound) {
+		t.Fatalf("issuance: өөр sentinel таарсан: %v", err)
+	}
+
+	c, rc = server(t, jsonReply(503, `{"error":"the sealing service is currently disabled","code":"SEAL_SERVICE_DISABLED","service":"sealing"}`))
+	_, err = c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256)
+	if !errors.Is(err, ErrSealServiceDisabled) || !errors.As(err, &ae) || ae.Status != 503 || ae.Service != SealServiceSealing ||
+		ae.Retryable() || rc.count() != 1 {
+		t.Fatalf("sealing: %v", err)
+	}
+
+	// Урд талын proxy Retry-After нэмсэн ч давтахгүй: Retryable() false, WaitForCertificate нэг л хүсэлт.
+	disabled := sealStep{status: 503, body: `{"error":"x","code":"SEAL_SERVICE_DISABLED","service":"issuance"}`, header: map[string]string{"Retry-After": "1"}}
+	c, rc = server(t, sealSeq(disabled))
+	_, err = c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	if !errors.Is(err, ErrSealServiceDisabled) || !errors.As(err, &ae) || ae.Retryable() || rc.count() != 1 {
+		t.Fatalf("wait 503: %v (%d хүсэлт)", err, rc.count())
+	}
+
+	// Батлагдсан ч олголт унтраалттай байсан хүсэлт: FAILED + failure → *SealRequestError, errors.Is таарна.
+	c, rc = server(t, sealSeq(sealStep{status: 200, body: sealReqBody("FAILED", `,"decidedAt":"2026-11-12T05:01:00Z","failure":"SEAL_SERVICE_DISABLED"`)}))
+	_, err = c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	var se *SealRequestError
+	if !errors.As(err, &se) || se.Outcome != SealRequestFailed || se.Failure != CodeSealServiceDisabled ||
+		!errors.Is(err, ErrSealServiceDisabled) || rc.count() != 1 {
+		t.Fatalf("wait FAILED: %v", err)
+	}
+	if errors.Is(&SealRequestError{Outcome: SealRequestFailed, Failure: "SEAL_ISSUANCE_FAILED"}, ErrSealServiceDisabled) {
+		t.Fatal("өөр failure ErrSealServiceDisabled-тэй таарсан")
+	}
+}
+
+// Бусад 503 хэвээр: код/Retry-After-аар Retryable, ErrSealServiceDisabled биш, Service хоосон.
+func TestSeal_Other503Unchanged(t *testing.T) {
+	ctx := context.Background()
+	d := sha256.Sum256([]byte("doc"))
+	var ae *APIError
+	for _, tc := range []struct {
+		step      sealStep
+		retryable bool
+	}{
+		{sealStep{status: 503, body: `{"error":"state store","code":"STATE_UNAVAILABLE"}`, header: map[string]string{"Retry-After": "5"}}, true},
+		{sealStep{status: 503, body: `<html>upstream</html>`, header: map[string]string{"Retry-After": "2"}}, true},
+		{sealStep{status: 503, body: `{"error":"түр алдаа"}`}, false},
+		{sealStep{status: 503, body: `{"error":"x","code":"OTHER","service":7}`}, false},
+	} {
+		c, _ := server(t, sealSeq(tc.step))
+		_, err := c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256)
+		if !errors.As(err, &ae) || ae.Status != 503 || ae.Retryable() != tc.retryable || ae.Service != "" || errors.Is(err, ErrSealServiceDisabled) {
+			t.Fatalf("%s: %v", tc.step.body, err)
+		}
+	}
+	// WaitForCertificate: 503 + Retry-After-ийг дагаж үргэлжилнэ.
+	_, certDER := sealTestCert(t, x509.KeyUsageContentCommitment)
+	c, rc := server(t, sealSeq(
+		sealStep{status: 503, body: `{"error":"state store","code":"STATE_UNAVAILABLE"}`, header: map[string]string{"Retry-After": "1"}},
+		sealStep{status: 200, body: sealIssuedBody(certDER)},
+	))
+	sc, err := c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", sealReqID, &SealWaitOptions{Interval: time.Millisecond})
+	if err != nil || !bytes.Equal(sc.Certificate, certDER) || rc.count() != 2 {
+		t.Fatalf("wait 503 retry: %v (%d хүсэлт)", err, rc.count())
+	}
+}
