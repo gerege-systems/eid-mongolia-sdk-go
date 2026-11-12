@@ -124,6 +124,12 @@ func TestSealPDFRejects(t *testing.T) {
 	if _, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key, err: apiErr}, "NTRMN-6235972", pdf, sealOpts(p, leaf)); !errors.Is(err, apiErr) {
 		t.Fatalf("api error: %v", err)
 	}
+	// Тамгалалт унтраалттай (503 SEAL_SERVICE_DISABLED) — хэвээр дамжина, Retryable биш.
+	disabled := &eid.APIError{Status: 503, Code: eid.CodeSealServiceDisabled, Service: eid.SealServiceSealing}
+	if _, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key, err: disabled}, "NTRMN-6235972", pdf, sealOpts(p, leaf)); !errors.Is(err, disabled) ||
+		!errors.Is(err, eid.ErrSealServiceDisabled) || disabled.Retryable() {
+		t.Fatalf("seal disabled: %v", err)
+	}
 	// TSA заавал: TSA хүрэхгүй бол тамгагүй файл буцаахгүй.
 	o := sealOpts(p, leaf)
 	o.Complete.TSAURL = "http://tsa.unreachable.test/"

@@ -66,6 +66,9 @@ type APIError struct {
 	Body string
 	// Code — серверийн {"error","code"}-ийн code (ж: CodeOrgNotFound); байхгүй бол "".
 	Code string
+	// Service — серверийн {"service"} (мөр): CodeSealServiceDisabled-д унтраалттай үйлчилгээ (SealServiceIssuance |
+	// SealServiceSealing); бусад алдаанд "".
+	Service string
 	// RetryAfter — хариуны Retry-After (секунд эсвэл HTTP-огноо задалсан); байхгүй/буруу бол 0. CA түр алдаанд
 	// (429 RATE_LIMITED, 503 STATE_UNAVAILABLE / ISSUANCE_PENDING г.м.) тавина.
 	RetryAfter time.Duration
@@ -76,7 +79,7 @@ type APIError struct {
 func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.Status, e.Body) }
 
 // Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid / ErrQRTokenInvalid /
-// ErrSealApproverUnavailable / ErrSealRequestNotFound): серверийн Code-оор.
+// ErrSealApproverUnavailable / ErrSealRequestNotFound / ErrSealServiceDisabled): серверийн Code-оор.
 func (e *APIError) Is(target error) bool {
 	switch target {
 	case ErrNoSigningCertificate:
@@ -91,6 +94,8 @@ func (e *APIError) Is(target error) bool {
 		return e.Code == CodeSealApproverUnavailable
 	case ErrSealRequestNotFound:
 		return e.Code == CodeSealRequestNotFound
+	case ErrSealServiceDisabled:
+		return e.Code == CodeSealServiceDisabled
 	}
 	return false
 }
@@ -116,8 +121,12 @@ var (
 )
 
 // Retryable — CA-ийн түр алдаа (RetryableCodes-ийн нэг, эсвэл 429/503 + Retry-After): RetryAfter-ийн дараа ижил
-// хүсэлтийг давтаж болно (prepared state хэвээр).
+// хүсэлтийг давтаж болно (prepared state хэвээр). 503 CodeSealServiceDisabled — хэзээ ч үгүй (оператор унтраасан;
+// хэзээ асах нь тодорхойгүй, CA Retry-After тавихгүй).
 func (e *APIError) Retryable() bool {
+	if e.Code == CodeSealServiceDisabled {
+		return false
+	}
 	for _, c := range RetryableCodes {
 		if e.Code == c {
 			return true
@@ -251,10 +260,12 @@ var OnBehalfErrorCodes = []string{
 	CodeRepresentationRevoked,
 }
 
-// identifierInPath — замын хувь хүн/төхөөрөмж/байгууллагын таних тэмдэг (PNOMN-…, РД, documentNumber, NTRMN-…).
-var identifierInPath = regexp.MustCompile(`/(etsi|document|linked|seal(?:/certificate)?)/[^/?#\s]+`)
+// identifierInPath — замын хувь хүн/төхөөрөмж/байгууллагын таних тэмдэг (PNOMN-…, РД, documentNumber, NTRMN-…) ба тамганы
+// гэрчилгээний хүсэлтийн id.
+var identifierInPath = regexp.MustCompile(`/(etsi|document|linked|requests|seal(?:/certificate)?)/[^/?#\s]+`)
 
-// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…}, /seal/[certificate/]{…} → "…", query хасагдана.
+// maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…}, /seal/[certificate/]{…}, /requests/{…} → "…",
+// query хасагдана.
 func maskPath(p string) string {
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		p = p[:i]

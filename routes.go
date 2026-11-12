@@ -40,7 +40,7 @@ var (
 	routeShare                    = rpRoute{"POST", "/share"}
 	routeSealCertificate          = rpRoute{"GET", "/seal/certificate/{orgEtsi}"}
 	routeSealCertificateRequest   = rpRoute{"POST", "/seal/certificate/{orgEtsi}"}
-	// routeSealCertificateRequestStatus — CA !483 (ORG_ONBOARDING §4.3); discovery-д хараахан алга.
+	// routeSealCertificateRequestStatus — CA !483 (ORG_ONBOARDING §4.3); discovery: endpoints.seal.certificate_request.
 	routeSealCertificateRequestStatus = rpRoute{"GET", "/seal/certificate/{orgEtsi}/requests/{requestId}"}
 	routeSeal                         = rpRoute{"POST", "/seal/{orgEtsi}"}
 )
@@ -59,12 +59,12 @@ var rpRoutes = []rpRoute{
 	routeTokenCertificate, routeTokenCertificateResult,
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 	routeShare,
-	routeSealCertificate, routeSealCertificateRequest, routeSeal,
+	routeSealCertificate, routeSealCertificateRequest, routeSealCertificateRequestStatus, routeSeal,
 }
 
 // rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
 // Гэрээний тест эдгээрийг WARN болгоно (fail биш); discovery-д нэмэгдмэгц rpRoutes руу шилжүүлнэ.
-var rpRoutesUndiscovered = []rpRoute{routeSealCertificateRequestStatus}
+var rpRoutesUndiscovered = []rpRoute{}
 
 // expand — template-ийн {param}-уудыг дарааллаар нь url.PathEscape хийсэн args-аар орлуулна.
 func (r rpRoute) expand(args ...string) string {

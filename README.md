@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.25.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.26.0
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -630,6 +630,9 @@ r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{o
 - `hashType`: `eid.SHA256` (анхдагч) | `SHA384` | `SHA512`; digest-ийн урт таарахгүй бол сүлжээнд гарахгүй.
 - **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин. 404 — байгууллага олдсонгүй;
   409 — байгууллага ACTIVE биш, эсвэл идэвхтэй тамганы гэрчилгээ алга/цуцлагдсан.
+- **503 `SEAL_SERVICE_DISABLED`** — доорх «Үйлчилгээний унтраалга»-г үз (давтахгүй).
+- `CertificateLevel` (`SealCertificate`, `SealResult`) нь **гэрчилгээнээс өөрөөс нь** гарна (QcSSCD байвал `QSCD`, үгүй
+  бол `QUALIFIED`) — CA-ийн одоогийн түлхүүрийн тохиргооноос биш.
 - `Certificate` нь байгууллагын **одоогийн (олгогдсон, идэвхтэй)** гэрчилгээг буцаана — шинээр олгохгүй; идэвхтэй cert
   алга / цуцлагдсан бол 409. PDF-ийг тамгалах: §7.3 `pades.SealPDF`.
 
@@ -655,13 +658,40 @@ if errors.As(err, &se) {
   `CreatedAt`, `ExpiresAt`, `Approvers`). Байгууллагад PENDING хүсэлт байвал CA түүнийг буцаана (шинэ push үгүй).
 - `CertificateRequest(ctx, org, requestID)` — `GET /seal/certificate/{orgEtsi}/requests/{requestId}`: `Status` = `PENDING` |
   `APPROVED` (олгогдож байна) | `ISSUED` (`Certificate` бөглөгдсөн) | `REJECTED` | `EXPIRED` | `FAILED` (`Failure`:
-  `SEAL_ISSUANCE_FAILED` | `PUSH_FAILED`).
+  `SEAL_ISSUANCE_FAILED` | `PUSH_FAILED` | `SEAL_SERVICE_DISABLED`).
 - `WaitForCertificate(ctx, org, requestID, *SealWaitOptions{Timeout = 15 мин, Interval = 3 с})` — ISSUED болтол асууж
   `*SealCertificate` буцаана; REJECTED / EXPIRED / FAILED / хугацаа дууссан → `*SealRequestError`. 429/503 + Retry-After
   (`*APIError.Retryable()`) — `RetryAfter`-ийг хүлээгээд үргэлжилнэ; `ctx` цуцлагдвал `ctx.Err()`.
 - Алдаа: **409 `SEAL_APPROVER_UNAVAILABLE`** (`errors.Is(err, eid.ErrSealApproverUnavailable)`); 409 (code-гүй) — байгууллага
   ACTIVE биш; **404 `SEAL_REQUEST_NOT_FOUND`** (`eid.ErrSealRequestNotFound`; өөр байгууллагын id ч мөн); 403
-  `*ForbiddenError` (`SEAL:<orgEtsi>` эрхгүй); **429 `RATE_LIMITED`** + `RetryAfter` — байгууллагад цагт 5 хүсэлт.
+  `*ForbiddenError` (`SEAL:<orgEtsi>` эрхгүй); **429 `RATE_LIMITED`** + `RetryAfter` — байгууллагад цагт 5 хүсэлт;
+  **503 `SEAL_SERVICE_DISABLED`** (`eid.ErrSealServiceDisabled`) — олголт унтраалттай.
+
+#### Үйлчилгээний унтраалга — `SEAL_SERVICE_DISABLED`
+
+eID-ийн оператор **тамганы гэрчилгээний олголт** ба **тамгалалт**-ыг тус тусад нь, платформ даяар унтрааж болно. Унтраалттай
+үед `RequestCertificate` (`service: "issuance"`) ба `Seal` / `pades.SealPDF` (`service: "sealing"`) нь
+`503 {"error", "code": "SEAL_SERVICE_DISABLED", "service"}` авна — `Retry-After`-гүй.
+
+```go
+r, err := c.Seal.Seal(ctx, org, digest, eid.SHA256)
+if errors.Is(err, eid.ErrSealServiceDisabled) {
+	var ae *eid.APIError
+	if errors.As(err, &ae) {
+		// ae.Status == 503, ae.Service == eid.SealServiceSealing | eid.SealServiceIssuance, ae.Retryable() == false
+	}
+	// автоматаар давтахгүй — хэрэглэгчид «үйлчилгээ түр унтраалттай» гэж харуулж, дараалалд үлдээнэ
+}
+```
+
+- `*APIError.Retryable()` энэ кодод **үргэлж false** (proxy `Retry-After` нэмсэн ч) — SDK (`WaitForCertificate`,
+  `pades.SealPDF`) давтахгүй, алдааг хэвээр буцаана; хэзээ асахыг CA мэдэгдэхгүй тул RP ч богино давталт хийхгүй.
+- Хүлээгдэж байсан хүсэлтийг ADMIN баталсан ч олголт унтраалттай байвал хүсэлт `FAILED`, `Failure` =
+  `SEAL_SERVICE_DISABLED` болж гэрчилгээ гарахгүй: `WaitForCertificate` → `*SealRequestError`, мөн
+  `errors.Is(err, eid.ErrSealServiceDisabled)` true. Асаасны дараа шинэ `RequestCertificate`.
+- Хэзээ ч унтардаггүй: `Certificate`, `CertificateRequest` (төлөвийн асуулга), шалгалт (`/validate/*`, `pades.ValidatePDF`),
+  OCSP/CRL, цуцлалт — өмнө тамгалсан баримт хүчинтэй хэвээр.
+- Одоогийн төлөв `/.well-known/eid`-ийн `seal` блокт: `{"issuanceEnabled", "sealingEnabled", "disabledCode"}`.
 
 ## 4. Аюулгүй байдал — яагаад `Validator` заавал
 
@@ -916,7 +946,7 @@ self-validation. Тамга үл харагдах, баталгаажуулал�
 харуулна уу.
 Алдаа: `CodeSignerInvalid` (cert e-Seal биш, эсвэл тамгалах хооронд cert солигдсон — дахин оролд),
 `CodeSignatureInvalid`, `CodeTSAUnavailable`/`CodeLTVUnavailable` (түр), RP-API-ийн алдаа (`*ForbiddenError`, `*APIError`)
-хэвээр. `pades.Sealer` интерфейс (`*eid.SealService` хангана) — тестэд орлуулж болно.
+хэвээр — тамгалалт унтраалттай бол 503 `eid.ErrSealServiceDisabled` (§3.10; `SealPDF` давтахгүй, тамгагүй файл буцаахгүй). `pades.Sealer` интерфейс (`*eid.SealService` хангана) — тестэд орлуулж болно.
 
 ## Хөгжүүлэлт
 
@@ -959,7 +989,12 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page, invisible); validators report
   `usage: "seal"`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
   approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
-  `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`).
+  `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`). The operator can switch
+  issuance and sealing off platform-wide: `RequestCertificate` / `Seal` / `pades.SealPDF` then fail with
+  `503 SEAL_SERVICE_DISABLED` — `errors.Is(err, eid.ErrSealServiceDisabled)`, `APIError.Service` =
+  `eid.SealServiceIssuance` | `eid.SealServiceSealing`, no `Retry-After`, `Retryable()` is always false (never
+  auto-retried); a request approved while issuance is off ends `FAILED` with `Failure: "SEAL_SERVICE_DISABLED"`
+  (also matches `ErrSealServiceDisabled`).
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default

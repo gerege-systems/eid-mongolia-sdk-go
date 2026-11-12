@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.26.0 — 2026-11-12
+
+### Added — тамганы үйлчилгээний унтраалга: `ErrSealServiceDisabled` (503 `SEAL_SERVICE_DISABLED`)
+
+- **Юу:** `eid.CodeSealServiceDisabled`, sentinel `eid.ErrSealServiceDisabled` (`*APIError.Is` — серверийн `code`-оор; мөн `*SealRequestError.Is` — `Failure` = `SEAL_SERVICE_DISABLED`), `APIError.Service` (алдааны биеийн `service`: `eid.SealServiceIssuance` = `"issuance"` | `eid.SealServiceSealing` = `"sealing"`). `*APIError.Retryable()` энэ кодод үргэлж false (Retry-After байсан ч) — `WaitForCertificate` ба `pades.SealPDF` давтахгүй, алдааг хэвээр буцаана. Хүсэлтийн `Failure`-ийн кодод `SEAL_SERVICE_DISABLED` нэмэгдсэн (баримтжуулалт). `GET /seal/certificate/{orgEtsi}/requests/{requestId}` зам `rpRoutesUndiscovered`-оос `rpRoutes` руу (discovery `endpoints.seal.certificate_request`); `maskPath` нь `/requests/{id}`-г ч нууна (`TestMaskPathAllRoutes`). Гэрээний тест `TestContractSealSwitches` — discovery-ийн `seal` блок (`issuanceEnabled`, `sealingEnabled`, `disabledCode`). Тайлбар: `CertificateLevel` нь гэрчилгээнээс өөрөөс нь гарна.
+- **Яагаад:** CA (2026-11-12) тамганы гэрчилгээний олголт ба тамгалалтыг оператор тус тусад нь платформ даяар унтраадаг болсон: `POST /seal/certificate/{orgEtsi}` ба `POST /seal/{orgEtsi}` нь `503 {"error","code":"SEAL_SERVICE_DISABLED","service"}` (Retry-After-гүй) буцаана; унтраалттай үед батлагдсан хүсэлт `FAILED` + `failure: "SEAL_SERVICE_DISABLED"`. RP үүнийг түр алдаанаас (STATE_UNAVAILABLE г.м.) ялгаж, автоматаар давтахгүй байх ёстой.
+- **Хаана:** `seal.go`, `errors.go`, `client.go` (`errorService`), `routes.go`, `pades/seal.go` (тайлбар); тест `seal_test.go` (`TestSeal_ServiceDisabled` — хоёр зам, давталтгүй, FAILED хүсэлт; `TestSeal_Other503Unchanged`), `pades/seal_test.go`, `contract_test.go`; README §3.10 «Үйлчилгээний унтраалга», §7.3, English.
+- **Шалгасан:** локалд gofmt, `go vet ./...` (+ `-tags contract`), `go test ./...`, `GOOS=linux GOARCH=amd64 go build ./...` (CGO_ENABLED=0); гэрээний тест (live discovery) ба `-race` — GitHub Actions CI.
+- **Үлдсэн:** `TestContractSealSwitches` нь CA-ийн `seal` блок прод-д гарсны дараа л ногоон.
+
 ## v0.25.0 — 2026-11-09
 
 ### Added — тамганы гэрчилгээ олгуулах: `RequestCertificate` / `CertificateRequest` / `WaitForCertificate`

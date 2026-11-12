@@ -20,11 +20,17 @@ import (
 // Тамганы гэрчилгээ олгох (CA !483, 2026-11-09): RequestCertificate → 202 PENDING хүсэлт; байгууллагын ADMIN eID аппаараа
 // PIN2-оор батална; CertificateRequest / WaitForCertificate-ээр ISSUED (гэрчилгээтэй) / REJECTED / EXPIRED / FAILED хүртэл
 // асууна.
+//
+// Үйлчилгээний унтраалга (CA 2026-11-12): eID-ийн оператор тамганы гэрчилгээний олголт ба тамгалалтыг тус тусад нь
+// платформ даяар унтрааж болно — RequestCertificate / Seal нь 503 ErrSealServiceDisabled (*APIError, Service =
+// SealServiceIssuance | SealServiceSealing; Retry-After-гүй, Retryable() false) буцаана: автоматаар давтахгүй. Certificate
+// ба CertificateRequest (тэгэхээр WaitForCertificate-ийн асуулга) хэзээ ч унтардаггүй.
 type SealService struct {
 	h *httpDoer
 }
 
-// SealCertificate — GET /seal/certificate/{orgEtsi}-ийн хариу (CA dto.SealCertificateResponse).
+// SealCertificate — GET /seal/certificate/{orgEtsi}-ийн хариу (CA dto.SealCertificateResponse). CertificateLevel нь
+// ГЭРЧИЛГЭЭНЭЭС өөрөөс нь (QcSSCD байвал QSCD, үгүй бол QUALIFIED) — CA-ийн одоогийн түлхүүрийн тохиргооноос биш.
 type SealCertificate struct {
 	OrgEtsi          string           `json:"orgEtsi"`
 	Certificate      []byte           `json:"certificate"` // DER (JSON-д base64)
@@ -44,7 +50,8 @@ type SealResult struct {
 	// SignatureAlgorithm — ж: ecdsa-with-SHA256 (digest-ийн hash-аас).
 	SignatureAlgorithm string
 	// Certificate — тамгалсан гэрчилгээ (DER).
-	Certificate      []byte
+	Certificate []byte
+	// CertificateLevel — тамгалсан гэрчилгээний өөрийнх нь түвшин (QcSSCD байвал QSCD, үгүй бол QUALIFIED).
 	CertificateLevel CertificateLevel
 	SealedAt         time.Time
 	// Raw — серверийн түүхий JSON.
@@ -60,7 +67,7 @@ const (
 	SealRequestIssued   SealRequestStatus = "ISSUED"   // Certificate бөглөгдсөн
 	SealRequestRejected SealRequestStatus = "REJECTED"
 	SealRequestExpired  SealRequestStatus = "EXPIRED"
-	SealRequestFailed   SealRequestStatus = "FAILED" // Failure: SEAL_ISSUANCE_FAILED | PUSH_FAILED
+	SealRequestFailed   SealRequestStatus = "FAILED" // Failure: SEAL_ISSUANCE_FAILED | PUSH_FAILED | SEAL_SERVICE_DISABLED
 )
 
 // SealCertificateRequest — POST /seal/certificate/{orgEtsi} (202) ба GET /seal/certificate/{orgEtsi}/requests/{requestId}-ийн
@@ -75,7 +82,8 @@ type SealCertificateRequest struct {
 	DecidedAt *time.Time `json:"decidedAt,omitempty"`
 	// Approvers — PIN2 push илгээсэн ADMIN-ийн тоо (шинэ/PENDING хариунд).
 	Approvers int `json:"approvers,omitempty"`
-	// Failure — FAILED/EXPIRED үеийн машин код: EXPIRED | SEAL_ISSUANCE_FAILED | PUSH_FAILED.
+	// Failure — FAILED/EXPIRED үеийн машин код: EXPIRED | SEAL_ISSUANCE_FAILED | PUSH_FAILED | SEAL_SERVICE_DISABLED
+	// (CodeSealServiceDisabled — ADMIN баталсан ч олголт унтраалттай байсан; гэрчилгээ гараагүй).
 	Failure string `json:"failure,omitempty"`
 	// Certificate — ISSUED үед (Certificate()-тэй ижил хэлбэр).
 	Certificate *SealCertificate `json:"certificate,omitempty"`
@@ -87,12 +95,28 @@ const (
 	CodeSealApproverUnavailable = "SEAL_APPROVER_UNAVAILABLE"
 	// CodeSealRequestNotFound — 404 (CertificateRequest): хүсэлт олдсонгүй (эсвэл өөр байгууллагынх).
 	CodeSealRequestNotFound = "SEAL_REQUEST_NOT_FOUND"
+	// CodeSealServiceDisabled — 503 (RequestCertificate: Service = SealServiceIssuance; Seal: Service = SealServiceSealing):
+	// eID-ийн оператор үйлчилгээг платформ даяар унтраасан. Retry-After-гүй, Retryable() false — давтахгүй; оператор
+	// асаасны дараа л ажиллана. Мөн SealCertificateRequest.Failure / SealRequestError.Failure-д (Status FAILED): хүлээгдэж
+	// байсан хүсэлтийг ADMIN баталсан ч олголт унтраалттай байсан.
+	CodeSealServiceDisabled = "SEAL_SERVICE_DISABLED"
+)
+
+// APIError.Service-ийн утгууд (503 CodeSealServiceDisabled).
+const (
+	// SealServiceIssuance — тамганы гэрчилгээний олголт (POST /seal/certificate/{orgEtsi}).
+	SealServiceIssuance = "issuance"
+	// SealServiceSealing — тамгалалт (POST /seal/{orgEtsi}; pades.SealPDF).
+	SealServiceSealing = "sealing"
 )
 
 // errors.Is-ийн sentinel-ууд (*APIError.Is нь Code-оор тулгана).
 var (
 	ErrSealApproverUnavailable = errors.New("eid: " + CodeSealApproverUnavailable)
 	ErrSealRequestNotFound     = errors.New("eid: " + CodeSealRequestNotFound)
+	// ErrSealServiceDisabled — 503 *APIError (RequestCertificate, Seal, pades.SealPDF) ба FAILED *SealRequestError
+	// (WaitForCertificate; Failure = CodeSealServiceDisabled) хоёуланд нь errors.Is-ээр таарна.
+	ErrSealServiceDisabled = errors.New("eid: " + CodeSealServiceDisabled)
 )
 
 // SealRequestError — WaitForCertificate: хүсэлт гэрчилгээгүй дууссан. Outcome = REJECTED (ADMIN татгалзсан) / EXPIRED
@@ -102,6 +126,11 @@ type SealRequestError struct {
 	Outcome   SealRequestStatus
 	RequestID string
 	Failure   string
+}
+
+// Is — errors.Is(err, ErrSealServiceDisabled): FAILED хүсэлтийн Failure = CodeSealServiceDisabled.
+func (e *SealRequestError) Is(target error) bool {
+	return target == ErrSealServiceDisabled && e.Failure == CodeSealServiceDisabled
 }
 
 // SealRequestTimeout — SealRequestError.Outcome: WaitForCertificate-ийн Timeout дууссан (серверийн төлөв биш).
@@ -164,7 +193,8 @@ func (s *SealService) Certificate(ctx context.Context, orgEtsi string) (*SealCer
 // ADMIN төлөөлөгч(ид) eID аппаараа PIN2-оор батална; WaitForCertificate / CertificateRequest-ээр асууна. Байгууллагад
 // PENDING хүсэлт байвал CA түүнийг буцаана (шинэ push үгүй). Алдаа: 409 ErrSealApproverUnavailable (идэвхтэй төхөөрөмжтэй
 // ADMIN алга), 409 *APIError (байгууллага ACTIVE биш), 403 *ForbiddenError (SEAL:<orgEtsi> эрхгүй), 404 (байгууллага
-// олдсонгүй), 429 RATE_LIMITED (байгууллагад цагт 5; RetryAfter).
+// олдсонгүй), 429 RATE_LIMITED (байгууллагад цагт 5; RetryAfter), 503 ErrSealServiceDisabled (олголт унтраалттай;
+// *APIError.Service = SealServiceIssuance, давтахгүй).
 func (s *SealService) RequestCertificate(ctx context.Context, orgEtsi string) (*SealCertificateRequest, error) {
 	var r SealCertificateRequest
 	if err := s.h.postJSON(ctx, routeSealCertificateRequest.expand(orgEtsi), struct{}{}, &r); err != nil {
@@ -197,6 +227,10 @@ func checkSealRequest(r *SealCertificateRequest) (*SealCertificateRequest, error
 // → *SealRequestError (шинэ хүсэлт хэрэгтэй); Timeout дуусвал Outcome SealRequestTimeout (хүсэлт PENDING хэвээр). Түр алдаа
 // (*APIError.Retryable: 429/503 + Retry-After) — RetryAfter-ийг хүлээгээд үргэлжилнэ; бусад алдаа шууд. ctx цуцлагдвал
 // ctx.Err().
+//
+// Олголт унтраалттай үед ADMIN баталсан хүсэлт FAILED (Failure = CodeSealServiceDisabled) болно —
+// errors.Is(err, ErrSealServiceDisabled); оператор асаасны дараа шинэ RequestCertificate. 503 CodeSealServiceDisabled
+// хариуг (төлөвийн асуулга унтардаггүй ч) давтахгүй, шууд буцаана.
 func (s *SealService) WaitForCertificate(ctx context.Context, orgEtsi, requestID string, o *SealWaitOptions) (*SealCertificate, error) {
 	interval, timeout := DefaultSealPollInterval, DefaultSealWaitTimeout
 	if o != nil && o.Interval > 0 {
@@ -243,7 +277,8 @@ func (s *SealService) WaitForCertificate(ctx context.Context, orgEtsi, requestID
 // Seal — POST /seal/{orgEtsi}: digest-ийг байгууллагын тамгаар тамгална. hash: SHA256 | SHA384 | SHA512 ("" = SHA256);
 // digest-ийн урт түүнтэй таарна. Хариуны гарын үсгийг хариуны гэрчилгээгээр digest дээр шалгаж, e-Seal гэрчилгээ
 // (KeyUsage = зөвхөн nonRepudiation) мөн эсэхийг тулгана — таарахгүй бол *ValidationError. Гинж/цуцлалтыг энэ шалгахгүй
-// (pades.SealPDF нь OCSP/CRL + self-validation хийнэ).
+// (pades.SealPDF нь OCSP/CRL + self-validation хийнэ). Алдаа: 403 *ForbiddenError, 429 RATE_LIMITED (Retryable), 503
+// ErrSealServiceDisabled (тамгалалт унтраалттай; *APIError.Service = SealServiceSealing, Retry-After-гүй — давтахгүй).
 func (s *SealService) Seal(ctx context.Context, orgEtsi string, digest []byte, hash HashAlgorithm) (*SealResult, error) {
 	if hash == "" {
 		hash = SHA256
