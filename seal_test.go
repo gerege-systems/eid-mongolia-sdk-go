@@ -357,6 +357,86 @@ func TestSeal_RequestCertificateErrors(t *testing.T) {
 	}
 }
 
+// Тамганы 409 бүр тогтвортой code-той (CA 2026-11-12; статус хэвээр); GET /seal/certificate идэвхтэй гэрчилгээгүй бол 409.
+func TestSeal_ConflictCodes(t *testing.T) {
+	ctx := context.Background()
+	d := sha256.Sum256([]byte("doc"))
+	all := []struct {
+		code     string
+		sentinel error
+		onGet    bool // GET /seal/certificate-д ч ирнэ
+	}{
+		{CodeOrgNotActive, ErrOrgNotActive, false},
+		{CodeSealNotIssued, ErrSealNotIssued, true},
+		{CodeSealCertRevoked, ErrSealCertRevoked, true},
+		{CodeSealKeyUnavailable, ErrSealKeyUnavailable, false},
+		{CodeSealCertExpired, ErrSealCertExpired, true},
+		{CodeSealCertNotYetValid, ErrSealCertNotYetValid, true},
+	}
+	check := func(what string, err error, i int, rc *rec) {
+		t.Helper()
+		var ae *APIError
+		if !errors.As(err, &ae) || ae.Status != 409 || ae.Code != all[i].code || ae.Retryable() || rc.count() != 1 {
+			t.Fatalf("%s %s: %v (%d хүсэлт)", what, all[i].code, err, rc.count())
+		}
+		for j, o := range all {
+			if errors.Is(err, o.sentinel) != (i == j) {
+				t.Fatalf("%s %s: errors.Is(%v) = %v", what, all[i].code, o.sentinel, i != j)
+			}
+		}
+		if errors.Is(err, ErrSealApproverUnavailable) || errors.Is(err, ErrSealServiceDisabled) || errors.Is(err, ErrSealRequestNotFound) {
+			t.Fatalf("%s %s: өөр sentinel таарсан", what, all[i].code)
+		}
+	}
+	for i, tc := range all {
+		body := fmt.Sprintf(`{"error":"тамгалах боломжгүй","code":%q}`, tc.code)
+		c, rc := server(t, jsonReply(409, body))
+		_, err := c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256)
+		check("Seal", err, i, rc)
+		if tc.onGet {
+			c, rc = server(t, jsonReply(409, body))
+			_, err = c.Seal.Certificate(ctx, "NTRMN-6235972")
+			check("Certificate", err, i, rc)
+		}
+	}
+	c, rc := server(t, jsonReply(409, `{"error":"байгууллага ACTIVE биш","code":"ORG_NOT_ACTIVE"}`))
+	_, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972")
+	check("RequestCertificate", err, 0, rc)
+
+	// code-гүй / танигдаагүй 409 — *APIError хэвээр, sentinel таарахгүй.
+	for _, body := range []string{`{"error":"байгууллага ACTIVE биш"}`, `{"error":"x","code":"SEAL_SOMETHING_NEW"}`} {
+		c, _ := server(t, jsonReply(409, body))
+		_, err := c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256)
+		var ae *APIError
+		if !errors.As(err, &ae) || ae.Status != 409 {
+			t.Fatalf("%s: %v", body, err)
+		}
+		for _, o := range all {
+			if errors.Is(err, o.sentinel) {
+				t.Fatalf("%s: %v таарсан", body, o.sentinel)
+			}
+		}
+	}
+
+	// 403: RP-д SEAL эрхгүй (байгууллага зөвшөөрөөгүй / эрх хасагдсан) — *ForbiddenError; OnBehalfOf-ийн 403 ORG_NOT_ACTIVE
+	// нь ErrOrgNotActive-тэй таарна, бусад sentinel-тэй үгүй.
+	var fe *ForbiddenError
+	c, _ = server(t, jsonReply(403, `{"error":"SEAL эрхгүй","code":"PERMISSION_DENIED"}`))
+	if _, err := c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256); !errors.As(err, &fe) || fe.Code != "PERMISSION_DENIED" || errors.Is(err, ErrOrgNotActive) {
+		t.Fatalf("403: %v", err)
+	}
+	c, _ = server(t, jsonReply(403, `{"error":"идэвхгүй","code":"ORG_NOT_ACTIVE"}`))
+	if _, err := c.Seal.Seal(ctx, "NTRMN-6235972", d[:], SHA256); !errors.As(err, &fe) || !errors.Is(err, ErrOrgNotActive) || errors.Is(err, ErrSealNotIssued) {
+		t.Fatalf("403 ORG_NOT_ACTIVE: %v", err)
+	}
+
+	want := []string{"ORG_NOT_ACTIVE", "SEAL_NOT_ISSUED", "SEAL_CERT_REVOKED", "SEAL_KEY_UNAVAILABLE", "SEAL_CERT_EXPIRED",
+		"SEAL_CERT_NOT_YET_VALID", "SEAL_APPROVER_UNAVAILABLE", "SEAL_REQUEST_NOT_FOUND", "SEAL_SERVICE_DISABLED"}
+	if fmt.Sprint(SealErrorCodes) != fmt.Sprint(want) {
+		t.Fatalf("SealErrorCodes = %v", SealErrorCodes)
+	}
+}
+
 // 503 SEAL_SERVICE_DISABLED (CA 2026-11-12): оператор олголт / тамгалалтыг унтраасан — Retry-After-гүй, давтахгүй.
 func TestSeal_ServiceDisabled(t *testing.T) {
 	ctx := context.Background()

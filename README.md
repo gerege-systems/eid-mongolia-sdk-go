@@ -615,8 +615,9 @@ CA-ийн бусад код: 404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE`
 ### 3.10. Байгууллагын цахим тамга (e-Seal) — `c.Seal` (v0.24.0)
 
 Байгууллагын нэрийн өмнөөс **хүнгүй, автомат** систем баримт тамгална (нэхэмжлэх, тодорхойлолт, хуулга): түлхүүр eID-ийн
-серверт, иргэн/PIN/апп оролцохгүй, хариу шууд (session-гүй). RP-д тухайн байгууллагын **`SEAL:<orgEtsi>`** эрх хэрэгтэй
-(eID-ийн оператор олгоно; эрхгүй бол `*ForbiddenError` 403). Иргэн байгууллагын нэрийн өмнөөс зурах бол §3.4 (тамга биш).
+серверт, иргэн/PIN/апп оролцохгүй, хариу шууд (session-гүй). RP-д тухайн байгууллагын **`SEAL:<orgEtsi>`** эрх хэрэгтэй —
+эрхийг **байгууллага өөрөө зөвшөөрнө** (доорх «Тамганы эрх, түлхүүр, хүчинтэй хугацаа»); эрхгүй бол `*ForbiddenError` 403.
+Иргэн байгууллагын нэрийн өмнөөс зурах бол §3.4 (тамга биш).
 
 ```go
 sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — одоогийн олгогдсон тамганы cert
@@ -628,13 +629,58 @@ r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{o
   (`eid.IsSealCertificate`: KeyUsage = зөвхөн nonRepudiation, EKU-гүй) байх ёстой — эс бөгөөс `*ValidationError`. Гинж ба
   цуцлалтыг `pades.SealPDF` (OCSP/CRL + self-validation) шалгана.
 - `hashType`: `eid.SHA256` (анхдагч) | `SHA384` | `SHA512`; digest-ийн урт таарахгүй бол сүлжээнд гарахгүй.
-- **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин. 404 — байгууллага олдсонгүй;
-  409 — байгууллага ACTIVE биш, эсвэл идэвхтэй тамганы гэрчилгээ алга/цуцлагдсан.
+- **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин (RP-д минутад 300 тамгалалт).
+  404 — байгууллага олдсонгүй; **409** — code бүр өөрийн sentinel-тэй (доорх хүснэгт, v0.27.0).
 - **503 `SEAL_SERVICE_DISABLED`** — доорх «Үйлчилгээний унтраалга»-г үз (давтахгүй).
 - `CertificateLevel` (`SealCertificate`, `SealResult`) нь **гэрчилгээнээс өөрөөс нь** гарна (QcSSCD байвал `QSCD`, үгүй
   бол `QUALIFIED`) — CA-ийн одоогийн түлхүүрийн тохиргооноос биш.
-- `Certificate` нь байгууллагын **одоогийн (олгогдсон, идэвхтэй)** гэрчилгээг буцаана — шинээр олгохгүй; идэвхтэй cert
-  алга / цуцлагдсан бол 409. PDF-ийг тамгалах: §7.3 `pades.SealPDF`.
+- `Certificate` нь байгууллагын **одоогийн (олгогдсон, идэвхтэй)** гэрчилгээг буцаана — шинээр олгохгүй; олгогдоогүй /
+  цуцлагдсан / хугацааны гадна бол **409** (`ErrSealNotIssued` | `ErrSealCertRevoked` | `ErrSealCertExpired` |
+  `ErrSealCertNotYetValid`) — 200-аар хүчингүй гэрчилгээ буцаахгүй. PDF-ийг тамгалах: §7.3 `pades.SealPDF`.
+
+#### Тамганы эрх, түлхүүр, хүчинтэй хугацаа (v0.27.0)
+
+- **Эрх (`SEAL:<orgEtsi>`) — байгууллагын зөвшөөрлөөр.** eID-ийн оператор танай RP-д эрхийн **хүсэлт** үүсгэнэ; тухайн
+  байгууллагын **улсын бүртгэлээр баталгаажсан ADMIN** eID аппдаа RP-ийн нэр, домэйн, байгууллагын нэр, регистрийн дугаарыг
+  харж **PIN2**-оор зөвшөөрсний дараа л эрх үүснэ. Зөвшөөрөх хүртэл (татгалзсан, хугацаа дууссан үед ч) тамгалалт ба
+  гэрчилгээний хүсэлт (`Seal`, `pades.SealPDF`, `RequestCertificate`, `CertificateRequest`) `*ForbiddenError` 403
+  (`Certificate` эрх шаардахгүй). Оператор эрхийг хассан эсвэл байгууллага цуцлагдсан бол эрх хүчингүй болно (403). Эрхтэй
+  байх хугацаанд RP-ийн нэр, callback host, mTLS гэрчилгээний subject өөрчлөгдөхгүй (операторын талын дүрэм — өөрчлөх бол
+  эрхийг дахин авна).
+- **Түлхүүр.** Тамганы түлхүүр нь ECDSA P-256, eID-ийн серверт хадгалагдах **программын түлхүүр** (HSM-ийн түлхүүрээр
+  боогдсон) — **QSCD биш**. Гэрчилгээний түвшин `QUALIFIED` (Монгол Улсын хуулиар; QcSSCD-гүй) — ЕХ-ны qualified биш.
+- **Хүчинтэй хугацаа, сунгалт.** Гэрчилгээ 3 жил хүчинтэй. Сунгалт = шинэ хүсэлт (`RequestCertificate`): шинэ түлхүүр, шинэ
+  гэрчилгээ гарч, өмнөх нь цуцлагдана (superseded). Өмнөх гэрчилгээгээр тамгалсан баримт цагийн тэмдэгтэй бол хүчинтэй
+  хэвээр — `pades.SealPDF`-ийн гаралт (PAdES-BASELINE-LT) үүнийг хангана.
+- **Цуцлалт.** Цуцлагдсаны дараа `Seal` / `pades.SealPDF` / `Certificate` → `ErrSealCertRevoked`; цуцлалтаас ӨМНӨ
+  тамгалсан баримт шалгалтад хүчинтэй хэвээр (`revoked_after_signing`).
+- **Гуравдагч шалгагч.** Гинж Монгол Улсын үндэсний Root CA хүртэл; OCSP / CRL хаяг гэрчилгээнд бий. Үндэсний Root-ийг
+  гараар итгэмжлээгүй бол Adobe болон ЕХ-ны шалгагчид тамгыг итгэмжлэгдсэн / qualified гэж харуулахгүй.
+
+| HTTP `code` | `errors.Is` | Хаана | Юу хийх |
+|---|---|---|---|
+| 409 `ORG_NOT_ACTIVE` | `eid.ErrOrgNotActive` | `Seal`, `SealPDF`, `RequestCertificate` | байгууллага ACTIVE биш — сэргэтэл давтахгүй |
+| 409 `SEAL_NOT_ISSUED` | `eid.ErrSealNotIssued` | `Seal`, `SealPDF`, `Certificate` | гэрчилгээ олгогдоогүй — `RequestCertificate` |
+| 409 `SEAL_CERT_REVOKED` | `eid.ErrSealCertRevoked` | `Seal`, `SealPDF`, `Certificate` | цуцлагдсан — шинэ гэрчилгээ хүснэ |
+| 409 `SEAL_CERT_EXPIRED` | `eid.ErrSealCertExpired` | `Seal`, `SealPDF`, `Certificate` | хугацаа дууссан — шинэ гэрчилгээ хүснэ |
+| 409 `SEAL_CERT_NOT_YET_VALID` | `eid.ErrSealCertNotYetValid` | `Seal`, `SealPDF`, `Certificate` | хүчинтэй хугацаа эхлээгүй |
+| 409 `SEAL_KEY_UNAVAILABLE` | `eid.ErrSealKeyUnavailable` | `Seal`, `SealPDF` | түлхүүр серверийн тохиргоонд алга — eID-ийн тусламжид хандана |
+| 409 `SEAL_APPROVER_UNAVAILABLE` | `eid.ErrSealApproverUnavailable` | `RequestCertificate` | идэвхтэй eID-тэй ADMIN алга |
+| 404 `SEAL_REQUEST_NOT_FOUND` | `eid.ErrSealRequestNotFound` | `CertificateRequest`, `WaitForCertificate` | хүсэлтийн id буруу |
+| 503 `SEAL_SERVICE_DISABLED` | `eid.ErrSealServiceDisabled` | `Seal`, `SealPDF`, `RequestCertificate` | оператор унтраасан — давтахгүй |
+
+Бүгд `*eid.APIError` (`Status`, `Code`, `Body` хэвээр; `Retryable()` false); кодын жагсаалт `eid.SealErrorCodes`.
+`eid.ErrOrgNotActive` нь OnBehalfOf урсгалын 403 `*ForbiddenError` (`ORG_NOT_ACTIVE`)-тэй ч таарна.
+
+```go
+_, err := pades.SealPDF(ctx, c.Seal, org, pdf, pades.SealOptions{})
+switch {
+case errors.Is(err, eid.ErrSealNotIssued), errors.Is(err, eid.ErrSealCertRevoked), errors.Is(err, eid.ErrSealCertExpired):
+	// идэвхтэй тамганы гэрчилгээ алга → c.Seal.RequestCertificate (байгууллагын ADMIN PIN2-оор батална)
+case errors.Is(err, eid.ErrOrgNotActive):
+	// байгууллага түр зогссон / цуцлагдсан — давтахгүй
+}
+```
 
 #### Тамганы гэрчилгээ олгуулах (v0.25.0)
 
@@ -662,8 +708,8 @@ if errors.As(err, &se) {
 - `WaitForCertificate(ctx, org, requestID, *SealWaitOptions{Timeout = 15 мин, Interval = 3 с})` — ISSUED болтол асууж
   `*SealCertificate` буцаана; REJECTED / EXPIRED / FAILED / хугацаа дууссан → `*SealRequestError`. 429/503 + Retry-After
   (`*APIError.Retryable()`) — `RetryAfter`-ийг хүлээгээд үргэлжилнэ; `ctx` цуцлагдвал `ctx.Err()`.
-- Алдаа: **409 `SEAL_APPROVER_UNAVAILABLE`** (`errors.Is(err, eid.ErrSealApproverUnavailable)`); 409 (code-гүй) — байгууллага
-  ACTIVE биш; **404 `SEAL_REQUEST_NOT_FOUND`** (`eid.ErrSealRequestNotFound`; өөр байгууллагын id ч мөн); 403
+- Алдаа: **409 `SEAL_APPROVER_UNAVAILABLE`** (`errors.Is(err, eid.ErrSealApproverUnavailable)`); **409 `ORG_NOT_ACTIVE`**
+  (`eid.ErrOrgNotActive`, v0.27.0; өмнө code-гүй 409) — байгууллага ACTIVE биш; **404 `SEAL_REQUEST_NOT_FOUND`** (`eid.ErrSealRequestNotFound`; өөр байгууллагын id ч мөн); 403
   `*ForbiddenError` (`SEAL:<orgEtsi>` эрхгүй); **429 `RATE_LIMITED`** + `RetryAfter` — байгууллагад цагт 5 хүсэлт;
   **503 `SEAL_SERVICE_DISABLED`** (`eid.ErrSealServiceDisabled`) — олголт унтраалттай.
 
@@ -915,8 +961,10 @@ for _, s := range rep.Signatures {
   `fatal error: stack overflow`-оор процессыг бүхэлд нь унагадаг байв). Энэ нь хамгаалалтын нэг давхарга л — гаднаас ирсэн
   PDF-ийг итгэлгүй оролт гэж үзэж хэмжээг хязгаарла (≤ 10 MiB), хүсэлт бүрд timeout тавь, боломжтой бол тусдаа
   процесс/контейнерт (CPU/санах ойн хязгаартай) задал.
-- `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown` (CA бүртгэлээсээ `token` ч
-  тогтооно). `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` нь CA-ийн бүртгэлээс — SDK-д байхгүй.
+- `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown`. CA (`POST
+  /v3/validate/pdf`) бүртгэлээсээ `token`, мөн eID-ийн олгосон байгууллагын тамганд `server_software` / `server_hsm`-ийг
+  (түлхүүр сервер талд; QSCD гэсэн мэдэгдэл биш) тогтооно — утгууд `pades.KeyMediumToken` | `KeyMediumPhone` |
+  `KeyMediumServerSoftware` | `KeyMediumServerHSM` | `KeyMediumUnknown` (v0.27.0). `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` нь CA-ийн бүртгэлээс — SDK-д байхгүй.
 - Шифрлэгдсэн PDF (`/Encrypt` — RC4, AES-128, AES-256, хоосон хэрэглэгчийн нууц үгтэй ч) → `PDF_ENCRYPTED` (v0.7.1;
   өмнө нь `PDF_INVALID`, RC4-д зөв гарын үсгийг `malformed_signature` гэж буруу хүчингүйд тооцдог байв). TS SDK, CA ижил.
 - `Verify` (v0.5) = `ValidatePDF` + `Offline: true` (deprecated; гарын үсэггүй баримтад хуучин зангаар хоосон `valid`).
@@ -994,7 +1042,11 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   `503 SEAL_SERVICE_DISABLED` — `errors.Is(err, eid.ErrSealServiceDisabled)`, `APIError.Service` =
   `eid.SealServiceIssuance` | `eid.SealServiceSealing`, no `Retry-After`, `Retryable()` is always false (never
   auto-retried); a request approved while issuance is off ends `FAILED` with `Failure: "SEAL_SERVICE_DISABLED"`
-  (also matches `ErrSealServiceDisabled`).
+  (also matches `ErrSealServiceDisabled`). Seal 409s carry stable codes (v0.27.0): `eid.ErrOrgNotActive`,
+  `ErrSealNotIssued`, `ErrSealCertRevoked`, `ErrSealKeyUnavailable`, `ErrSealCertExpired`, `ErrSealCertNotYetValid`
+  (`eid.SealErrorCodes`); `Certificate` returns 409 for a revoked / expired / not-issued seal. The RP obtains
+  `SEAL:<orgEtsi>` only after a registry-verified ADMIN of the organization approves it in the eID app with PIN2 (403
+  until then). The seal key is a server-side software key (not a QSCD); certificates are valid for 3 years.
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
