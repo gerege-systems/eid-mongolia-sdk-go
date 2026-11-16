@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -442,6 +443,7 @@ type replayTransport struct {
 	t      *testing.T
 	m      *goldenManifest
 	live   http.Handler
+	mu     sync.Mutex // record — LTV-ийн OCSP-ууд зэрэг ажиллана
 	record map[string][]byte
 }
 
@@ -459,7 +461,9 @@ func (rt *replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
+		rt.mu.Lock()
 		rt.record[key], out = b, b
+		rt.mu.Unlock()
 	} else if *update {
 		rec := httptest.NewRecorder()
 		r2 := r.Clone(context.Background())
@@ -467,7 +471,9 @@ func (rt *replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		rt.live.ServeHTTP(rec, r2)
 		status, out = rec.Code, rec.Body.Bytes()
 		if status == 200 {
+			rt.mu.Lock()
 			rt.record[key] = out
+			rt.mu.Unlock()
 		}
 	} else {
 		file, ok := rt.m.HTTP[key]

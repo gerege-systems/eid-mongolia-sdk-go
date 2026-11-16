@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -30,8 +31,10 @@ func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
+// fetcher — goroutine-д аюулгүй (LTV-ийн OCSP-ууд зэрэг ажиллана).
 type fetcher struct {
 	client *http.Client
+	mu     sync.Mutex
 	cache  map[string][]byte // GET (CRL) URL → хариу
 }
 
@@ -66,7 +69,10 @@ func (f *fetcher) do(ctx context.Context, method, raw, contentType string, body 
 		return nil, err
 	}
 	if method == http.MethodGet {
-		if b, ok := f.cache[target]; ok {
+		f.mu.Lock()
+		b, ok := f.cache[target]
+		f.mu.Unlock()
+		if ok {
 			return b, nil
 		}
 	}
@@ -96,7 +102,9 @@ func (f *fetcher) do(ctx context.Context, method, raw, contentType string, body 
 		return nil, fmt.Errorf("%s: HTTP %d", target, resp.StatusCode)
 	}
 	if method == http.MethodGet {
+		f.mu.Lock()
 		f.cache[target] = out
+		f.mu.Unlock()
 	}
 	return out, nil
 }
