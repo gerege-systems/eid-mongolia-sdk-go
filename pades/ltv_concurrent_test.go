@@ -118,6 +118,9 @@ func (n *ltvNet) ocspRequests(name string) int {
 func (n *ltvNet) RoundTrip(r *http.Request) (*http.Response, error) {
 	n.inflight.Add(1)
 	defer n.inflight.Add(-1)
+	if err := r.Context().Err(); err != nil {
+		return nil, err // net/http.Transport-тэй адил: цуцлагдсан хүсэлт явахгүй
+	}
 	var body []byte
 	if r.Body != nil {
 		body, _ = io.ReadAll(r.Body)
