@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.27.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.28.0
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -438,7 +438,7 @@ MANAGER-т бичсэн текст), `RightType` (`ADMIN` | `MANAGER`), `Source`
 r, _ := c.Session.WaitForResult(ctx, s.SessionID, nil)
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{})
 if err == nil && eid.PersonMatchesCertificate(r.Person, who.Subject) {
-	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID
+	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3, жишээ MNG; заавал биш)
 }
 // r.Raw — серверийн түүхий JSON (SDK задлаагүй талбарт)
 ```

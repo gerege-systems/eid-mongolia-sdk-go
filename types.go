@@ -243,6 +243,10 @@ type Person struct {
 	Gender string `json:"gender,omitempty"`
 	// GeID — core.gerege.mn-ий дотоод дугаар; 0 = тулгагдаагүй.
 	GeID int64 `json:"geID,omitempty"`
+	// Nationality — иргэний харьяалал: гурван том латин үсэг (ISO 3166-1 alpha-3, жолоочийн/аяллын баримтын
+	// ICAO 9303 код; жишээ нь MNG, USA, DEU; XXA мэт ICAO тусгай код ч байж болно). Заавал биш; гэрчилгээний
+	// улс БИШ. Мэдэгдэхгүй бол "". SDK утгыг шалгахгүй, хэвээр дамжуулна.
+	Nationality string `json:"nationality,omitempty"`
 }
 
 // PersonMatchesCertificate — person блокийн civilId нь баталгаажсан гэрчилгээний SERIALNUMBER-тэй (PNOMN-<civilId>)

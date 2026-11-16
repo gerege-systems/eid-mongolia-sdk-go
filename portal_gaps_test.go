@@ -26,6 +26,27 @@ import (
 
 // Порталыг (eid-mongolia-mn) SDK руу шилжүүлэхэд илэрсэн дутагдлууд (0.1.2).
 
+func TestSessionPersonNationality(t *testing.T) {
+	r, err := ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},"person":{"civilId":"1","nationality":"XXA"}}`))
+	if err != nil || r.Person == nil || r.Person.Nationality != "XXA" || r.Person.CivilID != "1" {
+		t.Fatal(err, r.Person)
+	}
+	// талбар байхгүй — хоосон; person блок хоосон хэвээр бол nil
+	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},"person":{"civilId":"1"}}`))
+	if r.Person == nil || r.Person.Nationality != "" {
+		t.Fatalf("%+v", r.Person)
+	}
+	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},"person":{}}`))
+	if r.Person != nil {
+		t.Fatalf("%+v", r.Person)
+	}
+	// зөвхөн nationality — хоосон person биш
+	r, _ = ParseSessionResult([]byte(`{"state":"COMPLETE","result":{"endResult":"OK"},"person":{"nationality":"MNG"}}`))
+	if r.Person == nil || r.Person.Nationality != "MNG" {
+		t.Fatalf("%+v", r.Person)
+	}
+}
+
 func TestSessionPersonRawToken(t *testing.T) {
 	raw := `{"state":"COMPLETE","result":{"endResult":"OK","documentNumber":"d1"},
 		"person":{"firstName":"Бат","lastName":"Дорж","familyName":"Боржигон","firstNameEn":"BAT","lastNameEn":"DORJ",
@@ -177,7 +198,7 @@ func TestPersonService(t *testing.T) {
 			_, _ = io.WriteString(w, `{"personEtsi":"PNOMN-1","counts":{"authentication":2,"signature":1},"sessions":[{"id":"9",
 				"kind":"AUTH","flow":"AUTHENTICATION","outcome":"OK","timestamp":"2026-10-01T00:00:00Z"}],"total":3,"limit":5,"offset":10}`)
 		case strings.HasPrefix(r.URL.Path, "/person/summary/"):
-			_, _ = io.WriteString(w, `{"personEtsi":"PNOMN-1","firstName":"Бат","lastName":"Дорж","certificates":{"valid":2},
+			_, _ = io.WriteString(w, `{"personEtsi":"PNOMN-1","firstName":"Бат","lastName":"Дорж","nationality":"MNG","certificates":{"valid":2},
 				"activity":{"authentication":42},"devicesActive":1,"devicesTotal":2,"representationCount":1}`)
 		case strings.HasPrefix(r.URL.Path, "/person/children/"):
 			_, _ = io.WriteString(w, `{"children":[{"etsi":"PNOMN-2","regNo":"УБ","name":"Дорж Сүх","registered":false}]}`)
@@ -209,7 +230,7 @@ func TestPersonService(t *testing.T) {
 		t.Fatal(req.URL.RawQuery)
 	}
 	sum, err := c.Person.Summary(ctx, "PNOMN-1")
-	if err != nil || sum.LastName != "Дорж" || sum.Activity.Authentication != 42 || sum.RepresentationCount != 1 {
+	if err != nil || sum.LastName != "Дорж" || sum.Nationality != "MNG" || sum.Activity.Authentication != 42 || sum.RepresentationCount != 1 {
 		t.Fatal(err, sum)
 	}
 	if req, _ := rc.last(); req.URL.Path != "/person/summary/etsi/PNOMN-1" {
