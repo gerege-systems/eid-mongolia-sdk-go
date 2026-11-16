@@ -438,7 +438,7 @@ MANAGER-т бичсэн текст), `RightType` (`ADMIN` | `MANAGER`), `Source`
 r, _ := c.Session.WaitForResult(ctx, s.SessionID, nil)
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{})
 if err == nil && eid.PersonMatchesCertificate(r.Person, who.Subject) {
-	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID
+	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3, жишээ MNG; заавал биш)
 }
 // r.Raw — серверийн түүхий JSON (SDK задлаагүй талбарт)
 ```

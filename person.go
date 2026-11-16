@@ -141,10 +141,13 @@ type ActivityQuery struct {
 // PersonSummary — GET /person/summary/etsi/{personEtsi}: самбарын нэгдсэн тоо. Нэршил Person-тэй ижил (LastName =
 // ЭЦГИЙН нэр, FamilyName = УРГИЙН овог).
 type PersonSummary struct {
-	PersonEtsi          string          `json:"personEtsi"`
-	FirstName           string          `json:"firstName,omitempty"`
-	LastName            string          `json:"lastName,omitempty"`
-	FamilyName          string          `json:"familyName,omitempty"`
+	PersonEtsi string `json:"personEtsi"`
+	FirstName  string `json:"firstName,omitempty"`
+	LastName   string `json:"lastName,omitempty"`
+	FamilyName string `json:"familyName,omitempty"`
+	// Nationality — Person.Nationality-тэй ижил (гурван том латин үсэг, ISO 3166-1 alpha-3 / ICAO 9303; заавал
+	// биш; гэрчилгээний улс БИШ; мэдэгдэхгүй бол "").
+	Nationality         string          `json:"nationality,omitempty"`
 	Certificates        CertCounts      `json:"certificates"`
 	Activity            ActivityCounts  `json:"activity"`
 	DevicesActive       int             `json:"devicesActive"`
