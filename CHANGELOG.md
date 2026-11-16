@@ -14,7 +14,11 @@
   цуцлалт ч) бүгдийг цуцалж хүлээнэ. Хүлээн авах дүрэм (`fetchOCSP`, `crlCovers`) хөндөгдөөгүй; «revoked» (OCSP эсвэл CRL)
   хатуу алдаа; хүчинтэй нотолгоогүй бол `LTV_UNAVAILABLE`. `fetcher`-ийн CRL кэш mutex-тэй.
 - **Гаралт өөрчлөгдсөн:** эрүүл гинжид CA гэрчилгээ (04/03/02) DSS-д зөвхөн CRL-ээр орно — 04-ийн OCSP хариу DSS-ээс
-  хасагдана. Иймээс pades golden (`pades/testdata/golden`, native SDK-ууд ба CA репо хуулдаг) дахин үүсгэх шаардлагатай.
+  хасагдана (`/OCSPs` 3 → 2). pades golden **v11** (`pades-golden-v11`; v10 татгалзсан) — `go test ./pades -run Golden
+  -update`-ийг PR-ийн CI runner дээр ажиллуулж (түр job) гаралтыг өөрчлөлтгүй commit хийсэн: 44 кейс хэвээр; 40 гаралтын
+  `outSha256`, өмнөх гаралт дээр зурсан 14 кейсийн prepare/TSA (`http/48…61`); `ocsp.pki.test/03` fixture хасагдсан;
+  алдааны 4 кейс өөрчлөгдөөгүй. `ProfileVersion` `pades-client/1` хэвээр (конвенц: golden tag-аар хувилбарлана).
+  Native SDK-ууд (TS, .NET, Swift, Android) `pades-golden-v11`-тэй синк хийнэ.
 - **Яагаад:** үндэсний CA-ийн гэрчилгээнүүдийн (02 Mongolian National Issuing CA, 03 Gerege Issuing CA) AIA OCSP холболт
   хүлээж аваад хариулдаггүй тул гарын үсэг бүр 2 × 10 с саатаж байв (CRL нь `crl.eidmongolia.mn` толиноос ирдэг). Эзэмшигчийн
   шийдвэр: шаардлагагүй үед CA-ийн OCSP руу огт хандахгүй (.NET, TS, Swift, Android SDK-д ижил дүрэм).

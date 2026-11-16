@@ -142,7 +142,7 @@ DSS = {Certs, OCSPs, CRLs (DER, §8-ийн дарааллаар), Contents = `/C
    орхино) + ` >> >>`.
 4. Catalog (шинэ дугаар): `<<\n  /Type /Catalog\n` + /Type, /DSS-ээс бусад түлхүүр `  /Key утга\n` + `  /DSS <id> 0 R\n>>`.
 5. finish. Жишээ (golden `quartz-pdf13`):
-   `<< /Certs [37 0 R 38 0 R 39 0 R 40 0 R 41 0 R] /OCSPs [42 0 R 43 0 R 44 0 R] /CRLs [45 0 R 46 0 R 47 0 R 48 0 R] /VRI << /A24F351F73819A6A93BBFC1D043BC99DDFBAB872 << /Cert [...] /OCSP [...] /CRL [...] >> >> >>`
+   `<< /Certs [37 0 R 38 0 R 39 0 R 40 0 R 41 0 R] /OCSPs [42 0 R 43 0 R] /CRLs [44 0 R 45 0 R 46 0 R 47 0 R] /VRI << /A24F351F73819A6A93BBFC1D043BC99DDFBAB872 << /Cert [...] /OCSP [...] /CRL [...] >> >> >>`
 
 ## 8. LTV цуглуулалт (OCSP/CRL)
 
