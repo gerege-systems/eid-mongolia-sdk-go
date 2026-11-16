@@ -293,6 +293,8 @@ func TestCollectLTVDeadOCSPRealSocket(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		active.Add(1)
 		defer active.Add(-1)
+		// net/http нь клиент салсныг (r.Context()) зөвхөн биеийг уншсаны дараа ажиглана.
+		_, _ = io.Copy(io.Discard, r.Body)
 		select {
 		case <-r.Context().Done():
 		case <-release:
