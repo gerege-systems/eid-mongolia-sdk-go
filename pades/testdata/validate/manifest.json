@@ -430,7 +430,7 @@
             "signing_time": "2026-10-14T04:00:01Z",
             "timestamp": {
               "time": "2026-10-14T04:00:01Z",
-              "serial": "C7DCFC5EF575AE30378B74A9D0184B60679D81B5",
+              "serial": "CE9F68804FD70A5A7BBE57EBD04F548AE51DD494",
               "tsa": "TEST ONLY Golden TSA",
               "trusted": true
             },
@@ -542,7 +542,7 @@
             "signing_time": "2026-10-14T04:00:01Z",
             "timestamp": {
               "time": "2026-10-14T04:00:01Z",
-              "serial": "A692AFF67546AFB5F36B87B19EA496C2F9273A81",
+              "serial": "77AB88CB3D4053A9021311FFABF1F69B0C8C235C",
               "tsa": "TEST ONLY Golden TSA",
               "trusted": true
             },
@@ -772,7 +772,7 @@
             "signing_time": "2026-10-14T04:00:01Z",
             "timestamp": {
               "time": "2026-10-14T04:00:01Z",
-              "serial": "2E8E2336D28BE2FF309C477C40806EC6F1E95610",
+              "serial": "1932D161EB25C59B7B6036A040BF8811257EBDBB",
               "tsa": "TEST ONLY Golden TSA",
               "trusted": true
             },
@@ -883,7 +883,7 @@
             "signing_time": "2026-10-14T04:00:01Z",
             "timestamp": {
               "time": "2026-10-14T04:00:01Z",
-              "serial": "E2267E663D69915A2DC7B410E299E989D92BE11C",
+              "serial": "6563925EF5AB7F9AEC8332702DFDF697C8BF9E7B",
               "tsa": "TEST ONLY Golden TSA",
               "trusted": true
             },

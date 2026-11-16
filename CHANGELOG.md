@@ -17,7 +17,9 @@
   хасагдана (`/OCSPs` 3 → 2). pades golden **v11** (`pades-golden-v11`; v10 татгалзсан) — `go test ./pades -run Golden
   -update`-ийг PR-ийн CI runner дээр ажиллуулж (түр job) гаралтыг өөрчлөлтгүй commit хийсэн: 44 кейс хэвээр; 40 гаралтын
   `outSha256`, өмнөх гаралт дээр зурсан 14 кейсийн prepare/TSA (`http/48…61`); `ocsp.pki.test/03` fixture хасагдсан;
-  алдааны 4 кейс өөрчлөгдөөгүй. `ProfileVersion` `pades-client/1` хэвээр (конвенц: golden tag-аар хувилбарлана).
+  алдааны 4 кейс өөрчлөгдөөгүй. `pades/testdata/validate/manifest.json` (мөн `-update`-ээр): golden гаралтыг уншдаг
+  4 кейсийн (`multi-revision`, `multi-revision-nopage`, `visible-second`, `visible-twice`) зөвхөн 2 дахь гарын үсгийн
+  TSA serial өөрчлөгдсөн — дүгнэлт/problems хэвээр. `ProfileVersion` `pades-client/1` хэвээр (конвенц: golden tag-аар хувилбарлана).
   Native SDK-ууд (TS, .NET, Swift, Android) `pades-golden-v11`-тэй синк хийнэ.
 - **Яагаад:** үндэсний CA-ийн гэрчилгээнүүдийн (02 Mongolian National Issuing CA, 03 Gerege Issuing CA) AIA OCSP холболт
   хүлээж аваад хариулдаггүй тул гарын үсэг бүр 2 × 10 с саатаж байв (CRL нь `crl.eidmongolia.mn` толиноос ирдэг). Эзэмшигчийн
