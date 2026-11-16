@@ -20,7 +20,7 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 ## Суулгах
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.28.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.28.1
 ```
 
 `pades` нь засвартай PDF задлагчийг (`github.com/gerege-systems/pdf`) шууд импортлодог тул `replace` хэрэггүй.
@@ -884,6 +884,14 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
   `pades.DefaultLTVRetries` 2 — нийт 3 оролдлого, хүлээлт ~1 с, ~3 с + 0–25% jitter; `0` — унтраах; 0–10-аас гадуур →
   `REQUEST_INVALID`). Бүгд унавал `LTV_UNAVAILABLE`; `ctx` цуцлагдвал хүлээлт тасарч `context.Canceled`-ийг боосон
   `LTV_UNAVAILABLE`. TS SDK 0.18.3-ийн `ltvRetries`-тэй ижил — TS ба Go хоёулаа LTV retry-тэй.
+- **LTV-ийн цуцлалтын дараалал (v0.28.1)** — `Complete` гэрчилгээний үүргээр:
+  - гинжийн эхний (end-entity: иргэн, TSA) гэрчилгээ — **OCSP эхэлж** (10 с timeout, `thisUpdate > genTime`), CRL-ийг
+    мөн татаж хоёуланг нь DSS-д; хүчинтэй OCSP хариугүй бол CRL;
+  - CA гэрчилгээ (гинжийн бусад) — **CRL эхэлж**; хүчинтэй CRL авбал тэр гэрчилгээний OCSP responder руу ОГТ хандахгүй
+    (DSS-д зөвхөн CRL); хүчинтэй CRL-гүй бол л OCSP (10 с timeout).
+
+  Гэрчилгээ бүрийн таталт зэрэг; DSS гинжийн дарааллаар. Хүлээн авах дүрэм, «revoked» = хатуу алдаа, fail-closed
+  өөрчлөгдөөгүй. `ValidatePDF` (зөвхөн 04/05-ийн олгосныг онлайнаар шалгана) өөрчлөгдөөгүй.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
 - `VerifyPagePosition: pades.VerifyPageFirst` (v0.15.0+) — хуудас баримтын ЭХЭНД (1-р хуудас) орно; анхдагч
   `pades.VerifyPageLast` (төгсгөлд, өмнөхтэй байт-ижил). `Appearance.Page`, `SuggestPlacement`, `Placement.Page` хоёуланд нь
@@ -1090,7 +1098,8 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
-  CMS, OCSP/CRL from AIA/CDP, DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
+  CMS, revocation from AIA/CDP — end-entity certificates: OCSP first, CRL as well/as fallback; CA certificates: CRL
+  first, OCSP only when no valid CRL (v0.28.1) — DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
   — same JSON report as `/v3/validate/pdf`, online OCSP/CRL with DSS fallback, `certificate_level`). Derived from the CA writer
   (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
   PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.

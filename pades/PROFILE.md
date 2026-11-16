@@ -142,7 +142,7 @@ DSS = {Certs, OCSPs, CRLs (DER, §8-ийн дарааллаар), Contents = `/C
    орхино) + ` >> >>`.
 4. Catalog (шинэ дугаар): `<<\n  /Type /Catalog\n` + /Type, /DSS-ээс бусад түлхүүр `  /Key утга\n` + `  /DSS <id> 0 R\n>>`.
 5. finish. Жишээ (golden `quartz-pdf13`):
-   `<< /Certs [37 0 R 38 0 R 39 0 R 40 0 R 41 0 R] /OCSPs [42 0 R 43 0 R 44 0 R] /CRLs [45 0 R 46 0 R 47 0 R 48 0 R] /VRI << /A24F351F73819A6A93BBFC1D043BC99DDFBAB872 << /Cert [...] /OCSP [...] /CRL [...] >> >> >>`
+   `<< /Certs [37 0 R 38 0 R 39 0 R 40 0 R 41 0 R] /OCSPs [42 0 R 43 0 R] /CRLs [44 0 R 45 0 R 46 0 R 47 0 R] /VRI << /A24F351F73819A6A93BBFC1D043BC99DDFBAB872 << /Cert [...] /OCSP [...] /CRL [...] >> >> >>`
 
 ## 8. LTV цуглуулалт (OCSP/CRL)
 
@@ -156,6 +156,14 @@ DSS = {Certs, OCSPs, CRLs (DER, §8-ийн дарааллаар), Contents = `/C
 4. CRL: CDP URL бүрд дарааллаар GET (үндэсний CRL — толин, WIRE.md §3) — олгогчийн гарын үсэгтэй, `issuer` = cert.issuer, `nextUpdate ≥ now`, serial
    цуцлагдаагүй бол CRLs-д нэмнэ (ижил URL-ийг нэг удаа татна).
 5. (3) ба (4)-өөс нэг ч хүчинтэй алга → `LTV_UNAVAILABLE`.
+
+Дараалал гэрчилгээний **үүргээр** (v0.28.1; host нэрээр биш):
+- Гинжийн **эхний** (end-entity: иргэн, TSA) гэрчилгээ: (3) OCSP эхэлж, дараа нь (4) CRL — хүчинтэй бол хоёулаа DSS-д;
+  OCSP «revoked» бол CRL татахгүй.
+- **CA** гэрчилгээ (гинжийн бусад): (4) CRL эхэлж. Хүчинтэй CRL (≥ 1) авбал тэр гэрчилгээнд OCSP хүсэлт ОГТ илгээхгүй
+  (DSS-д зөвхөн CRL); хүчинтэй CRL алга бол (3) OCSP (`thisUpdate > genTime`-гүй).
+- Гэрчилгээ бүрийн таталт зэрэг явж болно; (1)–(5)-ыг гинжийн дарааллаар хэрэглэнэ (DSS-ийн дараалал, алдааны эрэмбэ
+  тодорхой). OCSP/CRL бүр энгийн timeout-тай (WIRE.md §5). «revoked» аль ч эх сурвалжаас — хатуу алдаа.
 
 Хүлээлт: `t0 = truncate(genTime, 1 с) + 2 с`; `now < t0` бол `min(t0 − now, 5 с)` хүлээнэ; эхний гэрчилгээний OCSP
 `thisUpdate ≤ genTime` бол 1 с тутам дахин (нийт хүлээлт ≤ 5 с), эс бөгөөс `LTV_UNAVAILABLE`.

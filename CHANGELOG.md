@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.28.1 — 2026-11-16
+
+### Fixed — LTV: хариугүй OCSP responder `pades.Complete`-ийг CA гэрчилгээ тус бүрд 10 с саатуулахаа больсон
+
+- **Юу:** `Complete`-ийн LTV (DSS) цуглуулалтын дараалал гэрчилгээний **үүргээр** (host нэрээр биш):
+  - гинжийн эхний (end-entity: иргэн, TSA) гэрчилгээ — OCSP эхэлж (10 с timeout, `thisUpdate > genTime` дүрэм, дахин
+    оролдлого өөрчлөгдөөгүй), CRL-ийг мөн татаж хоёуланг нь шигтгэнэ (өмнөхтэй ижил); хүчинтэй OCSP-гүй бол CRL;
+  - CA гэрчилгээ (гинжийн бусад) — CRL эхэлж (толин хуулбар, шалгалт өөрчлөгдөөгүй); хүчинтэй CRL авбал тэр гэрчилгээний
+    OCSP responder руу хүсэлт **илгээхгүй**; хүчинтэй CRL-гүй бол л OCSP (10 с timeout).
+
+  Гэрчилгээ бүрийн таталт тусдаа goroutine-д зэрэг (тоо = гинжийн урт), үр дүн гинжийн дарааллаар; буцахаас өмнө (алдаа,
+  цуцлалт ч) бүгдийг цуцалж хүлээнэ. Хүлээн авах дүрэм (`fetchOCSP`, `crlCovers`) хөндөгдөөгүй; «revoked» (OCSP эсвэл CRL)
+  хатуу алдаа; хүчинтэй нотолгоогүй бол `LTV_UNAVAILABLE`. `fetcher`-ийн CRL кэш mutex-тэй.
+- **Гаралт өөрчлөгдсөн:** эрүүл гинжид CA гэрчилгээ (04/03/02) DSS-д зөвхөн CRL-ээр орно — 04-ийн OCSP хариу DSS-ээс
+  хасагдана (`/OCSPs` 3 → 2). pades golden **v11** (`pades-golden-v11`; v10 татгалзсан) — `go test ./pades -run Golden
+  -update`-ийг PR-ийн CI runner дээр ажиллуулж (түр job) гаралтыг өөрчлөлтгүй commit хийсэн: 44 кейс хэвээр; 40 гаралтын
+  `outSha256`, өмнөх гаралт дээр зурсан 14 кейсийн prepare/TSA (`http/48…61`); `ocsp.pki.test/03` fixture хасагдсан;
+  алдааны 4 кейс өөрчлөгдөөгүй. `pades/testdata/validate/manifest.json` (мөн `-update`-ээр): golden гаралтыг уншдаг
+  4 кейсийн (`multi-revision`, `multi-revision-nopage`, `visible-second`, `visible-twice`) зөвхөн 2 дахь гарын үсгийн
+  TSA serial өөрчлөгдсөн — дүгнэлт/problems хэвээр. `ProfileVersion` `pades-client/1` хэвээр (конвенц: golden tag-аар хувилбарлана).
+  Native SDK-ууд (TS, .NET, Swift, Android) `pades-golden-v11`-тэй синк хийнэ.
+- **Яагаад:** үндэсний CA-ийн гэрчилгээнүүдийн (02 Mongolian National Issuing CA, 03 Gerege Issuing CA) AIA OCSP холболт
+  хүлээж аваад хариулдаггүй тул гарын үсэг бүр 2 × 10 с саатаж байв (CRL нь `crl.eidmongolia.mn` толиноос ирдэг). Эзэмшигчийн
+  шийдвэр: шаардлагагүй үед CA-ийн OCSP руу огт хандахгүй (.NET, TS, Swift, Android SDK-д ижил дүрэм).
+- **ValidatePDF:** өөрчлөгдөөгүй — онлайн цуцлалтыг зөвхөн 04/05-ийн олгосон гэрчилгээнд асуудаг.
+- **Хаана:** `pades/ltv.go` (`collectLTV`, `ltvJob.run`, `validCRLs`, `firstOCSP`), `pades/fetch.go` (`timeout`, mutex);
+  тест `pades/ltv_concurrent_test.go` (эрүүл гинж — CA-ийн OCSP хүсэлт 0; хариулдаггүй жинхэнэ сокет — сервер 0 хүсэлт;
+  CA CRL 404 / хог / хугацаа дууссан / өөр олгогчийн → OCSP, OCSP ч хүчингүй бол алдаа; leaf-ийн удаан OCSP-г хүлээнэ,
+  хариугүй бол timeout-ын дараа CRL; revoked хатуу (CA CRL, CA OCSP нөөц, leaf OCSP, leaf CRL); дуудагчийн цуцлалт;
+  буцахад идэвхтэй хүсэлт 0); `golden_test.go`, `revocation_test.go`-ийн тестийн transport goroutine-д аюулгүй.
+  README, PROFILE.md §8, WIRE.md §5.
+- **Шалгасан:** локалд зөвхөн `gofmt -l`; `go vet`, `go test -race`, staticcheck — GitHub Actions CI.
+
 ## v0.28.0 — 2026-11-16
 
 ### Added — `Person.Nationality`, `PersonSummary.Nationality` (иргэний харьяалал)

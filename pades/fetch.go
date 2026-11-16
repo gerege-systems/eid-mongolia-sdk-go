@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -30,16 +31,19 @@ func defaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
+// fetcher — goroutine-д аюулгүй (LTV-ийн гэрчилгээ бүрийн таталт зэрэг ажиллана).
 type fetcher struct {
-	client *http.Client
-	cache  map[string][]byte // GET (CRL) URL → хариу
+	client  *http.Client
+	timeout time.Duration // хүсэлт бүрийн (httpTimeout; тестэд богино)
+	mu      sync.Mutex
+	cache   map[string][]byte // GET (CRL) URL → хариу
 }
 
 func newFetcher(c *http.Client) *fetcher {
 	if c == nil {
 		c = defaultHTTPClient()
 	}
-	return &fetcher{client: c, cache: map[string][]byte{}}
+	return &fetcher{client: c, timeout: httpTimeout, cache: map[string][]byte{}}
 }
 
 // target — зөвхөн http/https; үндэсний CRL-ийг толин хуулбар руу (crlMirror).
@@ -66,11 +70,14 @@ func (f *fetcher) do(ctx context.Context, method, raw, contentType string, body 
 		return nil, err
 	}
 	if method == http.MethodGet {
-		if b, ok := f.cache[target]; ok {
+		f.mu.Lock()
+		b, ok := f.cache[target]
+		f.mu.Unlock()
+		if ok {
 			return b, nil
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, httpTimeout)
+	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 	var rd io.Reader
 	if body != nil {
@@ -96,7 +103,9 @@ func (f *fetcher) do(ctx context.Context, method, raw, contentType string, body 
 		return nil, fmt.Errorf("%s: HTTP %d", target, resp.StatusCode)
 	}
 	if method == http.MethodGet {
+		f.mu.Lock()
 		f.cache[target] = out
+		f.mu.Unlock()
 	}
 	return out, nil
 }

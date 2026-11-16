@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,8 +50,9 @@ func tCRL(t *testing.T, iss *gCert, this, next time.Time, revoked ...*big.Int) [
 }
 
 // overrideLTV — иргэний OCSP (ocsp.pki.test/04, иргэний serial) ба 04-ийн CRL-ийг тогтмол хариугаар; бусад → next
-// (nil бол 404).
+// (nil бол 404). LTV-ийн OCSP-ууд зэрэг ажилладаг тул тоолуур mu-гаар.
 type overrideLTV struct {
+	mu         sync.Mutex
 	next       http.RoundTripper
 	citizen    *big.Int
 	ocsp, crl  []byte
@@ -78,15 +80,21 @@ func (o *overrideLTV) RoundTrip(r *http.Request) (*http.Response, error) {
 			return resp(o.ocsp)
 		}
 	case r.URL.Host == "crl.pki.test" && r.URL.Path == "/04.crl" && o.crl != nil:
-		o.crlCalls++
+		o.count(&o.crlCalls)
 		return resp(o.crl)
 	}
-	o.otherCalls++
+	o.count(&o.otherCalls)
 	if o.next == nil {
 		return resp(nil)
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	return o.next.RoundTrip(r)
+}
+
+func (o *overrideLTV) count(n *int) {
+	o.mu.Lock()
+	*n++
+	o.mu.Unlock()
 }
 
 func readValidateInput(t *testing.T, name string) []byte {

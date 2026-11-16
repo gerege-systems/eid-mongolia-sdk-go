@@ -83,6 +83,7 @@ OCSPRequest ::= SEQUENCE { tbsRequest SEQUENCE { requestList SEQUENCE OF { Reque
 
 ## 5. HTTP
 
-Анхдагч client: timeout 10 с, redirect дагахгүй, зөвхөн `http`/`https`, хариу ≤ 4 MiB. Хөтөч: (§3-ийн толины дараа) AIA/CDP-ийн
+Анхдагч client: timeout 10 с, redirect дагахгүй, зөвхөн `http`/`https`, хариу ≤ 4 MiB. Хүчинтэй CRL-тэй CA
+гэрчилгээний OCSP руу хүсэлт илгээхгүй (PROFILE.md §8). Хөтөч: (§3-ийн толины дараа) AIA/CDP-ийн
 `http://`-ийг зөвхөн `ocsp.eidmongolia.mn`, `crl.eidmongolia.mn`, `tsa.timeserver.mn`-д `https://` болгоно, бусдыг
 татахгүй (docs/PADES_CLIENT_SIDE.md §8.4) — Go reference backend-д ажиллах тул энэ upgrade-гүй.
