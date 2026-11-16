@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,9 +23,10 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// LTV цуглуулалтын OCSP-ийн зэрэгцээ байдал ба ocspGrace: root → caA → caB → leaf (P-256, тест бүрд шинэ). caA ба caB
-// нь AIA OCSP + CDP CRL-тэй CA (үндэсний CA-ийн байрлал), leaf — гинжийн эхний гэрчилгээ. Сүлжээ — ltvNet (хүсэлт
-// бүрийн зан төлөв; ctx-ийг хүндэтгэнэ, идэвхтэй хүсэлтийг тоолно).
+// LTV цуглуулалтын дараалал гэрчилгээний үүргээр: root → caA → caB → leaf (P-256, тест бүрд шинэ). caA ба caB нь AIA
+// OCSP + CDP CRL-тэй CA (үндэсний CA-ийн байрлал) — CRL эхэлж, хүчинтэй бол OCSP асуухгүй; leaf — гинжийн эхний
+// гэрчилгээ, OCSP эхэлж. Сүлжээ — ltvNet (хүсэлт бүрийн зан төлөв; ctx-ийг хүндэтгэнэ, OCSP хүсэлт ба идэвхтэй хүсэлтийг
+// тоолно).
 
 var (
 	ltvGen = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC) // TSA genTime (after)
@@ -92,6 +94,7 @@ type ltvBehavior struct {
 	garbage      bool          // OCSP/CRL биш
 	unauthorised bool          // OCSP-г OCSPSigning EKU-гүй гэрчилгээ зурсан
 	revoked      bool          // OCSP revoked / CRL-д гэрчилгээ жагсаалттай
+	expired      bool          // CRL-ийн nextUpdate өнгөрсөн
 }
 
 type ltvNet struct {
@@ -102,6 +105,14 @@ type ltvNet struct {
 	hangTo   http.RoundTripper // тэг биш бол hang хүсэлтийг жинхэнэ сокет (httptest) руу дамжуулна
 	hangURL  *url.URL
 	inflight atomic.Int64
+	mu       sync.Mutex
+	ocspReq  map[string]int // OCSP замын нэр → хүсэлтийн тоо
+}
+
+func (n *ltvNet) ocspRequests(name string) int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.ocspReq[name]
 }
 
 func (n *ltvNet) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -117,6 +128,12 @@ func (n *ltvNet) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.URL.Host {
 	case "ocsp.ltv.test":
 		b = n.ocsp[name]
+		n.mu.Lock()
+		if n.ocspReq == nil {
+			n.ocspReq = map[string]int{}
+		}
+		n.ocspReq[name]++
+		n.mu.Unlock()
 	case "crl.ltv.test":
 		b = n.crl[name]
 	default:
@@ -158,8 +175,16 @@ func (n *ltvNet) RoundTrip(r *http.Request) (*http.Response, error) {
 		if b.revoked {
 			es = append(es, x509.RevocationListEntry{SerialNumber: n.p.child[name].cert.SerialNumber, RevocationTime: ltvGen.Add(-time.Hour)})
 		}
-		out, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{Number: big.NewInt(1), ThisUpdate: ltvGen.Add(-time.Hour),
-			NextUpdate: ltvGen.Add(30 * 24 * time.Hour), RevokedCertificateEntries: es}, iss.cert, iss.key)
+		this, next := ltvGen.Add(-time.Hour), ltvGen.Add(30*24*time.Hour)
+		if b.expired {
+			this, next = ltvGen.Add(-60*24*time.Hour), ltvGen.Add(-30*24*time.Hour)
+		}
+		signer := iss
+		if b.unauthorised {
+			signer = n.p.child[name] // өөр олгогчийн нэр/түлхүүр
+		}
+		out, err := x509.CreateRevocationList(rand.Reader, &x509.RevocationList{Number: big.NewInt(1), ThisUpdate: this,
+			NextUpdate: next, RevokedCertificateEntries: es}, signer.cert, signer.key)
 		if err != nil {
 			n.t.Error(err)
 		}
@@ -186,13 +211,14 @@ func (n *ltvNet) RoundTrip(r *http.Request) (*http.Response, error) {
 	return reply(http.StatusOK, out)
 }
 
-// collect — leaf гинжийг grace-тэй цуглуулна; буцахад нэг ч хүсэлт идэвхтэй үлдээгүйг (OCSP goroutine бүр дууссан)
-// шалгана.
-func (n *ltvNet) collect(ctx context.Context, t *testing.T, grace time.Duration) (dssResult, time.Duration) {
+// collect — leaf гинжийг цуглуулна (хүсэлт бүрийн timeout); буцахад нэг ч хүсэлт идэвхтэй үлдээгүйг (goroutine бүр
+// дууссан) шалгана.
+func (n *ltvNet) collect(ctx context.Context, t *testing.T, timeout time.Duration) (dssResult, time.Duration) {
 	t.Helper()
 	f := newFetcher(&http.Client{Transport: n})
+	f.timeout = timeout
 	start := time.Now()
-	d, err := collectLTVGrace(ctx, f, ltvNow, ltvGen, grace, []*x509.Certificate{n.p.root.cert}, []*x509.Certificate{n.p.leaf.cert, n.p.caB.cert, n.p.caA.cert})
+	d, err := collectLTV(ctx, f, ltvNow, ltvGen, []*x509.Certificate{n.p.root.cert}, []*x509.Certificate{n.p.leaf.cert, n.p.caB.cert, n.p.caA.cert})
 	elapsed := time.Since(start)
 	if k := n.inflight.Load(); k != 0 {
 		t.Fatalf("collectLTV буцсаны дараа %d хүсэлт идэвхтэй (goroutine алдагдсан)", k)
@@ -243,38 +269,17 @@ func (p *ltvPKI) crlIssuers(t *testing.T, list [][]byte) []string {
 
 func joined(s []string) string { return strings.Join(s, ",") }
 
-// TestCollectLTVHealthyChainOrder — эрүүл гинж: хариу урвуу дарааллаар ирсэн ч DSS (Certs, OCSPs, CRLs) гинжийн
-// дарааллаар, OCSP ба CRL хоёулаа (дараалсан хувилбартай ижил). Complete-ийн байт-ижил гаралтыг TestGolden батална.
-func TestCollectLTVHealthyChainOrder(t *testing.T) {
+// TestCollectLTVHealthyChain — эрүүл гинж: leaf-д OCSP + CRL, CA-д зөвхөн CRL (CA-ийн OCSP руу НЭГ Ч хүсэлт үгүй);
+// DSS гинжийн дарааллаар.
+func TestCollectLTVHealthyChain(t *testing.T) {
 	p := newLTVPKI(t)
-	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"b": {delay: 120 * time.Millisecond}, "a": {delay: 60 * time.Millisecond}}}
-	d, _ := n.collect(context.Background(), t, 2*time.Second)
+	n := &ltvNet{t: t, p: p, crl: map[string]ltvBehavior{"b": {delay: 100 * time.Millisecond}}}
+	d, _ := n.collect(context.Background(), t, httpTimeout)
 	if d.err != nil {
 		t.Fatal(d.err)
 	}
 	if len(d.Certs) != 3 || !bytes.Equal(d.Certs[0], p.leaf.cert.Raw) || !bytes.Equal(d.Certs[1], p.caB.cert.Raw) || !bytes.Equal(d.Certs[2], p.caA.cert.Raw) {
 		t.Fatalf("Certs дараалал: %d", len(d.Certs))
-	}
-	if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf,caB,caA" || len(d.OCSPs) != 3 {
-		t.Fatalf("OCSPs %q", got)
-	}
-	if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,caA,root" {
-		t.Fatalf("CRLs %q", got)
-	}
-}
-
-// TestCollectLTVDeadOCSPWithValidCRL — хоёр CA-ийн OCSP хариугүй, CRL хүчинтэй: нийт НЭГ цонх (grace) зарцуулна (CA
-// бүрд биш, 10 с timeout биш); DSS-д тэдгээрийн CRL, leaf-ийн OCSP.
-func TestCollectLTVDeadOCSPWithValidCRL(t *testing.T) {
-	const grace = 500 * time.Millisecond
-	p := newLTVPKI(t)
-	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"a": {hang: true}, "root": {hang: true}}}
-	d, elapsed := n.collect(context.Background(), t, grace)
-	if d.err != nil {
-		t.Fatal(d.err)
-	}
-	if elapsed < grace || elapsed >= 2*grace-100*time.Millisecond {
-		t.Fatalf("хугацаа %v: нэг цонх (%v) хүлээгдэж байсан", elapsed, grace)
 	}
 	if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf" {
 		t.Fatalf("OCSPs %q", got)
@@ -282,18 +287,18 @@ func TestCollectLTVDeadOCSPWithValidCRL(t *testing.T) {
 	if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,caA,root" {
 		t.Fatalf("CRLs %q", got)
 	}
+	if a, r := n.ocspRequests("a"), n.ocspRequests("root"); a != 0 || r != 0 {
+		t.Fatalf("CA-ийн OCSP хүсэлт: a=%d root=%d", a, r)
+	}
 }
 
-// TestCollectLTVDeadOCSPRealSocket — холболт хүлээж аваад хариулдаггүй жинхэнэ HTTP сервер (үндэсний CA-ийн OCSP-ийн
-// тохиолдол): цонхны дараа хүсэлт цуцлагдаж, сервер талын handler ч дуусна.
-func TestCollectLTVDeadOCSPRealSocket(t *testing.T) {
-	const grace = 300 * time.Millisecond
-	var active atomic.Int64
+// TestCollectLTVCAOCSPNotContacted — CA-ийн OCSP responder холболт хүлээж аваад хариулдаггүй (жинхэнэ сокет), CRL
+// хүчинтэй: сервер нэг ч хүсэлт хүлээж авахгүй, цуглуулалт хүлээлтгүй.
+func TestCollectLTVCAOCSPNotContacted(t *testing.T) {
+	var got atomic.Int64
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		active.Add(1)
-		defer active.Add(-1)
-		// net/http нь клиент салсныг (r.Context()) зөвхөн биеийг уншсаны дараа ажиглана.
+		got.Add(1)
 		_, _ = io.Copy(io.Discard, r.Body)
 		select {
 		case <-r.Context().Done():
@@ -305,98 +310,94 @@ func TestCollectLTVDeadOCSPRealSocket(t *testing.T) {
 	u, _ := url.Parse(srv.URL)
 	p := newLTVPKI(t)
 	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"a": {hang: true}, "root": {hang: true}}, hangTo: srv.Client().Transport, hangURL: u}
-	d, elapsed := n.collect(context.Background(), t, grace)
+	d, elapsed := n.collect(context.Background(), t, httpTimeout)
 	if d.err != nil {
 		t.Fatal(d.err)
 	}
-	if elapsed > 2*time.Second {
-		t.Fatalf("хугацаа %v (цонх %v)", elapsed, grace)
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for active.Load() != 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if k := active.Load(); k != 0 {
-		t.Fatalf("сервер талд %d хүсэлт цуцлагдаагүй", k)
+	if k := got.Load(); k != 0 || n.ocspRequests("a") != 0 || n.ocspRequests("root") != 0 || elapsed > 2*time.Second {
+		t.Fatalf("сервер %d хүсэлт авсан, %v", k, elapsed)
 	}
 }
 
-// TestCollectLTVSlowOCSPWithoutCRL — хүчинтэй CRL-гүй CA-ийн удаан (цонхноос урт) OCSP-г таслахгүй хүлээнэ.
-func TestCollectLTVSlowOCSPWithoutCRL(t *testing.T) {
-	const grace, slow = 100 * time.Millisecond, 600 * time.Millisecond
-	p := newLTVPKI(t)
-	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"a": {delay: slow}}, crl: map[string]ltvBehavior{"a": {missing: true}}}
-	d, elapsed := n.collect(context.Background(), t, grace)
-	if d.err != nil {
-		t.Fatal(d.err)
-	}
-	if elapsed < slow {
-		t.Fatalf("хугацаа %v < %v — OCSP-г хүлээгээгүй", elapsed, slow)
-	}
-	if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf,caB,caA" {
-		t.Fatalf("OCSPs %q", got)
-	}
-	if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,root" {
-		t.Fatalf("CRLs %q", got)
-	}
-}
-
-// TestCollectLTVLeafOCSPNotCut — гинжийн эхний гэрчилгээний (иргэн, TSA) OCSP-д цонх хамаарахгүй: CRL хүчинтэй ч удаан
-// OCSP-г бүтнээр хүлээж DSS-д оруулна (thisUpdate > genTime дүрэм өөрчлөгдөөгүй).
-func TestCollectLTVLeafOCSPNotCut(t *testing.T) {
-	const grace, slow = 100 * time.Millisecond, 600 * time.Millisecond
-	p := newLTVPKI(t)
-	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"b": {delay: slow}}}
-	d, elapsed := n.collect(context.Background(), t, grace)
-	if d.err != nil || elapsed < slow {
-		t.Fatalf("%v %v", d.err, elapsed)
-	}
-	if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf,caB,caA" {
-		t.Fatalf("OCSPs %q", got)
-	}
-}
-
-// TestCollectLTVBadOCSPFallsBack — хог, OCSPSigning EKU-гүй гэрчилгээний зурсан, 404 OCSP: хүчинтэй CRL байвал CRL-ээр
-// (OCSP орохгүй); CRL-гүй бол LTV_UNAVAILABLE нөхцөл (revoked биш). Шалгах дүрэм өөрчлөгдөөгүй.
-func TestCollectLTVBadOCSPFallsBack(t *testing.T) {
-	for name, b := range map[string]ltvBehavior{"garbage": {garbage: true}, "unauthorised": {unauthorised: true}, "404": {missing: true}} {
+// TestCollectLTVCAOCSPFallback — CA-д хүчинтэй CRL алга (404, хог, хугацаа дууссан, өөр олгогчийн): OCSP руу (энгийн
+// timeout, удаан ч хүлээнэ) — DSS-д тэр CA-ийн OCSP; OCSP ч хүчингүй бол LTV_UNAVAILABLE нөхцөл (revoked биш).
+func TestCollectLTVCAOCSPFallback(t *testing.T) {
+	for name, b := range map[string]ltvBehavior{"404": {missing: true}, "garbage": {garbage: true}, "expired": {expired: true}, "foreign issuer": {unauthorised: true}} {
 		t.Run(name, func(t *testing.T) {
 			p := newLTVPKI(t)
-			n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"a": b}}
-			d, _ := n.collect(context.Background(), t, 2*time.Second)
+			n := &ltvNet{t: t, p: p, crl: map[string]ltvBehavior{"a": b}, ocsp: map[string]ltvBehavior{"a": {delay: 300 * time.Millisecond}}}
+			d, elapsed := n.collect(context.Background(), t, httpTimeout)
 			if d.err != nil {
 				t.Fatal(d.err)
 			}
-			if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf,caA" {
-				t.Fatalf("OCSPs %q", got)
+			if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf,caB" || elapsed < 300*time.Millisecond {
+				t.Fatalf("OCSPs %q, %v", got, elapsed)
 			}
-			n.crl = map[string]ltvBehavior{"a": {missing: true}}
-			d, _ = n.collect(context.Background(), t, 2*time.Second)
-			if !errors.Is(d.err, errLTV) || errors.Is(d.err, ErrCertificateRevoked) || !strings.Contains(d.err.Error(), p.caB.cert.SerialNumber.Text(16)) {
-				t.Fatalf("%v", d.err)
+			if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,root" {
+				t.Fatalf("CRLs %q", got)
+			}
+			if n.ocspRequests("a") != 1 || n.ocspRequests("root") != 0 {
+				t.Fatalf("OCSP хүсэлт a=%d root=%d", n.ocspRequests("a"), n.ocspRequests("root"))
+			}
+			for _, bad := range []ltvBehavior{{garbage: true}, {unauthorised: true}, {missing: true}} {
+				n.ocsp = map[string]ltvBehavior{"a": bad}
+				d, _ = n.collect(context.Background(), t, httpTimeout)
+				if !errors.Is(d.err, errLTV) || errors.Is(d.err, ErrCertificateRevoked) || !strings.Contains(d.err.Error(), p.caB.cert.SerialNumber.Text(16)) {
+					t.Fatalf("%+v: %v", bad, d.err)
+				}
 			}
 		})
 	}
 }
 
-// TestCollectLTVRevokedIsFatal — «revoked» хатуу алдаа хэвээр: цонхонд ирсэн CA-ийн OCSP revoked (CRL цэвэр байсан ч),
-// CRL-д жагсаалттай, leaf-ийн OCSP revoked.
+// TestCollectLTVLeafOCSPFirst — leaf: удаан OCSP-г хүлээж OCSP + CRL хоёуланг шигтгэнэ; хариугүй OCSP → timeout-ын
+// дараа CRL-ээр (OCSP-гүй).
+func TestCollectLTVLeafOCSPFirst(t *testing.T) {
+	const slow = 600 * time.Millisecond
+	p := newLTVPKI(t)
+	n := &ltvNet{t: t, p: p, ocsp: map[string]ltvBehavior{"b": {delay: slow}}}
+	d, elapsed := n.collect(context.Background(), t, httpTimeout)
+	if d.err != nil || elapsed < slow {
+		t.Fatalf("%v %v", d.err, elapsed)
+	}
+	if got := joined(p.ocspCerts(t, d.OCSPs)); got != "leaf" {
+		t.Fatalf("OCSPs %q", got)
+	}
+	if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,caA,root" {
+		t.Fatalf("CRLs %q", got)
+	}
+
+	const timeout = 300 * time.Millisecond
+	n.ocsp = map[string]ltvBehavior{"b": {hang: true}}
+	d, elapsed = n.collect(context.Background(), t, timeout)
+	if d.err != nil || elapsed < timeout || elapsed > 2*time.Second {
+		t.Fatalf("%v %v", d.err, elapsed)
+	}
+	if len(d.OCSPs) != 0 {
+		t.Fatalf("OCSPs %d", len(d.OCSPs))
+	}
+	if got := joined(p.crlIssuers(t, d.CRLs)); got != "caB,caA,root" {
+		t.Fatalf("CRLs %q", got)
+	}
+}
+
+// TestCollectLTVRevokedIsFatal — «revoked» хатуу алдаа: CA-ийн CRL (OCSP хариугүй ч), CA-ийн OCSP нөөц, leaf-ийн OCSP
+// (CRL цэвэр ч), leaf-ийн CRL (OCSP good ч).
 func TestCollectLTVRevokedIsFatal(t *testing.T) {
-	const grace = 500 * time.Millisecond
 	for _, tc := range []struct {
 		name      string
 		ocsp, crl map[string]ltvBehavior
 		serial    func(*ltvPKI) *big.Int
 	}{
-		{"CA OCSP revoked within grace", map[string]ltvBehavior{"a": {revoked: true, delay: 150 * time.Millisecond}}, nil, func(p *ltvPKI) *big.Int { return p.caB.cert.SerialNumber }},
-		{"CA CRL revoked", nil, map[string]ltvBehavior{"root": {revoked: true}}, func(p *ltvPKI) *big.Int { return p.caA.cert.SerialNumber }},
-		{"CA CRL revoked, OCSP dead", map[string]ltvBehavior{"root": {hang: true}}, map[string]ltvBehavior{"root": {revoked: true}}, func(p *ltvPKI) *big.Int { return p.caA.cert.SerialNumber }},
+		{"CA CRL revoked", map[string]ltvBehavior{"root": {hang: true}}, map[string]ltvBehavior{"root": {revoked: true}}, func(p *ltvPKI) *big.Int { return p.caA.cert.SerialNumber }},
+		{"CA OCSP fallback revoked", map[string]ltvBehavior{"a": {revoked: true}}, map[string]ltvBehavior{"a": {missing: true}}, func(p *ltvPKI) *big.Int { return p.caB.cert.SerialNumber }},
 		{"leaf OCSP revoked", map[string]ltvBehavior{"b": {revoked: true, delay: 150 * time.Millisecond}}, nil, func(p *ltvPKI) *big.Int { return p.leaf.cert.SerialNumber }},
+		{"leaf CRL revoked", nil, map[string]ltvBehavior{"b": {revoked: true}}, func(p *ltvPKI) *big.Int { return p.leaf.cert.SerialNumber }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newLTVPKI(t)
 			n := &ltvNet{t: t, p: p, ocsp: tc.ocsp, crl: tc.crl}
-			d, _ := n.collect(context.Background(), t, grace)
+			d, _ := n.collect(context.Background(), t, httpTimeout)
 			if !errors.Is(d.err, ErrCertificateRevoked) || !strings.Contains(d.err.Error(), tc.serial(p).Text(16)) {
 				t.Fatalf("%v", d.err)
 			}
@@ -404,14 +405,15 @@ func TestCollectLTVRevokedIsFatal(t *testing.T) {
 	}
 }
 
-// TestCollectLTVCallerCancel — дуудагчийн ctx цуцлагдвал хариугүй OCSP/CRL-ийг хүлээхгүй буцна; goroutine үлдэхгүй.
+// TestCollectLTVCallerCancel — дуудагчийн ctx цуцлагдвал хариугүй OCSP/CRL-ийг хүлээхгүй буцна; хүсэлт үлдэхгүй.
 func TestCollectLTVCallerCancel(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		ocsp, crl map[string]ltvBehavior
 	}{
-		{"OCSP dead, no CRL", map[string]ltvBehavior{"a": {hang: true}}, map[string]ltvBehavior{"a": {missing: true}}},
-		{"OCSP and CRL dead", map[string]ltvBehavior{"a": {hang: true}, "root": {hang: true}}, map[string]ltvBehavior{"a": {hang: true}}},
+		{"leaf OCSP dead", map[string]ltvBehavior{"b": {hang: true}}, nil},
+		{"CA CRL dead", nil, map[string]ltvBehavior{"a": {hang: true}}},
+		{"CA CRL missing, OCSP dead", map[string]ltvBehavior{"a": {hang: true}}, map[string]ltvBehavior{"a": {missing: true}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newLTVPKI(t)
@@ -419,7 +421,7 @@ func TestCollectLTVCallerCancel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			tm := time.AfterFunc(200*time.Millisecond, cancel)
 			defer tm.Stop()
-			d, elapsed := n.collect(ctx, t, 5*time.Second)
+			d, elapsed := n.collect(ctx, t, httpTimeout)
 			if d.err == nil || elapsed > 2*time.Second {
 				t.Fatalf("%v %v", d.err, elapsed)
 			}

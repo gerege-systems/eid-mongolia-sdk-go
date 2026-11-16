@@ -25,11 +25,11 @@ import (
 // алдаа (fail-closed). Олгогчийн гарын үсэгтэй «revoked» хариу (OCSP эсвэл CRL) — ErrCertificateRevoked, тэр дор нь
 // зогсоно (өөр URL/CRL-ээр «good» хайхгүй, дахин оролдохгүй).
 //
-// Хугацаа: бүх гэрчилгээний OCSP-г зэрэг эхлүүлж (гэрчилгээ бүрд нэг goroutine), CRL-ийг гинжийн дарааллаар татна; үр
-// дүнг гинжийн дарааллаар нэмнэ (DSS-ийн агуулга/дараалал, алдааны давуу эрэмбэ дараалсан хувилбартай ижил). Гинжийн
-// эхний бус (CA) гэрчилгээ олгогчийн хүчинтэй CRL-тэй бол түүний OCSP-г цуглуулалт эхэлснээс ocspGrace хүртэл л хүлээж
-// цуцална — хариугүй responder (TCP хүлээж аваад хариулдаггүй, ж: үндэсний CA-ийн AIA OCSP) гэрчилгээ бүрд 10 с
-// идэхгүй. Хүчинтэй CRL-гүй бол, мөн гинжийн эхний (иргэн, TSA) гэрчилгээнд OCSP энгийн timeout-оо бүтнээр авна.
+// Дараалал гэрчилгээний үүргээр (host нэрээр биш): гинжийн ЭХНИЙ (end-entity: иргэн, TSA) гэрчилгээнд OCSP эхэлж
+// (энгийн timeout, thisUpdate > genTime) — CRL-ийг мөн татаж хоёуланг нь шигтгэнэ, OCSP хүчинтэй хариугүй бол CRL нөөц.
+// CA гэрчилгээнд (гинжийн эхнийхээс бусад) CRL эхэлж: хүчинтэй CRL авбал тэр гэрчилгээний OCSP-г ОГТ асуухгүй; хүчинтэй
+// CRL-гүй бол л OCSP (энгийн timeout). Гэрчилгээ бүрийн таталт тусдаа goroutine-д зэрэг явна; үр дүнг гинжийн дарааллаар
+// нэмнэ. Хариулдаггүй CA-ийн OCSP responder (ж: үндэсний CA-ийн AIA) гарын үсгийг саатуулахгүй.
 
 var (
 	errLTV      = errors.New("LTV өгөгдөл бүрэн биш")
@@ -43,10 +43,6 @@ const (
 	ocspWaitMax = 5 * time.Second
 	ocspRetry   = time.Second
 )
-
-// ocspGrace — хүчинтэй CRL-тэй CA гэрчилгээний OCSP-г цуглуулалт эхэлснээс хойш хүлээх дээд хугацаа (.NET SDK 0.15.0
-// Ltv.OcspGrace-тэй ижил). Тест collectLTVGrace-ээр өөр утга өгнө.
-const ocspGrace = 3 * time.Second
 
 // sleepFn — тестэд солино.
 var sleepFn = func(ctx context.Context, d time.Duration) error {
@@ -85,20 +81,6 @@ func collectLTVWithWait(ctx context.Context, f *fetcher, now func() time.Time, g
 // collectLTV — chains (leaf → … root-оос өмнөх) бүрийн гэрчилгээнд DSS өгөгдөл. after (тэг биш) — гинжийн leaf-ийн
 // (иргэн, TSA) OCSP thisUpdate үүнээс хожуу байх ёстой (CA: 04-ийн олгосон cert-д).
 func collectLTV(ctx context.Context, f *fetcher, now, after time.Time, roots []*x509.Certificate, chains ...[]*x509.Certificate) (core.DSS, error) {
-	return collectLTVGrace(ctx, f, now, after, ocspGrace, roots, chains...)
-}
-
-// ocspJob — нэг гэрчилгээний OCSP goroutine.
-type ocspJob struct {
-	c, issuer *x509.Certificate
-	leaf      bool // гинжийн эхний гэрчилгээ: thisUpdate > after, ocspGrace хамаарахгүй
-	cancel    context.CancelFunc
-	done      chan ocspResult // буфер 1 — goroutine хэзээ ч блоклогдохгүй
-}
-
-// collectLTVGrace — collectLTV, CA гэрчилгээний OCSP-ийн хүлээх цонх grace-тэй. Буцахаас өмнө (алдаа, цуцлалт
-// ч) бүх OCSP goroutine-ийг цуцалж дуусахыг хүлээнэ.
-func collectLTVGrace(ctx context.Context, f *fetcher, now, after time.Time, grace time.Duration, roots []*x509.Certificate, chains ...[]*x509.Certificate) (core.DSS, error) {
 	var d core.DSS
 	addCert := func(c *x509.Certificate) {
 		if !slices.ContainsFunc(d.Certs, func(b []byte) bool { return bytes.Equal(b, c.Raw) }) {
@@ -126,41 +108,33 @@ func collectLTVGrace(ctx context.Context, f *fetcher, now, after time.Time, grac
 		return slices.ContainsFunc(roots, func(r *x509.Certificate) bool { return r.Equal(c) })
 	}
 	seen := map[string]bool{}
-	var jobs []*ocspJob
+	var jobs []*ltvJob
 	for _, ch := range chains {
 		for i, c := range ch {
 			if seen[string(c.Raw)] || isRoot(c) {
 				continue
 			}
 			seen[string(c.Raw)] = true
-			jobs = append(jobs, &ocspJob{c: c, issuer: issuerOf(c), leaf: i == 0})
+			jobs = append(jobs, &ltvJob{c: c, issuer: issuerOf(c), leaf: i == 0})
 		}
 	}
 
-	start := time.Now()
+	// Гэрчилгээ бүрд нэг goroutine (тоо = гинжийн урт); буцахаас өмнө (алдаа, цуцлалт ч) бүгдийг цуцалж хүлээнэ.
+	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	defer func() {
-		for _, j := range jobs {
-			if j.cancel != nil {
-				j.cancel()
-			}
-		}
+		cancel()
 		wg.Wait()
 	}()
 	for _, j := range jobs {
 		if j.issuer == nil {
 			continue
 		}
-		jctx, cancel := context.WithCancel(ctx)
-		j.cancel, j.done = cancel, make(chan ocspResult, 1)
-		fresh := time.Time{}
-		if j.leaf {
-			fresh = after
-		}
+		j.done = make(chan ltvResult, 1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			j.done <- firstOCSP(jctx, f, j.c, j.issuer, now, fresh)
+			j.done <- j.run(ctx, f, now, after)
 		}()
 	}
 
@@ -170,47 +144,23 @@ func collectLTVGrace(ctx context.Context, f *fetcher, now, after time.Time, grac
 		if issuer == nil {
 			return core.DSS{}, fmt.Errorf("%w: %s-ийн олгогч олдсонгүй", errLTV, certRef(c))
 		}
-		ok := false
-		for _, u := range c.CRLDistributionPoints {
-			der, err := f.do(ctx, http.MethodGet, u, "", nil)
-			if err != nil {
-				continue
-			}
-			covers, err := crlCovers(der, c, issuer, now)
-			if err != nil {
-				return core.DSS{}, fmt.Errorf("%w: %s", err, certRef(c))
-			}
-			if covers {
-				add(&d.CRLs, der)
-				ok = true
-			}
-		}
-		var r ocspResult
-		if ok && !j.leaf {
-			// Хүчинтэй CRL бий — OCSP-г цонхны үлдсэн хугацаанд л хүлээнэ. Цуцалсны дараа ч үр дүнг уншина: цонхны
-			// хил дээр ирсэн «revoked» хатуу алдаа хэвээр.
-			timer := time.NewTimer(max(grace-time.Since(start), 0))
-			select {
-			case r = <-j.done:
-			case <-timer.C:
-				j.cancel()
-				r = <-j.done
-			}
-			timer.Stop()
-		} else {
-			r = <-j.done
-		}
+		r := <-j.done
 		if r.revoked != nil {
 			return core.DSS{}, fmt.Errorf("%w: %s", r.revoked, certRef(c))
 		}
-		if r.der != nil {
-			add(&d.OCSPs, r.der)
-			if r.resp.Certificate != nil && !r.resp.Certificate.Equal(issuer) {
-				addCert(r.resp.Certificate) // delegated responder
+		ok := false
+		if r.ocsp.der != nil {
+			add(&d.OCSPs, r.ocsp.der)
+			if r.ocsp.resp.Certificate != nil && !r.ocsp.resp.Certificate.Equal(issuer) {
+				addCert(r.ocsp.resp.Certificate) // delegated responder
 			}
 			ok = true
 		}
-		freshErr := r.freshErr
+		for _, der := range r.crls {
+			add(&d.CRLs, der)
+			ok = true
+		}
+		freshErr := r.ocsp.freshErr
 		if !ok {
 			if freshErr != nil {
 				return core.DSS{}, fmt.Errorf("%w: %s", freshErr, certRef(c))
@@ -223,6 +173,61 @@ func collectLTVGrace(ctx context.Context, f *fetcher, now, after time.Time, grac
 		}
 	}
 	return d, nil
+}
+
+// ltvJob — гинжийн нэг гэрчилгээ (давхардал, root-гүй).
+type ltvJob struct {
+	c, issuer *x509.Certificate
+	leaf      bool           // гинжийн эхний (end-entity) гэрчилгээ: OCSP эхэлж, thisUpdate > after
+	done      chan ltvResult // буфер 1 — goroutine хэзээ ч блоклогдохгүй
+}
+
+// ltvResult — нэг гэрчилгээний цуцлалтын нотолгоо: ocsp (хүчинтэй хариу/freshErr), crls (энэ гэрчилгээг хамарсан
+// хүчинтэй CRL, CDP-ийн дарааллаар), revoked (олгогчийн гарын үсэгтэй «revoked» — хатуу алдаа).
+type ltvResult struct {
+	ocsp    ocspResult
+	crls    [][]byte
+	revoked error
+}
+
+// run — end-entity: OCSP, дараа нь CRL (хоёулаа шигтгэгдэнэ); OCSP «revoked» бол CRL татахгүй. CA: CRL; хүчинтэй CRL
+// олдсон бол OCSP илгээхгүй, эс бөгөөс OCSP.
+func (j *ltvJob) run(ctx context.Context, f *fetcher, now, after time.Time) ltvResult {
+	var r ltvResult
+	if j.leaf {
+		if r.ocsp = firstOCSP(ctx, f, j.c, j.issuer, now, after); r.ocsp.revoked != nil {
+			r.revoked = r.ocsp.revoked
+			return r
+		}
+		r.crls, r.revoked = validCRLs(ctx, f, j.c, j.issuer, now)
+		return r
+	}
+	if r.crls, r.revoked = validCRLs(ctx, f, j.c, j.issuer, now); r.revoked != nil || len(r.crls) > 0 {
+		return r
+	}
+	r.ocsp = firstOCSP(ctx, f, j.c, j.issuer, now, time.Time{})
+	r.revoked = r.ocsp.revoked
+	return r
+}
+
+// validCRLs — CDP URL бүрээс (дарааллаар, үндэсний CRL — толин) c-г хамарсан хүчинтэй CRL-ууд (crlCovers);
+// c жагсаалтад байвал ErrCertificateRevoked.
+func validCRLs(ctx context.Context, f *fetcher, c, issuer *x509.Certificate, now time.Time) ([][]byte, error) {
+	var out [][]byte
+	for _, u := range c.CRLDistributionPoints {
+		der, err := f.do(ctx, http.MethodGet, u, "", nil)
+		if err != nil {
+			continue
+		}
+		covers, err := crlCovers(der, c, issuer, now)
+		if err != nil {
+			return nil, err
+		}
+		if covers {
+			out = append(out, der)
+		}
+	}
+	return out, nil
 }
 
 // ocspResult — firstOCSP-ийн үр дүн: der/resp (хүчинтэй хариу), revoked (ErrCertificateRevoked — хатуу алдаа),

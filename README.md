@@ -884,12 +884,14 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
   `pades.DefaultLTVRetries` 2 — нийт 3 оролдлого, хүлээлт ~1 с, ~3 с + 0–25% jitter; `0` — унтраах; 0–10-аас гадуур →
   `REQUEST_INVALID`). Бүгд унавал `LTV_UNAVAILABLE`; `ctx` цуцлагдвал хүлээлт тасарч `context.Canceled`-ийг боосон
   `LTV_UNAVAILABLE`. TS SDK 0.18.3-ийн `ltvRetries`-тэй ижил — TS ба Go хоёулаа LTV retry-тэй.
-- **LTV-ийн OCSP хүлээлт (v0.28.1)** — `Complete` гинжийн бүх гэрчилгээний OCSP-г зэрэг асууж, CRL-ийг гинжийн
-  дарааллаар татна. CA гэрчилгээ (02/03 г.м., гинжийн эхнийхээс бусад) олгогчийн хүчинтэй CRL-тэй бол түүний OCSP-г
-  цуглуулалт эхэлснээс хамгийн ихдээ 3 с хүлээнэ — холболт хүлээж аваад хариулдаггүй responder гэрчилгээ бүрд 10 с
-  саатуулахгүй. Хүчинтэй CRL-гүй бол, мөн иргэн/TSA (гинжийн эхний) гэрчилгээний OCSP энгийн 10 с timeout-тай. Хүлээн авах
-  дүрэм, «revoked» = хатуу алдаа, DSS-ийн агуулга/дараалал (эрүүл гинжид) өөрчлөгдөөгүй. `ValidatePDF` зөвхөн 04/05-ийн
-  олгосон гэрчилгээг онлайнаар шалгадаг тул өөрчлөгдөөгүй.
+- **LTV-ийн цуцлалтын дараалал (v0.28.1)** — `Complete` гэрчилгээний үүргээр:
+  - гинжийн эхний (end-entity: иргэн, TSA) гэрчилгээ — **OCSP эхэлж** (10 с timeout, `thisUpdate > genTime`), CRL-ийг
+    мөн татаж хоёуланг нь DSS-д; хүчинтэй OCSP хариугүй бол CRL;
+  - CA гэрчилгээ (гинжийн бусад) — **CRL эхэлж**; хүчинтэй CRL авбал тэр гэрчилгээний OCSP responder руу ОГТ хандахгүй
+    (DSS-д зөвхөн CRL); хүчинтэй CRL-гүй бол л OCSP (10 с timeout).
+
+  Гэрчилгээ бүрийн таталт зэрэг; DSS гинжийн дарааллаар. Хүлээн авах дүрэм, «revoked» = хатуу алдаа, fail-closed
+  өөрчлөгдөөгүй. `ValidatePDF` (зөвхөн 04/05-ийн олгосныг онлайнаар шалгана) өөрчлөгдөөгүй.
 - Гарын үсэгтэй баримтад дахин зурахад хуудас нэмэгдэхгүй; docID-г эхний хуудасны `/verify/<uuid>` холбоосоос уншина.
 - `VerifyPagePosition: pades.VerifyPageFirst` (v0.15.0+) — хуудас баримтын ЭХЭНД (1-р хуудас) орно; анхдагч
   `pades.VerifyPageLast` (төгсгөлд, өмнөхтэй байт-ижил). `Appearance.Page`, `SuggestPlacement`, `Placement.Page` хоёуланд нь
@@ -1096,8 +1098,8 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
 - `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
   `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
-  CMS, OCSP/CRL from AIA/CDP — OCSP requests run concurrently; a CA certificate that already has a valid CRL waits at
-  most 3 s for its OCSP (v0.28.1) — DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
+  CMS, revocation from AIA/CDP — end-entity certificates: OCSP first, CRL as well/as fallback; CA certificates: CRL
+  first, OCSP only when no valid CRL (v0.28.1) — DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
   — same JSON report as `/v3/validate/pdf`, online OCSP/CRL with DSS fallback, `certificate_level`). Derived from the CA writer
   (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
   PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
