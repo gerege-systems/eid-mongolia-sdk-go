@@ -43,6 +43,10 @@ var (
 	// routeSealCertificateRequestStatus — CA !483 (ORG_ONBOARDING §4.3); discovery: endpoints.seal.certificate_request.
 	routeSealCertificateRequestStatus = rpRoute{"GET", "/seal/certificate/{orgEtsi}/requests/{requestId}"}
 	routeSeal                         = rpRoute{"POST", "/seal/{orgEtsi}"}
+	// RP-ийн санаачилсан тамганы эрхийн хүсэлт (CA V156); discovery: endpoints.seal.grants, organization.seal_grants.
+	routeSealGrants      = rpRoute{"POST", "/seal/grants"}
+	routeSealGrantStatus = rpRoute{"GET", "/seal/grants/{grantId}"}
+	routeOrgSealGrants   = rpRoute{"GET", "/organization/seal-grants/etsi/{personEtsi}"}
 )
 
 // rpRoutes — SDK-ийн хамардаг бүх RP-API зам (гэрээний тестэд).
@@ -60,6 +64,7 @@ var rpRoutes = []rpRoute{
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 	routeShare,
 	routeSealCertificate, routeSealCertificateRequest, routeSealCertificateRequestStatus, routeSeal,
+	routeSealGrants, routeSealGrantStatus, routeOrgSealGrants,
 }
 
 // rpRoutesUndiscovered — CA-ийн гэрээнд (код + docs) байгаа ч live /.well-known/eid-д хараахан жагсаагдаагүй замууд.
