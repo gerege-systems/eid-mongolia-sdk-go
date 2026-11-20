@@ -19,3 +19,6 @@
   §3.10; тест `seal_grant_test.go` (fake сервер: биеийн талбар DisallowUnknownFields, код бүрийн sentinel/төрөл, 429
   Retry-After, wait-ийн төгсгөлийн төлвүүд, timeout/cancel, null/дутуу статистик).
 - **Шалгалт:** PR-ийн CI (go test -race, vet, staticcheck, govulncheck, contract — шинэ 3 зам live discovery-д бий).
+- **Гэрээний тест:** `TestContractSealErrorCodes` нь `endpoints.seal.grant_request` / `grant_status`-ийн кодуудыг
+  `SealGrantErrorCodes`-оор таньж, тэдгээр түлхүүрийн гол кодуудыг шаардана (CA V156 гарсны дараа өдөр тутмын contract улаан
+  болох байсан).

@@ -290,7 +290,8 @@ func TestContractSealSwitches(t *testing.T) {
 
 // TestContractSealErrorCodes — CA 2026-11-12: тамганы 409 бүр тогтвортой code-той, GET /seal/certificate идэвхтэй
 // гэрчилгээгүй бол 409. Discovery-ийн endpoints.seal.*-ийн тайлбарт нэрлэсэн code бүр SealErrorCodes-д байх ёстой
-// (*APIError.Is-ийн sentinel-ууд), шинэ code-ууд тайлбарт байх ёстой. TS SDK-ийн contract тесттэй ижил.
+// (*APIError.Is-ийн sentinel-ууд) эсвэл тамганы эрхийн хүсэлтийнх бол SealGrantErrorCodes-д (CA V156), шинэ code-ууд
+// тайлбарт байх ёстой. TS SDK-ийн contract тесттэй ижил.
 func TestContractSealErrorCodes(t *testing.T) {
 	var d struct {
 		Endpoints struct {
@@ -300,7 +301,7 @@ func TestContractSealErrorCodes(t *testing.T) {
 	fetchJSON(t, eidDiscoveryURL, &d)
 	codeRe := regexp.MustCompile(`\b(?:ORG_NOT_ACTIVE|SEAL_[A-Z_]+)\b`)
 	known := map[string]bool{}
-	for _, c := range SealErrorCodes {
+	for _, c := range append(append([]string(nil), SealErrorCodes...), SealGrantErrorCodes...) {
 		known[c] = true
 	}
 	named := map[string]map[string]bool{}
@@ -318,6 +319,8 @@ func TestContractSealErrorCodes(t *testing.T) {
 			CodeSealCertNotYetValid, CodeSealServiceDisabled},
 		"certificate_get":   {CodeSealNotIssued, CodeSealCertRevoked, CodeSealCertExpired, CodeSealCertNotYetValid},
 		"certificate_issue": {CodeOrgNotActive, CodeSealApproverUnavailable, CodeSealServiceDisabled},
+		"grant_request":     {CodeOrgNotActive, CodeSealGrantAlreadyApproved, CodeSealApproverUnavailable},
+		"grant_status":      {CodeSealGrantNotFound},
 	} {
 		for _, c := range want {
 			if !named[key][c] {
