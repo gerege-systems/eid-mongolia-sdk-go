@@ -713,6 +713,64 @@ if errors.As(err, &se) {
   `*ForbiddenError` (`SEAL:<orgEtsi>` эрхгүй); **429 `RATE_LIMITED`** + `RetryAfter` — байгууллагад цагт 5 хүсэлт;
   **503 `SEAL_SERVICE_DISABLED`** (`eid.ErrSealServiceDisabled`) — олголт унтраалттай.
 
+#### Тамганы эрхийг RP өөрөө хүсэх — `RequestGrant` (v0.29.0)
+
+Операторын хүсэлтийн оронд RP **өөрөө** байгууллагын `SEAL:<orgEtsi>` эрхийг хүсч болно. Хүнийг ETSI-ээр биш —
+танай RP-ийн эхлүүлж **сүүлийн 5 минутад OK-оор дууссан нэвтрэлтийн session**-оор таньна; тэр хүн байгууллагын **улсын
+бүртгэлээр баталгаажсан Гүйцэтгэх захирал** байх ёстой. Push зөвхөн түүнд очиж eID аппаараа **PIN2**-оор зөвшөөрнө. Нэг
+session → нэг хүсэлт (ижил session-оор дахин дуудвал ижил PENDING, шинэ push үгүй). SEAL эрх шаардахгүй.
+
+```go
+// 1) захирлыг танай RP-ээр шинээр нэвтрүүлнэ (Auth.*), session OK болсны дараа 5 минутын дотор:
+g, err := c.Seal.RequestGrant(ctx, "NTRMN-6235972", authSessionID) // 202: g.GrantID, g.Status == eid.SealGrantPending
+switch {
+case errors.Is(err, eid.ErrNotOrgCEO): // 403 — нэвтэрсэн хүн Гүйцэтгэх захирал биш
+case errors.Is(err, eid.ErrAuthSessionTooOld), errors.Is(err, eid.ErrAuthSessionAlreadyUsed): // 409 — дахин нэвтрүүлнэ
+case errors.Is(err, eid.ErrSealGrantAlreadyApproved): // 409 — эрх аль хэдийн бий
+}
+// 2) захирал PIN2-оор зөвшөөртөл:
+g, err = c.Seal.WaitForGrant(ctx, g.GrantID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
+var ge *eid.SealGrantError
+if errors.As(err, &ge) {
+	// ge.Outcome: REJECTED | EXPIRED | FAILED | REVOKED (ge.Failure) → дахин нэвтрүүлж шинэ хүсэлт;
+	// eid.SealGrantTimeout → ижил GrantID-аар дахин хүлээж болно
+}
+```
+
+- `RequestGrant` — `POST /seal/grants {orgEtsi, sessionId}` → `*SealGrant` (`GrantID`, `OrgEtsi`, `Status`, `ExpiresAt`).
+- `GrantStatus(ctx, grantID)` — `GET /seal/grants/{grantId}`: `PENDING` | `APPROVED` (`ApprovedAt`) | `REJECTED` | `EXPIRED`
+  | `FAILED` | `REVOKED` (`RevokedAt`; `Failure` — `EXPIRED`, `PUSH_FAILED`, `RP_NOT_ACTIVE`, `ORG_NOT_ACTIVE`,
+  `RP_CHANGED`, `RP_PERMISSIONS_FULL`, `CANCELLED`, `ORG_REVOKED`). Өөр RP-ийн id → 404 `ErrSealGrantNotFound`.
+- `WaitForGrant(ctx, grantID, *SealWaitOptions)` — APPROVED болтол асууна (`WaitForCertificate`-тэй ижил дүрэм: 429/503 +
+  Retry-After-ийг дагана, бусад алдаа шууд, `ctx` цуцлагдвал `ctx.Err()`).
+- `c.Organization.SealGrants(ctx, personEtsi)` — `GET /organization/seal-grants/etsi/{personEtsi}` (`PKI_READ`; иргэн
+  сүүлийн 24 цагт танай RP-ээр нэвтэрсэн): иргэн Гүйцэтгэх захирал байгаа байгууллага бүр (`OrgEtsi`, `OrgName`,
+  `OrgStatus`) ба тэдгээрийн APPROVED / PENDING эрхүүд (`RPName`, `RPDomain`, `Status`, `CreatedAt`, `DecidedAt`,
+  `ExpiresAt`, `ApproverName`, `SealCount`, `SealCount30d`, `LastSealedAt`). `SealCount` / `SealCount30d` nil = статистик
+  түр боломжгүй (0 биш). Бусад RP-ийн эрхийг CA зөвхөн eID-ийн порталд харуулна — танай RP зөвхөн өөрийн эрхийг харна.
+  Зөвхөн унших — цуцлалт eID аппаас.
+
+| HTTP `code` | `errors.Is` | Юу хийх |
+|---|---|---|
+| 400 `REQUEST_INVALID` | `eid.ErrRequestInvalid` | orgEtsi / sessionId буруу |
+| 403 `RP_NOT_REGISTERED` | `eid.ErrRPNotRegistered` (`*ForbiddenError`) | бүртгэлтэй RP биш |
+| 403 `NOT_ORG_CEO` | `eid.ErrNotOrgCEO` (`*ForbiddenError`) | нэвтэрсэн хүн Гүйцэтгэх захирал биш |
+| 404 `AUTH_SESSION_NOT_FOUND` | `eid.ErrAuthSessionNotFound` | session байхгүй / өөр RP-ийнх |
+| 404 `ORG_NOT_FOUND` | `eid.ErrOrgNotFound` | байгууллага бүртгэлгүй |
+| 409 `AUTH_SESSION_WRONG_FLOW` | `eid.ErrAuthSessionWrongFlow` | нэвтрэлтийн session биш |
+| 409 `AUTH_SESSION_NOT_COMPLETED` | `eid.ErrAuthSessionNotCompleted` | нэвтрэлт дуусаагүй / амжилтгүй |
+| 409 `AUTH_SESSION_TOO_OLD` | `eid.ErrAuthSessionTooOld` | 5 минутаас хуучин — дахин нэвтрүүлнэ |
+| 409 `AUTH_SESSION_ALREADY_USED` | `eid.ErrAuthSessionAlreadyUsed` | дахин нэвтрүүлнэ |
+| 409 `ORG_NOT_ACTIVE` | `eid.ErrOrgNotActive` | байгууллага ACTIVE биш |
+| 409 `RP_NOT_ACTIVE` | `eid.ErrRPNotActive` | RP идэвхгүй |
+| 409 `SEAL_GRANT_ALREADY_APPROVED` | `eid.ErrSealGrantAlreadyApproved` | эрх аль хэдийн бий |
+| 409 `RP_PERMISSIONS_FULL` | `eid.ErrRPPermissionsFull` | eID-ийн операторт хандана |
+| 409 `SEAL_APPROVER_UNAVAILABLE` | `eid.ErrSealApproverUnavailable` | захиралд идэвхтэй eID төхөөрөмж алга |
+| 404 `SEAL_GRANT_NOT_FOUND` | `eid.ErrSealGrantNotFound` | (`GrantStatus`) id буруу / өөр RP-ийнх |
+| 429 `RATE_LIMITED` | `*APIError.Retryable()` | `RetryAfter`-ийн дараа |
+
+Кодын жагсаалт `eid.SealGrantErrorCodes`.
+
 #### Үйлчилгээний унтраалга — `SEAL_SERVICE_DISABLED`
 
 eID-ийн оператор **тамганы гэрчилгээний олголт** ба **тамгалалт**-ыг тус тусад нь, платформ даяар унтрааж болно. Унтраалттай
@@ -1054,7 +1112,12 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   `ErrSealNotIssued`, `ErrSealCertRevoked`, `ErrSealKeyUnavailable`, `ErrSealCertExpired`, `ErrSealCertNotYetValid`
   (`eid.SealErrorCodes`); `Certificate` returns 409 for a revoked / expired / not-issued seal. The RP obtains
   `SEAL:<orgEtsi>` only after a registry-verified ADMIN of the organization approves it in the eID app with PIN2 (403
-  until then). The seal key is a server-side software key (not a QSCD); certificates are valid for 3 years.
+  until then). RP-initiated grant (v0.29.0): `c.Seal.RequestGrant(ctx, orgEtsi, authSessionID)` (POST /seal/grants; the
+  session is an AUTHENTICATION session started by this RP and completed OK ≤ 5 min ago whose person is the
+  organization's registry CEO, who alone gets the PIN2 push), `c.Seal.GrantStatus`, `c.Seal.WaitForGrant` (terminal
+  states → `*eid.SealGrantError`), typed errors `eid.ErrNotOrgCEO`, `ErrAuthSessionTooOld`, `ErrSealGrantAlreadyApproved`
+  … (`eid.SealGrantErrorCodes`); `c.Organization.SealGrants(ctx, personEtsi)` (PKI_READ) lists the organizations where
+  the person is CEO and their APPROVED / PENDING RP grants with seal counts. The seal key is a server-side software key (not a QSCD); certificates are valid for 3 years.
 - `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
   `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
   `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default

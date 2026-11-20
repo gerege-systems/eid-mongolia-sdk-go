@@ -50,8 +50,17 @@ type ForbiddenError struct {
 }
 
 // Is — errors.Is(err, ErrOrgNotActive): OnBehalfOf урсгалын 403 CodeOrgNotActive (тамганы замд энэ код 409 *APIError).
+// Тамганы эрхийн хүсэлтийн 403: ErrRPNotRegistered, ErrNotOrgCEO.
 func (e *ForbiddenError) Is(target error) bool {
-	return target == ErrOrgNotActive && e.Code == CodeOrgNotActive
+	switch target {
+	case ErrOrgNotActive:
+		return e.Code == CodeOrgNotActive
+	case ErrRPNotRegistered:
+		return e.Code == CodeRPNotRegistered
+	case ErrNotOrgCEO:
+		return e.Code == CodeNotOrgCEO
+	}
+	return false
 }
 
 func (e *ForbiddenError) Error() string {
@@ -85,8 +94,13 @@ func (e *APIError) Error() string { return fmt.Sprintf("eid: RP-API %d: %s", e.S
 
 // Is — errors.Is(err, ErrNoSigningCertificate / ErrCertChoiceInvalid / ErrRequestInvalid / ErrQRTokenInvalid /
 // ErrSealApproverUnavailable / ErrSealRequestNotFound / ErrSealServiceDisabled / ErrOrgNotActive / ErrSealNotIssued /
-// ErrSealCertRevoked / ErrSealKeyUnavailable / ErrSealCertExpired / ErrSealCertNotYetValid): серверийн Code-оор.
+// ErrSealCertRevoked / ErrSealKeyUnavailable / ErrSealCertExpired / ErrSealCertNotYetValid, мөн тамганы эрхийн хүсэлтийн
+// ErrAuthSession* / ErrRPNotActive / ErrSealGrantAlreadyApproved / ErrRPPermissionsFull / ErrSealGrantNotFound /
+// ErrOrgNotFound): серверийн Code-оор.
 func (e *APIError) Is(target error) bool {
+	if c := sealGrantAPICode(target); c != "" {
+		return e.Code == c
+	}
 	switch target {
 	case ErrNoSigningCertificate:
 		return e.Code == CodeNoSigningCertificate
@@ -281,7 +295,7 @@ var OnBehalfErrorCodes = []string{
 
 // identifierInPath — замын хувь хүн/төхөөрөмж/байгууллагын таних тэмдэг (PNOMN-…, РД, documentNumber, NTRMN-…) ба тамганы
 // гэрчилгээний хүсэлтийн id.
-var identifierInPath = regexp.MustCompile(`/(etsi|document|linked|requests|seal(?:/certificate)?)/[^/?#\s]+`)
+var identifierInPath = regexp.MustCompile(`/(etsi|document|linked|requests|seal(?:/certificate|/grants)?)/[^/?#\s]+`)
 
 // maskPath — алдаа/логт орох зам: /etsi/{…}, /document/{…}, /linked/{…}, /seal/[certificate/]{…}, /requests/{…} → "…",
 // query хасагдана.
