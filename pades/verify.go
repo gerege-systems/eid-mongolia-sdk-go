@@ -92,13 +92,15 @@ const stampMarkerMax = 128
 
 // docIDFromStamps — Prepare-ийн docId дүрмийн 2.2-р алхам (APPEARANCE_SPEC.md §6.6): precheck-ийн шалгасан e-Seal гарын
 // үсгүүдийн (seals — Sig толины объектын дугаар → байрлал) хамгийн ЭРТ зурсан, /EIDVerify тэмдэгтэй дардасны docId.
-// Widget = сүүлийн revision-ий xref-ийн (объектын дугаарын дарааллаар, xref-ийн үетэй) толь, ӨӨРИЙН `/FT /Sig`, ӨӨРИЙН
-// `/V` нь seals-ийн аль нэг толь руу ШУУД БУС лавлагаа. Гарын үсэг бүрт яг НЭГ widget — 2+ (зээлсэн /V) бол тэр гарын
-// үсгийг бүхэлд нь алгасна. `/AP` → толь, `/N` → stream, `/Filter` алга эсвэл ШУУД null (шууд бус лавлагаа, [], нэр —
-// алгасна); stream-ийн /Length байтын эхний ≤ 128 байт stampMarkerRe-ээр эхэлж, маркерын rev = тэр гарын үсгийн
-// байрлал. Хамгийн бага ByteRange[2] + ByteRange[3] (тэнцвэл Sig толины объектын дугаар бага). Алга → "". Задлах алдаа
-// (panic) → аль хэдийн олдсоныг ч хаяж алдаа (Prepare PDF_INVALID). Энэ нь docId сонгох санамж л — нотолгоо биш:
-// зөв эсэхийг validator (Complete-ийн self-validation) батална.
+// Widget = сүүлийн revision-ий xref-ийн толь, ӨӨРИЙН `/FT /Sig`, ӨӨРИЙН `/V` нь seals-ийн аль нэг толь руу ШУУД БУС
+// лавлагаа. Хоёр үе: (1) e-Seal гарын үсэг бүрийн widget-ийг ТООЛНО (тоо + эхний widget, O(n); /V-г resolve хийхгүй —
+// түүхий лавлагааг seals-тэй тулгана); (2) яг НЭГ widget-тэй гарын үсгийн дардсыг л уншина (2+ бол бүхэлд нь алгасна).
+// `/AP` → толь, `/N` → stream, `/Filter` алга эсвэл ШУУД null; stream-ийн /Length байтын эхний ≤ 128 байт
+// stampMarkerRe-ээр эхэлж, маркерын rev = тэр гарын үсгийн байрлал. Хамгийн бага ByteRange[2] + ByteRange[3] (тэнцвэл
+// Sig толины объектын дугаар бага). Алга → "". Зөвхөн ганц widget-тэй нэр дэвшигчийн ӨӨРИЙН /AP, /N, /Length, stream-ийн
+// уншилт (шууд бус /DecodeParms ч) бүтэлгүйтвэл → алдаа (Prepare PDF_INVALID); энэ алхмын бусад уншигдахгүй объектыг
+// алгасна — үр дүн xref-ийн дарааллаас үл хамаарна. Энэ нь docId сонгох санамж л — нотолгоо биш: зөв эсэхийг validator
+// (Complete-ийн self-validation) батална.
 func docIDFromStamps(doc []byte, seals map[uint32]int) (id string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -112,58 +114,87 @@ func docIDFromStamps(doc []byte, seals map[uint32]int) (id string, err error) {
 	if err != nil {
 		return "", err
 	}
-	type stamp struct {
-		widgets int
-		docID   string
-		end     int64
-	}
-	stamps := map[uint32]*stamp{}
-	for _, x := range r.Xref() {
-		v := r.Resolve(x.Ptr(), x.Ptr())
-		if v.Kind() != pdf.Dict || v.Key("FT").Name() != "Sig" {
+	xr := r.Xref()
+	// (1) Тоолох: e-Seal гарын үсэг → widget-ийн тоо ба эхний widget-ийн xref индекс.
+	widgets, first := map[uint32]int{}, map[uint32]int{}
+	for i := range xr {
+		xp := xr[i].Ptr()
+		v, ok := lenient(func() pdf.Value { return r.Resolve(xp, xp) })
+		if !ok || v.Kind() != pdf.Dict {
 			continue
 		}
-		sig := v.Key("V")
-		sp, xp := sig.GetPtr(), x.Ptr()
-		// Шууд бус лавлагаа: шууд толь widget-ийн өөрийн ptr-тэй (extract.go-той ижил шалгалт).
-		rev, isSeal := seals[sp.GetID()]
-		if sig.Kind() != pdf.Dict || sp.GetID() == xp.GetID() || !isSeal {
+		d, _ := asType(v.RawData(), pdf.GetDict())
+		// /V — ШУУД БУС лавлагаа (түүхий утга; resolve хийхгүй), xref-д бүртгэлтэй (дугаар + үе) e-Seal гарын үсэг рүү.
+		sp, ok := asType(d["V"], pdf.Value{}.GetPtr())
+		if !ok {
 			continue
 		}
-		s := stamps[sp.GetID()]
-		if s == nil {
-			s = &stamp{end: -1}
-			stamps[sp.GetID()] = s
-		}
-		if s.widgets++; s.widgets > 1 {
+		obj := sp.GetID()
+		if _, isSeal := seals[obj]; !isSeal || int(obj) >= len(xr) || xr[obj].Ptr() != sp {
 			continue
 		}
-		if br := sig.Key("ByteRange"); br.Len() == 4 && br.Index(2).Kind() == pdf.Integer && br.Index(3).Kind() == pdf.Integer {
-			s.end = br.Index(2).Int64() + br.Index(3).Int64() // precheck #8: 0 ≤ b, c ≤ len(doc)
-		}
-		ap := v.Key("AP")
-		n := ap.Key("N")
-		if ap.Kind() != pdf.Dict || n.Kind() != pdf.Stream {
+		if ft, ok := lenient(func() string { return v.Key("FT").Name() }); !ok || ft != "Sig" {
 			continue
 		}
-		// /Filter: алга эсвэл ШУУД null л (validator-ийн pdfDict ч шууд null-ийг «алга» гэж үзнэ); шууд бус лавлагааны
-		// утга нь заасан объектын ptr-тэй (resolve), шууд утга нь stream-ийн өөрийн ptr-тэй.
-		if f := n.Key("Filter"); !f.IsNull() || f.GetPtr() != n.GetPtr() {
-			continue
-		}
-		head, _ := io.ReadAll(io.LimitReader(n.Reader(), stampMarkerMax))
-		if sm := stampMarkerRe.FindSubmatch(head); sm != nil && string(sm[2]) == strconv.Itoa(rev) {
-			s.docID = string(sm[1])
+		if widgets[obj]++; widgets[obj] == 1 {
+			first[obj] = i
 		}
 	}
+	// (2) Ганц widget-тэй гарын үсгийн дардас — уншилтын алдаа энд panic → PDF_INVALID (дарааллаас үл хамаарна).
 	best, bestObj := int64(math.MaxInt64), uint32(0)
-	for obj, s := range stamps {
-		if s.widgets != 1 || s.docID == "" || s.end < 0 {
+	for obj, n := range widgets {
+		if n != 1 {
 			continue
 		}
-		if s.end < best || s.end == best && obj < bestObj {
-			best, bestObj, id = s.end, obj, s.docID
+		docID, end := readStamp(r, xr[first[obj]].Ptr(), xr[obj].Ptr(), seals[obj])
+		if docID == "" || end < 0 {
+			continue
+		}
+		if end < best || end == best && obj < bestObj {
+			best, bestObj, id = end, obj, docID
 		}
 	}
 	return id, nil
+}
+
+// readStamp — ганц widget-тэй e-Seal гарын үсгийн (sig) дардасны маркерын docId ба ByteRange[2]+[3] (буруу бол -1).
+// Уншилтын алдаа panic хэвээр (docIDFromStamps-ийн recover → PDF_INVALID).
+func readStamp(r *pdf.Reader, widget, sig any, rev int) (docID string, end int64) {
+	w, s := r.Resolve(pdf.Value{}.GetPtr(), widget), r.Resolve(pdf.Value{}.GetPtr(), sig)
+	end = -1
+	if br := s.Key("ByteRange"); br.Len() == 4 && br.Index(2).Kind() == pdf.Integer && br.Index(3).Kind() == pdf.Integer {
+		end = br.Index(2).Int64() + br.Index(3).Int64() // precheck #8: 0 ≤ b, c ≤ len(doc)
+	}
+	ap := w.Key("AP")
+	n := ap.Key("N")
+	if ap.Kind() != pdf.Dict || n.Kind() != pdf.Stream {
+		return "", end
+	}
+	// /Filter: алга эсвэл ШУУД null л (validator-ийн pdfDict ч шууд null-ийг «алга» гэж үзнэ); шууд бус лавлагааны
+	// утга нь заасан объектын ptr-тэй (resolve), шууд утга нь stream-ийн өөрийн ptr-тэй.
+	if f := n.Key("Filter"); !f.IsNull() || f.GetPtr() != n.GetPtr() {
+		return "", end
+	}
+	head, _ := io.ReadAll(io.LimitReader(n.Reader(), stampMarkerMax))
+	if sm := stampMarkerRe.FindSubmatch(head); sm != nil && string(sm[2]) == strconv.Itoa(rev) {
+		return string(sm[1]), end
+	}
+	return "", end
+}
+
+// lenient — §6.6 алхам 2.2-ийн нэр дэвшигчээс ГАДУУРХ уншилт: уншигдахгүй объект (panic) → ok=false (алгасна).
+func lenient[T any](f func() T) (v T, ok bool) {
+	defer func() {
+		if recover() != nil {
+			var zero T
+			v, ok = zero, false
+		}
+	}()
+	return f(), true
+}
+
+// asType — x-ийг sample-ийн төрөл рүү (pdf-ийн экспортлоогүй dict / objptr — түүхий утгыг resolve хийлгүй унших).
+func asType[T any](x any, _ T) (T, bool) {
+	t, ok := x.(T)
+	return t, ok
 }

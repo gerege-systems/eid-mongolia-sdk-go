@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
@@ -176,7 +177,168 @@ func TestDocIDFromStampsEarliest(t *testing.T) {
 	}
 }
 
-// TestCitizenOnlyDocIDUnchanged — алхам 2.2 ЗӨВХӨН e-Seal: verify хуудасгүй, иргэний QR дардастай (санамсаргүй docId)
+// breakObj — n-р объектыг уншигдахгүй болгоно: толгойн үе 0 → 1 (xref-ийн бичлэгтэй зөрнө → задлах panic); урт хэвээр.
+func breakObj(t *testing.T, doc []byte, n int) []byte {
+	t.Helper()
+	old := []byte(fmt.Sprintf("\n%d 0 obj\n", n))
+	if bytes.Count(doc, old) != 1 {
+		t.Fatalf("breakObj %d", n)
+	}
+	return bytes.Replace(doc, old, []byte(fmt.Sprintf("\n%d 1 obj\n", n)), 1)
+}
+
+// stampStreamLenRef — stampStream, гэхдээ /Length нь lenObj объект руу шууд бус лавлагаа.
+func stampStreamLenRef(docID string, rev, lenObj int) string {
+	c := fmt.Sprintf("/EIDVerify <</URL (https://ca.eidmongolia.mn/verify/%s/%d)>> BDC\nEMC\n", docID, rev)
+	return fmt.Sprintf("<< /Length %d 0 R >>\nstream\n%sendstream", lenObj, c)
+}
+
+// TestDocIDFromStampsMalformed — §6.6 алхам 2.2: ЗӨВХӨН ганц widget-тэй нэр дэвшигчийн өөрийн /AP, /N, /Length, stream-ийн
+// уншилт → алдаа (PDF_INVALID); бусад уншигдахгүй объект (шууд бус /FT, seal биш /V, 2+ widget-тэй гарын үсгийн эхний
+// widget-ийн /AP, /N, /Length) алгасагдана. Эвдэрсэн хэсэг зөв нэр дэвшигчийн ӨМНӨ ба ДАРАА (xref-ийн дараалал) — ижил үр дүн.
+func TestDocIDFromStampsMalformed(t *testing.T) {
+	const good, other = "44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"
+	ref := func(n int) string { return fmt.Sprintf("%d 0 R", n) }
+	// Зөв нэр дэвшигч (a-аас 3 объект): widget → a+2 (end 50, байрлал 1), a+1 тэмдэгтэй дардас.
+	valid := func(a int) []string {
+		return []string{stampWidget(ref(a+2), fmt.Sprint(a+1)), stampStream(good, 1, ""), stampSig(50)}
+	}
+	type group struct {
+		objs   []string
+		broken []int // эвдэх объектууд
+		seal   int   // group-ийн e-Seal гарын үсэг (байрлал 2), 0 — алга
+	}
+	// twoWidgets — e-Seal гарын үсэг (a+3, end 200) 2 widget-тэй; эхнийх (a) нь /AP a+1 0 R, хоёр дахь нь a+4.
+	twoWidgets := func(a int, stream string, extra []string, broken ...int) group {
+		objs := append([]string{"<< /FT /Sig /V " + ref(a+3) + " /AP " + ref(a+1) + " >>", "<< /N " + ref(a+2) + " >>",
+			stream, stampSig(200), stampWidget(ref(a+3), fmt.Sprint(a+2))}, extra...)
+		return group{objs, broken, a + 3}
+	}
+	// oneWidget — e-Seal гарын үсэг (a+3, end 200) ганц widget-тэй (a): /AP a+1 0 R → /N a+2 0 R.
+	oneWidget := func(a int, stream string, extra []string, broken ...int) group {
+		objs := append([]string{"<< /FT /Sig /V " + ref(a+3) + " /AP " + ref(a+1) + " >>", "<< /N " + ref(a+2) + " >>",
+			stream, stampSig(200)}, extra...)
+		return group{objs, broken, a + 3}
+	}
+	cases := []struct {
+		name string
+		bad  func(a, validSig int) group
+		fail bool // true — PDF_INVALID (нэр дэвшигчийн өөрийн уншилт)
+	}{
+		{"(a) шууд бус /FT уншигдахгүй — алгасна", func(a, vs int) group {
+			return group{[]string{"<< /FT " + ref(a+1) + " /V " + ref(vs) + " /AP << /N " + ref(a+2) + " >> >>", "/Sig",
+				stampStream(other, 1, "")}, []int{a + 1}, 0}
+		}, false},
+		{"(b) seal биш /V уншигдахгүй — алгасна", func(a, _ int) group {
+			return group{[]string{"<< /FT /Sig /V " + ref(a+1) + " /AP << /N " + ref(a+2) + " >> >>", stampSig(10),
+				stampStream(other, 1, "")}, []int{a + 1}, 0}
+		}, false},
+		{"(c) 2 widget, эхнийх /AP уншигдахгүй — алгасна", func(a, _ int) group {
+			return twoWidgets(a, stampStream(other, 2, ""), nil, a+1)
+		}, false},
+		{"(c) 2 widget, эхнийх /N уншигдахгүй — алгасна", func(a, _ int) group {
+			return twoWidgets(a, stampStream(other, 2, ""), nil, a+2)
+		}, false},
+		{"(c) 2 widget, эхнийх /Length уншигдахгүй — алгасна", func(a, _ int) group {
+			return twoWidgets(a, stampStreamLenRef(other, 2, a+5), []string{"47"}, a+5)
+		}, false},
+		{"ганц widget, /AP уншигдахгүй — PDF_INVALID", func(a, _ int) group {
+			return oneWidget(a, stampStream(other, 2, ""), nil, a+1)
+		}, true},
+		{"ганц widget, /N уншигдахгүй — PDF_INVALID", func(a, _ int) group {
+			return oneWidget(a, stampStream(other, 2, ""), nil, a+2)
+		}, true},
+		{"ганц widget, /Length уншигдахгүй — PDF_INVALID", func(a, _ int) group {
+			return oneWidget(a, stampStreamLenRef(other, 2, a+4), []string{"47"}, a+4)
+		}, true},
+		{"ганц widget, шууд бус /DecodeParms уншигдахгүй — PDF_INVALID", func(a, _ int) group {
+			return oneWidget(a, stampStream(other, 2, " /DecodeParms "+ref(a+4)), []string{"<< >>"}, a+4)
+		}, true},
+	}
+	for _, c := range cases {
+		n := len(c.bad(0, 0).objs)
+		for _, badFirst := range []bool{true, false} {
+			va, ba := 4+n, 4 // эвдэрсэн хэсэг эхэнд (бага дугаар)
+			if !badFirst {
+				va, ba = 4, 7
+			}
+			g := c.bad(ba, va+2)
+			var objs []string
+			if badFirst {
+				objs = append(g.objs, valid(va)...)
+			} else {
+				objs = append(valid(va), g.objs...)
+			}
+			doc := stampPDF(objs...)
+			for _, b := range g.broken {
+				doc = breakObj(t, doc, b)
+			}
+			seals := map[uint32]int{uint32(va + 2): 1}
+			if g.seal != 0 {
+				seals[uint32(g.seal)] = 2
+			}
+			got, err := docIDFromStamps(doc, seals)
+			switch {
+			case c.fail && (err == nil || got != ""):
+				t.Errorf("%s (эхэнд=%v): %q %v, хүлээсэн алдаа", c.name, badFirst, got, err)
+			case !c.fail && (err != nil || got != good):
+				t.Errorf("%s (эхэнд=%v): %q %v, хүлээсэн %q", c.name, badFirst, got, err, good)
+			}
+		}
+	}
+}
+
+// appendUpdate — doc-д гарын үсэггүй incremental update (first-ээс эхэлсэн объектууд, /Prev-тэй classic xref) залгана.
+func appendUpdate(t *testing.T, doc []byte, first int, objs []string) []byte {
+	t.Helper()
+	i := bytes.LastIndex(doc, []byte("startxref\n"))
+	if i < 0 {
+		t.Fatal("startxref алга")
+	}
+	var prev int
+	if _, err := fmt.Sscanf(string(doc[i+len("startxref\n"):]), "%d", &prev); err != nil {
+		t.Fatalf("startxref: %v", err)
+	}
+	b := bytes.NewBuffer(append([]byte{}, doc...))
+	offs := make([]int, len(objs))
+	for k, o := range objs {
+		offs[k] = b.Len()
+		fmt.Fprintf(b, "%d 0 obj\n%s\nendobj\n", first+k, o)
+	}
+	x := b.Len()
+	fmt.Fprintf(b, "xref\n%d %d\n", first, len(objs))
+	for _, o := range offs {
+		fmt.Fprintf(b, "%010d 00000 n\r\n", o)
+	}
+	fmt.Fprintf(b, "trailer\n<< /Size %d /Root 1 0 R /Prev %d >>\nstartxref\n%d\n%%%%EOF\n", first+len(objs), prev, x)
+	return b.Bytes()
+}
+
+// TestDocIDFromStampsManyWidgets — §6.6 алхам 2.2-ийн ажлын хэмжээ O(xref-ийн объект): гарын үсэггүй update 200 000 жижиг
+// `<</FT/Sig/V <seal> 0 R>>` widget нэмнэ. Тоолох үе /V-г resolve хийхгүй (түүхий лавлагаа) — e-Seal гарын үсэг 256 KiB
+// /Contents-тэй тул widget бүрд /V-г задалдаг (n × гарын үсгийн хэмжээ, ~50 GB) эсвэл квадрат хэрэгжүүлэлт go test-ийн
+// timeout-д унана; шугаман нь хэдхэн секунд. Цагийн босго байхгүй.
+func TestDocIDFromStampsManyWidgets(t *testing.T) {
+	const good, n = "66666666-6666-4666-8666-666666666666", 200000
+	big := "<< /Type /Sig /ByteRange [0 10 20 180] /Contents <" + strings.Repeat("00", 128<<10) + "> >>"
+	// 4 widget → 6 (end 50, байрлал 1), 5 дардас; 7 = том e-Seal гарын үсэг (end 200, байрлал 2), widget-гүй.
+	base := stampPDF(stampWidget("6 0 R", "5"), stampStream(good, 1, ""), stampSig(50), big)
+	seals := map[uint32]int{6: 1, 7: 2}
+	for _, c := range []struct {
+		target, want string
+	}{{"7", good}, {"6", ""}} { // 7 рүү: 7 нь 200 000 widget-тэй → үл тооно; 6 рүү: 6 нь 200 001 → "".
+		objs := make([]string, n)
+		for i := range objs {
+			objs[i] = "<</FT/Sig/V " + c.target + " 0 R>>"
+		}
+		got, err := docIDFromStamps(appendUpdate(t, base, 8, objs), seals)
+		if err != nil || got != c.want {
+			t.Errorf("/V %s 0 R × %d: %q %v, хүлээсэн %q", c.target, n, got, err, c.want)
+		}
+	}
+}
+
+// TestCitizenOnlyDocIDUnchanged —алхам 2.2 ЗӨВХӨН e-Seal: verify хуудасгүй, иргэний QR дардастай (санамсаргүй docId)
 // баримтад дараагийн иргэн v0.30.0-тэй ижил — харагдах docId-гүй → REQUEST_INVALID, үл харагдах → "" эсвэл opts.docId,
 // харагдах opts.docId-тэй → түүгээр (дардасны docId-г хэзээ ч өвлөхгүй).
 func TestCitizenOnlyDocIDUnchanged(t *testing.T) {

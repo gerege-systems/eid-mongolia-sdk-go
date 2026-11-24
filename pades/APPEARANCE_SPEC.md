@@ -358,12 +358,16 @@ checked), else `REQUEST_INVALID` (unchanged).
       regex's `<rev>` equals that signature's position**, the signature is a candidate with the regex's `<uuid>`. The
       docId is the candidate with the smallest `ByteRange[2] + ByteRange[3]` of its signature dictionary (the
       earliest-signed marked seal stamp — object numbers and xref order do not matter); on a tie, the lower signature
-      object number. Stamps without the marker (QR-less seal stamps) and invisible signatures yield no candidate. A
-      failure reading a candidate's own `/AP`, `/N`, `/Length` or stream bytes fails the whole Prepare with
-      `PDF_INVALID` — a candidate found before the failure is never used (fail closed); the rest of the walk is the
-      PRECHECKS #6 scan, which already succeeded.
+      object number. Stamps without the marker (QR-less seal stamps) and invisible signatures yield no candidate.
+      Order: count widgets per verified e-Seal signature first; then read only single-widget candidates (counting
+      matches each `/V` by its raw reference and never resolves it). Only a single-widget candidate's own /AP, /N, /Length
+      and stream reads → PDF_INVALID; unreadable objects elsewhere in this walk are skipped. (A candidate's stream
+      read includes resolving its `/DecodeParms`; a candidate found before a failure is never used — fail closed. The
+      result does not depend on xref order.)
       Step 2.2 is a **hint for choosing the docId, not proof of anything**: the widget is read from the latest xref and
-      can be redefined after signing. Correctness is enforced by the validator (§6.3; and by `Complete`'s
+      can be redefined after signing. Note: the marker is read from the latest xref and is therefore not tied to the
+      e-Seal's signed revision — an unsigned update appended later can change the docId hint; registration and the
+      validator catch misuse afterwards. Correctness is enforced by the validator (§6.3; and by `Complete`'s
       self-validation), not by this lookup.
 
    A found docId and a given, different `opts.docId` → `REQUEST_INVALID`; otherwise the found docId is used — for every
@@ -388,5 +392,7 @@ link. Step 2.2 stays dormant for documents signed only by citizens, and until QR
 registration. Go: `resolveDocID` (`pades/prepare.go`), `docIDFromStamps` (`pades/verify.go`), `stampSources`
 (`pades/precheck.go`: e-Seal signatures → position); tests `TestResolveDocID`, `TestDocIDFromStampsEarliest` (synthetic:
 earlier stamp has the higher object numbers; wrong marker rev; citizen signature; direct, borrowed and unverified `/V`;
-`/Filter []`, name, direct and indirect null), `TestCitizenOnlyDocIDUnchanged`, `TestPrepareDocIDRule`,
+`/Filter []`, name, direct and indirect null), `TestDocIDFromStampsMalformed` (skipped vs `PDF_INVALID` reads, each with
+the malformed objects before and after the valid candidate), `TestDocIDFromStampsManyWidgets` (200 000 appended widgets,
+linear), `TestCitizenOnlyDocIDUnchanged`, `TestPrepareDocIDRule`,
 `TestAppearanceRejects`.
