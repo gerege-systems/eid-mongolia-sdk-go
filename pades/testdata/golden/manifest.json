@@ -11,6 +11,7 @@
     "GET http://crl.pki.test/root.crl e3b0c44298fc1c14": "http/03-823b06e1a6c9.der",
     "POST http://ocsp.pki.test/04 3d432940c5514c0a": "http/05-f4fae8087a68.der",
     "POST http://ocsp.pki.test/04 5167f83c7d8126d9": "http/06-b4ccb5877c32.der",
+    "POST http://ocsp.pki.test/04 7180ed1629922df9": "http/62-b1f90da6d64f.der",
     "POST http://tsa.pki.test/ 0a9b2969b1f68c48": "http/48-d9c9027bb98e.der",
     "POST http://tsa.pki.test/ 0dc8ca4957b79ce6": "http/17-7e33f76f0433.der",
     "POST http://tsa.pki.test/ 10c7bbb3ed71d86d": "http/49-a16e2a15c2d2.der",
@@ -32,6 +33,7 @@
     "POST http://tsa.pki.test/ 8f2d35a0a6ffeeda": "http/55-e88c880e3624.der",
     "POST http://tsa.pki.test/ 90f3b413e4c57d18": "http/11-cd50b9506366.der",
     "POST http://tsa.pki.test/ 923e070ce369b92d": "http/56-d648fed2d95d.der",
+    "POST http://tsa.pki.test/ 9baa5feeba897e19": "http/63-ee5ae46d7a49.der",
     "POST http://tsa.pki.test/ 9e12fb25b82dc264": "http/12-8fc107a5b268.der",
     "POST http://tsa.pki.test/ a07f55fd73d7511f": "http/13-97e324e0fbe0.der",
     "POST http://tsa.pki.test/ a348c19722ca4aa4": "http/25-73b38c1c8f00.der",
@@ -40,10 +42,12 @@
     "POST http://tsa.pki.test/ a64bc8ba3b12f427": "http/57-b1a04b443537.der",
     "POST http://tsa.pki.test/ aa998b61ba261478": "http/33-b5ebabfec58d.der",
     "POST http://tsa.pki.test/ acdec6b46401e83b": "http/18-cd7763c98dd0.der",
+    "POST http://tsa.pki.test/ b319df1bf9df63f6": "http/64-db31e05b6ffa.der",
     "POST http://tsa.pki.test/ b861c9b2cdb767e3": "http/39-229b3e577b11.der",
     "POST http://tsa.pki.test/ c66c7733cbdeb4a1": "http/58-854841f91e4f.der",
     "POST http://tsa.pki.test/ c9ddd869f78c02c4": "http/59-10081cc29980.der",
     "POST http://tsa.pki.test/ ce437db6d963f071": "http/35-afe9e68c1497.der",
+    "POST http://tsa.pki.test/ d1505b611f85d41c": "http/65-819cced598dd.der",
     "POST http://tsa.pki.test/ d5efd89fe097cd2a": "http/60-d305fe8a61d3.der",
     "POST http://tsa.pki.test/ d76c81c85467f00a": "http/36-175dbd2c5846.der",
     "POST http://tsa.pki.test/ dbce9b70b8a01cd7": "http/20-c8b7bdce3eae.der",
@@ -2309,6 +2313,204 @@
           0,
           0
         ]
+      }
+    },
+    {
+      "name": "seal-visible",
+      "input": "input/libreoffice-contract.pdf",
+      "signer": "seal",
+      "prepare": {
+        "signerCert": null,
+        "reason": "Нэхэмжлэх",
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "appearance": {
+          "x": 356,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "87a33381677115e17369a3b8a865ba0b332f00a7368c04f494b2447428ae37d2",
+        "docId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "digest": "fc9bd64502eb36f747818fe2b124d255685830011d573d222fba9a828a59e9f7",
+        "dtbs": "84e5e406d624a8d087fe1e2b9be39ba3c9f2d1c6620656c204f41186d6ffcb03",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d01090431220420fc9bd64502eb36f747818fe2b124d255685830011d573d222fba9a828a59e9f7308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "4b247d18e6c1b829a2199a52795debd714512d1256863f84657773de910fb10a54a3416b78147f671486f7b978cb5362fd8b0081e42dcbdc83d28780e1b1ca917cd53777fdbad5cb6208019145466e19988e689ed23a28c1fe1f5ebaa1243f91637131ae89545c022272d9b41d8a18710de350f80859da31a46ffb0559821f27016c41bf964ebc26e704aa623c58decf2cef51f688080699d23fb8b69172ec91400cafc560ad52b90d81dc72b95ac914b8076461da1ea77244e8e74e737cb93f83d37133ee620b7dd488bb3b313fcdacd49d3724228429f240a15716020b7d43952235774170b159604759a5565c3ce1b75ad3cc1f9e65421a6b9275452509cc",
+        "preparedSha256": "728d2876598de29b2a6da089af38894b4c6f55600d73b531346be74171ca8d3c",
+        "byteRange": [
+          0,
+          31922,
+          89268,
+          103249
+        ],
+        "outSha256": "966291e64340097ccb61ce455e49e816572bb137688d1f868fc5f184bbd912ca",
+        "revIndex": 1,
+        "sigRevSha256": "0da463b354e4379a263e0f10d859113b598469bd2e95e803261e9a8763962843",
+        "cmsSha256": "9f929611dfa51f0b511ad45f2908063793c7b57930439738f06a1bc4643fb5cd",
+        "placement": {
+          "page": 2,
+          "x": 356,
+          "y": 60,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 356,
+          "y": 60,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-visible-en",
+      "input": "input/quartz-pdf13.pdf",
+      "signer": "seal",
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+        "lang": "en",
+        "appearance": {
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "5f8afb701651cddfdf1bb0dceb9fa242eec3fc795f576baa6612fe181cbdd563",
+        "docId": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+        "digest": "16a0dd616b8d6ddbc4a72fc9cdc2decb0b2fde6b3b776e53ce62c4ea7df37788",
+        "dtbs": "41d8487c4a444b2d9143a163efc2b438e8dd4d134a7c58866b61f0ae76cf64b0",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d0109043122042016a0dd616b8d6ddbc4a72fc9cdc2decb0b2fde6b3b776e53ce62c4ea7df37788308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "814ca52331dd286219c38df1cf78ed858da43f7567f61c3607d3a3a87f30387ea75c94ceafbd2e14aa1d96c717488e710210c6cd2add0d23da2880c1bb41503d9b374ff84b9cc1d944d2f16ecd191e92399b7baccb2d3d1846ff0e36d2d6d362e397212834ca44cec04fb5dfcc41750d860ce11a23193fbd48fb7ddb85dc34d2dc70afb6e91fdafba60127999b7c936dd603aded4b51e111ffcd3964cdd66f6104cc5bb093ad7d1157d2ac285f87ddd2218259d9999899826d96c08d5a3bc0f74019ffcf09b0e3e7d734c702284566046920ac8a4c97d67e84ba6ba39334612a36bd9f1aa189fcb859eead080a8911997762930e21507eeb2c7e6c32b0524fb0",
+        "preparedSha256": "f9028a1d14aee5dfdf0f6f5f16b8f2be160ef59ce8eea2480caed3ec338a2719",
+        "byteRange": [
+          0,
+          14599,
+          71945,
+          103135
+        ],
+        "outSha256": "c90caa165b035504c808b469f03296bfb8d8608919e033508c6b3f63adbbdcd3",
+        "revIndex": 1,
+        "sigRevSha256": "597056e8309578d36ea7f5bac3a2cc8f910610718cfa1e8cfed74cbbd78e1501",
+        "cmsSha256": "241e8a768b7881a032d74d723e24f29655f3e37a5e2cfe35373bf80b6bddf459",
+        "placement": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested"
+        },
+        "suggestion": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 1,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-visible-third",
+      "input": "case:libreoffice-contract-visible-second",
+      "signer": "seal",
+      "prepare": {
+        "signerCert": null,
+        "reason": "Нэхэмжлэх",
+        "signingTime": "0001-01-01T00:00:00Z",
+        "appearance": {
+          "x": 356,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "39cca8ee1ec03371a39ed24f3a96f8ed8caeb77b400e64105d578cea46abca4f",
+        "docId": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+        "digest": "4a1a4046ef576dfabf6f306ed5020179ce3f123536edae09902a525e5996b636",
+        "dtbs": "6c284abf8f3dea07f20cbc2b0317c74fee9fa8b63187a36d4ac050f73532623a",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d010904312204204a1a4046ef576dfabf6f306ed5020179ce3f123536edae09902a525e5996b636308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "bdf7da7f35425bb21aca9ba103c30b773bc2599edc48ea147667112472db3f62ccc433c48a172717f451b042ef332628d1084d648faf14fccfafdde93ccbfdca3a2535ad802427f89741ef4144547ff364e0cc0b5910fb16486be14fe823da8808fd975acd7e9ba900e4a17162a0df49d21d39934d70f89110489eccc71091e70c18f8c113a55a23a520b381493eced5a225b6356531d04c00463041050d080ea08175d53d26df499738af4c1e5db8d1309a0cab96471b6a2479d85fc9c955f70977cb582736bc546096ce8c9f26419b92805fbfdad7c154ae43be19b09075c3e2721931c3c765b7d16d000d4df07368298f0c63033e712bc74943016eb8f004",
+        "preparedSha256": "9aa46d815360ae44dc124e8c0c8e6461ef5393850928b47488e8e4bb4d8e5547",
+        "byteRange": [
+          0,
+          484001,
+          541347,
+          103293
+        ],
+        "outSha256": "b42cbbdeffa446ee0db068ecdd85ff56760019824b5d11b85334ed926cc0c129",
+        "revIndex": 3,
+        "sigRevSha256": "7a8216e63b49dedb77a62045de613dd5a919213d096d9646a6a4c7c3bc423829",
+        "cmsSha256": "ac56d27aa1bdaea8871ff9e6d2cc533f449eaabca84001efd32738ed8f326987",
+        "priorCmsSha256": [
+          "d185b895d4cce0fc108f764df1772ac536c9aaf9dd671bcb7bff62b1e95d82ea",
+          "b0bd42a6d626ee98e43cee60570dbc043e902a3378a8f2ac8d88b943a294077d"
+        ],
+        "placement": {
+          "page": 2,
+          "x": 356,
+          "y": 204,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 356,
+          "y": 204,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 3,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 595.28,
+              "height": 841.89
+            }
+          ]
+        }
       }
     }
   ]
