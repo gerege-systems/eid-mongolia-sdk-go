@@ -187,14 +187,14 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 
 	inSum := sha256.Sum256(doc)
 	inHex := hex.EncodeToString(inSum[:])
-	newDoc, revIndex, verified, err := precheck(doc, append(eidcrypto.Issuers(), chain[0]))
+	newDoc, revIndex, seals, err := precheck(doc, append(eidcrypto.Issuers(), chain[0]))
 	if err != nil {
 		return nil, err
 	}
 	seal := eid.IsSealCertificate(cert)
 	// QR-тэй дардас: иргэний дардас (§3) эсвэл QR-тэй тамга (§6.5).
 	drawsQR := o.Appearance != nil && (!seal || o.sealQR)
-	docID, err := resolveDocID(doc, newDoc, verified, o.DocID)
+	docID, err := resolveDocID(doc, newDoc, seals, o.DocID)
 	if err != nil {
 		return nil, err
 	}
@@ -301,10 +301,10 @@ func roleText(s string) bool {
 
 // resolveDocID — Prepare-ийн docId (APPEARANCE_SPEC.md §6.6). Гарын үсэггүй: opts.docId, эс бөгөөс санамсаргүй.
 // Гарын үсэгтэй: (1) verify хуудасны холбоос; (2) эс бөгөөс шалгасан гарын үсгийн хамгийн эрт зурсан /EIDVerify
-// тэмдэгтэй дардасных (verified — precheck); олдсонтой opts.docId зөрвөл REQUEST_INVALID; (3) эс бөгөөс opts.docId
+// тэмдэгтэй дардасных (seals — precheck: ЗӨВХӨН e-Seal гарын үсэг, маркерын rev = байрлал); олдсонтой opts.docId зөрвөл REQUEST_INVALID; (3) эс бөгөөс opts.docId
 // (хоосон байж болно — QR зурах бол visibleSpec REQUEST_INVALID). Гарын үсэгтэй баримтад санамсаргүй docId ҮҮСГЭХГҮЙ:
 // CA одоогоор rev > 1-ийн бүртгэлийг үл мэдэгдэх docId-д татгалздаг (DOC_NOT_FOUND) — QR хэзээ ч шийдэгдэхгүй.
-func resolveDocID(doc []byte, newDoc bool, verified map[uint32]bool, given string) (string, error) {
+func resolveDocID(doc []byte, newDoc bool, seals map[uint32]int, given string) (string, error) {
 	if newDoc {
 		if given != "" {
 			return given, nil
@@ -314,7 +314,7 @@ func resolveDocID(doc []byte, newDoc bool, verified map[uint32]bool, given strin
 	found := docIDFromPage(doc)
 	if found == "" {
 		var err error
-		if found, err = docIDFromStamps(doc, verified); err != nil {
+		if found, err = docIDFromStamps(doc, seals); err != nil {
 			return "", newErr(CodePDFInvalid, "PDF задарсангүй (гарын үсгийн дардас)", err)
 		}
 	}

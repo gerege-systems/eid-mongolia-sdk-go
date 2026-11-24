@@ -3,6 +3,9 @@ package pades
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,18 +34,21 @@ func readTestdata(t *testing.T, rel string) []byte {
 	return b
 }
 
-// sigObjs — баримтын гарын үсгийн толины объектын дугаарууд (precheck-ийн verified-ийн оронд; криптографгүй).
-func sigObjs(t *testing.T, doc []byte) map[uint32]bool {
+// sealSources — precheck-ийн stampSources (e-Seal гарын үсэг → байрлал); eID олгогч/timestamp-ийг шалгахгүй (B-B
+// сөрөг оролтод ч).
+func sealSources(t *testing.T, doc []byte) map[uint32]int {
 	t.Helper()
 	sigs, _, _, err := scanSignatures(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := map[uint32]bool{}
-	for _, s := range sigs {
-		out[s.obj] = true
+	leaves := make([]*x509.Certificate, len(sigs))
+	for i, s := range sigs {
+		if leaves[i], _, err = checkPriorSignature(doc, s); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return out
+	return stampSources(sigs, leaves)
 }
 
 // TestResolveDocID — §6.6-ийн салаа бүр: гарын үсэггүй → opts эсвэл санамсаргүй; гарын үсэгтэй → (2.1) verify хуудас
@@ -76,11 +82,11 @@ func TestResolveDocID(t *testing.T) {
 		{"(1) гарын үсэггүй → opts", unsigned, true, otherDocID, otherDocID, false},
 	}
 	for _, c := range cases {
-		var verified map[uint32]bool
+		var seals map[uint32]int
 		if !c.newDoc {
-			verified = sigObjs(t, c.doc)
+			seals = sealSources(t, c.doc)
 		}
-		got, err := resolveDocID(c.doc, c.newDoc, verified, c.given)
+		got, err := resolveDocID(c.doc, c.newDoc, seals, c.given)
 		switch {
 		case c.err:
 			if ErrorCode(err) != CodeRequestInvalid {
@@ -105,8 +111,8 @@ func stampPDF(objs ...string) []byte {
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"}, objs...)...)
 }
 
-func stampStream(docID string, extra string) string {
-	c := "/EIDVerify <</URL (https://ca.eidmongolia.mn/verify/" + docID + "/1)>> BDC\nEMC\n"
+func stampStream(docID string, rev int, extra string) string {
+	c := fmt.Sprintf("/EIDVerify <</URL (https://ca.eidmongolia.mn/verify/%s/%d)>> BDC\nEMC\n", docID, rev)
 	return fmt.Sprintf("<< /Length %d%s >>\nstream\n%sendstream", len(c), extra, c)
 }
 
@@ -118,49 +124,98 @@ func stampSig(end int) string {
 	return fmt.Sprintf("<< /Type /Sig /ByteRange [0 10 20 %d] /Contents <00> >>", end-20)
 }
 
-// TestDocIDFromStampsEarliest — §6.6 алхам 2.2: хамгийн эрт зурсан (ByteRange[2]+[3] бага) дардас — xref-ийн дарааллаар
-// СҮҮЛД (объектын дугаар их) байсан ч; зөвхөн шалгасан гарын үсэг рүү шууд бус /V-тэй, гарын үсэг бүрт ганц widget;
-// /Filter алга эсвэл null.
+// TestDocIDFromStampsEarliest — §6.6 алхам 2.2: шалгасан e-Seal гарын үсгийн (seals) хамгийн эрт зурсан (ByteRange[2]+[3]
+// бага) дардас — xref-ийн дарааллаар СҮҮЛД (объектын дугаар их) байсан ч; маркерын rev = байрлал; шууд бус /V, гарын
+// үсэг бүрт ганц widget; /Filter алга эсвэл ШУУД null.
 func TestDocIDFromStampsEarliest(t *testing.T) {
 	const later, earlier, forged = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222",
 		"33333333-3333-4333-8333-333333333333"
-	// 4 widget (хожуу, бага дугаар) → 6 sig (end 200); 7 widget (эрт, их дугаар) → 9 sig (end 50).
-	base := []string{stampWidget("6 0 R", "5"), stampStream(later, ""), stampSig(200),
-		stampWidget("9 0 R", "8"), stampStream(earlier, ""), stampSig(50)}
-	verified := map[uint32]bool{6: true, 9: true}
+	// 4 widget (хожуу, бага дугаар) → 6 sig (end 200, байрлал 2); 7 widget (эрт, их дугаар) → 9 sig (end 50, байрлал 1).
+	base := []string{stampWidget("6 0 R", "5"), stampStream(later, 2, ""), stampSig(200),
+		stampWidget("9 0 R", "8"), stampStream(earlier, 1, ""), stampSig(50)}
+	seals := map[uint32]int{6: 2, 9: 1}
+	plus := func(extra ...string) []string { return append(append([]string{}, base...), extra...) }
+	one := func(filter string, extra ...string) []string {
+		return append([]string{stampWidget("6 0 R", "5"), stampStream(earlier, 1, filter), stampSig(50)}, extra...)
+	}
 	cases := []struct {
-		name     string
-		objs     []string
-		verified map[uint32]bool
-		want     string
+		name  string
+		objs  []string
+		seals map[uint32]int
+		want  string
 	}{
-		{"эрт зурсан нь их дугаартай", base, verified, earlier},
-		{"шууд /V толь (end 0) — үл тооно", append(append([]string{}, base...),
-			"<< /FT /Sig /V << /Type /Sig /ByteRange [0 0 0 0] /Contents <00> >> /AP << /N 11 0 R >> >>", stampStream(forged, "")),
-			verified, earlier},
-		{"зээлсэн /V (9-д 2 widget) — 9 бүхэлдээ үл тооно", append(append([]string{}, base...),
-			stampWidget("9 0 R", "11"), stampStream(forged, "")), verified, later},
-		{"шалгаагүй гарын үсэг рүү /V — үл тооно", append(append([]string{}, base...),
-			stampWidget("12 0 R", "11"), stampStream(forged, ""), stampSig(30)), verified, earlier},
-		{"/Filter [] — нэр дэвшигч биш", []string{stampWidget("6 0 R", "5"), stampStream(earlier, " /Filter []"), stampSig(50)},
-			map[uint32]bool{6: true}, ""},
-		{"/Filter null — нэр дэвшигч", []string{stampWidget("6 0 R", "5"), stampStream(earlier, " /Filter null"), stampSig(50)},
-			map[uint32]bool{6: true}, earlier},
-		{"verified хоосон", base, nil, ""},
+		{"эрт зурсан нь их дугаартай", base, seals, earlier},
+		{"эрт зурсны маркерын rev 2 (байрлал 1) — үл тооно", []string{stampWidget("6 0 R", "5"), stampStream(later, 2, ""),
+			stampSig(200), stampWidget("9 0 R", "8"), stampStream(earlier, 2, ""), stampSig(50)}, seals, later},
+		{"эрт зурсан нь иргэн (seals-д алга) — үл тооно", base, map[uint32]int{6: 2}, later},
+		{"шууд /V толь (end 0) — үл тооно", plus(
+			"<< /FT /Sig /V << /Type /Sig /ByteRange [0 0 0 0] /Contents <00> >> /AP << /N 11 0 R >> >>", stampStream(forged, 1, "")),
+			seals, earlier},
+		{"зээлсэн /V (9-д 2 widget) — 9 бүхэлдээ үл тооно", plus(stampWidget("9 0 R", "11"), stampStream(forged, 1, "")), seals, later},
+		{"шалгаагүй гарын үсэг рүү /V — үл тооно", plus(stampWidget("12 0 R", "11"), stampStream(forged, 1, ""), stampSig(30)),
+			seals, earlier},
+		{"/Filter [] — нэр дэвшигч биш", one(" /Filter []"), map[uint32]int{6: 1}, ""},
+		{"/Filter /FlateDecode — нэр дэвшигч биш", one(" /Filter /FlateDecode"), map[uint32]int{6: 1}, ""},
+		{"/Filter шууд null — нэр дэвшигч", one(" /Filter null"), map[uint32]int{6: 1}, earlier},
+		{"/Filter шууд бус null — нэр дэвшигч биш", one(" /Filter 7 0 R", "null"), map[uint32]int{6: 1}, ""},
+		{"seals хоосон", base, nil, ""},
 	}
 	for _, c := range cases {
-		got, err := docIDFromStamps(stampPDF(c.objs...), c.verified)
+		got, err := docIDFromStamps(stampPDF(c.objs...), c.seals)
 		if err != nil || got != c.want {
 			t.Errorf("%s: %q %v, хүлээсэн %q", c.name, got, err, c.want)
 		}
 	}
 	v12 := readTestdata(t, "golden/output/seal-visible.pdf")
-	if got, err := docIDFromStamps(v12, sigObjs(t, v12)); err != nil || got != "" {
+	if got, err := docIDFromStamps(v12, sealSources(t, v12)); err != nil || got != "" {
 		t.Fatalf("QR-гүй тамга: %q %v", got, err)
 	}
 	qr := readTestdata(t, "golden/output/seal-qr-visible.pdf")
-	if got, err := docIDFromStamps(qr, sigObjs(t, qr)); err != nil || got != qrSealDocID {
+	if got, err := docIDFromStamps(qr, sealSources(t, qr)); err != nil || got != qrSealDocID {
 		t.Fatalf("QR тамга: %q %v", got, err)
+	}
+}
+
+// TestCitizenOnlyDocIDUnchanged — алхам 2.2 ЗӨВХӨН e-Seal: verify хуудасгүй, иргэний QR дардастай (санамсаргүй docId)
+// баримтад дараагийн иргэн v0.30.0-тэй ижил — харагдах docId-гүй → REQUEST_INVALID, үл харагдах → "" эсвэл opts.docId,
+// харагдах opts.docId-тэй → түүгээр (дардасны docId-г хэзээ ч өвлөхгүй).
+func TestCitizenOnlyDocIDUnchanged(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	opts := func(docID string, visible bool) PrepareOptions {
+		o := testOpts(p, p.citizen.cert)
+		o.VerifyPage, o.FileName, o.DocID = false, "", docID
+		if visible {
+			o.Appearance = &Appearance{X: 340, Y: 36, Width: 220, Height: 64}
+		}
+		return o
+	}
+	prep, err := Prepare(readInput(t, "quartz-pdf13.pdf"), opts("", true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := Complete(context.Background(), prep.State, sig, completeOpts(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := first.PDF
+	if first.HasPage || !bytes.Contains(doc, []byte("/verify/"+prep.DocID+"/1)>> BDC")) {
+		t.Fatalf("суурь: хуудас %v, маркер алга", first.HasPage)
+	}
+	if _, err := Prepare(doc, opts("", true)); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatalf("харагдах, docId-гүй: %v", err)
+	}
+	for _, c := range []struct {
+		docID   string
+		visible bool
+	}{{"", false}, {otherDocID, false}, {otherDocID, true}} {
+		got, err := Prepare(doc, opts(c.docID, c.visible))
+		if err != nil || got.DocID != c.docID {
+			t.Fatalf("%+v: %v", c, err)
+		}
 	}
 }
 

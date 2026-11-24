@@ -10,13 +10,15 @@
   QR-less v12 stamp; no fallback between them. Every cross-combination fails closed. Stamps of different signers
   carrying different docIds are not tampering.
 - §6.6 (Prepare docId) on a signed document: verify-page link → else the earliest-signed `/EIDVerify` stamp of a
-  verified signature (indirect `/V`, one widget per signature; a parse failure → `PDF_INVALID`) → else the
+  verified **e-Seal** signature (citizen stamps are never a source; indirect `/V`, one widget per signature, marker rev =
+  the signature's position, `/Filter` absent or direct null; a failure reading that stamp → `PDF_INVALID`) → else the
   caller's `docId` (explicit opt-in) → else empty. A found docId and a different caller `docId` → `REQUEST_INVALID`.
   **No random docId on a signed document** (the CA rejects rev > 1 registrations for unknown docIds): a visible
   signature with no docId stays `REQUEST_INVALID`, as in v0.30.0. Unsigned documents are unchanged.
-- **Behaviour change for invisible signatures:** on a signed document with a marked (QR) stamp and no verify page,
+- **Behaviour change for invisible signatures:** on a signed document with a marked (QR) e-Seal stamp and no verify page,
   `Prepared.DocID` is now the stamp's docId (before: the caller's `docId` or ""), and a different caller `docId` is
-  `REQUEST_INVALID`. Visible citizen signatures after a QR seal reuse its docId (before: `REQUEST_INVALID`).
+  `REQUEST_INVALID`. Visible citizen signatures after a QR seal reuse its docId (before: `REQUEST_INVALID`). Documents signed only by
+  citizens resolve exactly as in v0.30.0.
 - Golden v13: 7 prepare/complete cases (`seal-qr-*`, `citizen-then-seal-qr`, `seal-qr-then-citizen`,
   `seal-qr-then-seal-qr`, `sealv12-then-citizen`; manifest flag `sealQr`) and 20 validate cases (9 positive incl. two
   controls, 11 negative); all earlier goldens byte-identical. Generated on the CI runner.

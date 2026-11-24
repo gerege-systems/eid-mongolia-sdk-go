@@ -13,12 +13,14 @@ import (
 	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 )
 
 // precheck — PRECHECKS.md-ийн «хөнгөн» шалгуур (validator-гүй; native SDK-ууд яг ижлээр давтана). Буцаах: шинэ баримт
-// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex, шалгасан гарын үсгийн толины объектын дугаарууд
-// (APPEARANCE_SPEC.md §6.6 docIdFromStamps). issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
-func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, verified map[uint32]bool, err error) {
+// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex, шалгасан e-Seal гарын үсгүүд (Sig толины объектын дугаар →
+// байрлал; APPEARANCE_SPEC.md §6.6 docIdFromStamps). issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
+func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, seals map[uint32]int, err error) {
 	if encrypted(doc) {
 		return false, 0, nil, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
 	}
@@ -44,14 +46,32 @@ func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex in
 	if locked {
 		return false, 0, nil, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
 	}
-	verified = make(map[uint32]bool, len(sigs))
 	for i, s := range sigs {
 		if s.subFilter != "ETSI.CAdES.detached" || !issuedByAny(leaves[i], issuers) || !stamped[i] || !hasDSS {
 			return false, 0, nil, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
 		}
-		verified[s.obj] = true
 	}
-	return false, len(sigs) + 1, verified, nil
+	return false, len(sigs) + 1, stampSources(sigs, leaves), nil
+}
+
+// stampSources — APPEARANCE_SPEC.md §6.6 алхам 2.2-ийн эх: шалгасан гарын үсгүүдээс ЗӨВХӨН e-Seal гэрчилгээтэй
+// (eid.IsSealCertificate) нь, Sig толины объектын дугаар → байрлал (1 + ByteRange[2]+[3] нь бага шалгасан гарын үсгийн
+// тоо — PRECHECKS #6 / validator-ийн revIndex). Иргэний гарын үсэг хэзээ ч docId-ийн эх болохгүй (v0.30.0-ийн зан).
+func stampSources(sigs []sigDict, leaves []*x509.Certificate) map[uint32]int {
+	out := map[uint32]int{}
+	for i, s := range sigs {
+		if !eid.IsSealCertificate(leaves[i]) {
+			continue
+		}
+		rev := 1
+		for _, o := range sigs {
+			if o.byteRange[2]+o.byteRange[3] < s.byteRange[2]+s.byteRange[3] {
+				rev++
+			}
+		}
+		out[s.obj] = rev
+	}
+	return out
 }
 
 type sigDict struct {
