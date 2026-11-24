@@ -41,6 +41,12 @@
 
   `ltv`, `signature_level` нь `expect`-д (нотолгоо хасагдсан бол иргэн `ltv.missing`-д, түвшин `-T`). v3-ийн бүх
   тохиолдол хэвээр. `-update` нь байгаа оролт/`http/` файлыг дахин бичихгүй болсон (шинээр үүсгэхийн тулд устгана).
+- **v12** (APPEARANCE_SPEC.md §6, seal stamp; all earlier cases unchanged): `seal-visible`, `seal-visible-en`,
+  `seal-after-two-citizens` (golden/output seal cases — every signature valid, earlier ones `extended_by_signatures_only`,
+  `visible_later_signature`); negative `seal-stamp-citizen-cert` (a citizen certificate whose second revision draws the
+  seal stamp) and `citizen-stamp-seal-cert` (an e-Seal certificate drawing the citizen stamp) — both on
+  `golden/output/quartz-pdf13.pdf`, second signature B-B (no timestamp/DSS); the first signature is
+  `modified_after_signing`. Inputs written by `-update` (Go `vMismatchedStamp`, test-only — Prepare never emits them).
 - CA-д `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` (бүртгэлээс), `key_medium` (бүртгэлээс) нэмэгдэж болно;
   харьцуулахдаа эдгээрийг хасна. `certificate_level` нь SDK-д (CA-д нэмэх санал).
 

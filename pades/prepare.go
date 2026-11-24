@@ -21,6 +21,7 @@ import (
 	"github.com/gerege-systems/pdf"
 	"golang.org/x/text/unicode/norm"
 
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
@@ -229,7 +230,7 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 	if o.Appearance == nil {
 		prep, err = core.PrepareSignatureWithReason(base, now, name, o.Reason)
 	} else {
-		if vis, err = visibleSpec(doc, o, name, now, docID, revIndex); err != nil {
+		if vis, err = visibleSpec(doc, o, name, now, docID, revIndex, eid.IsSealCertificate(cert)); err != nil {
 			return nil, err
 		}
 		// vis.Page counts the input's pages; a verify page added in front shifts them by one in base (§1b).
@@ -303,10 +304,11 @@ func roleText(s string) bool {
 	return utf8.ValidString(s)
 }
 
-// visibleSpec — Appearance → core.Visible: хуудас (0 → verify биш сүүлийн), h100, хэл, огноо, verify URL.
-func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID string, revIndex int) (core.Visible, error) {
+// visibleSpec — Appearance → core.Visible: хуудас (0 → verify биш сүүлийн), h100, хэл, огноо, verify URL. seal (гарын
+// үсэг зурагчийн гэрчилгээ e-Seal) бол тамганы дардас (APPEARANCE_SPEC.md §6): URL/QR үгүй тул docId шаардахгүй.
+func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID string, revIndex int, seal bool) (core.Visible, error) {
 	a := o.Appearance
-	if docID == "" {
+	if docID == "" && !seal {
 		return core.Visible{}, newErr(CodeRequestInvalid, "appearance: docId заавал (баримтад verify хуудас алга)", nil)
 	}
 	// page 0 / байхгүй = eID verify хуудас БИШ сүүлийн хуудас (PLACEMENT_SPEC §1a); тодорхой дугаар хэвээр.
@@ -327,7 +329,7 @@ func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID
 		Name: strings.TrimSpace(name), Role: o.ClaimedRole, Lang: lang,
 		Date:  now.Format("2006-01-02 15:04") + " (+08)",
 		URL:   pageVerifyURL + docID + "/" + strconv.Itoa(revIndex),
-		Avoid: true, Exact: a.Exact,
+		Avoid: true, Exact: a.Exact, Seal: seal,
 	}, nil
 }
 

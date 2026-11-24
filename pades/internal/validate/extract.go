@@ -206,7 +206,7 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	for _, s := range sigs {
 		if !s.Malformed {
 			known[s.objNum] = s.byteRange
-			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1}
+			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1, seal: sealCertificate(s.Leaf)}
 		}
 	}
 	for num, m := range metas {
@@ -234,7 +234,7 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	if CorpusHook != nil {
 		m := make(map[int]SigMeta, len(metas))
 		for k, v := range metas {
-			m[k] = SigMeta{RevIndex: v.revIndex, Role: v.role, RoleOK: v.roleOK}
+			m[k] = SigMeta{RevIndex: v.revIndex, Role: v.role, RoleOK: v.roleOK, Seal: v.seal}
 		}
 		CorpusHook(doc, p == profileBroad, sigs, m, docID, nil)
 	}
@@ -250,6 +250,7 @@ type SigMeta struct {
 	RevIndex int    `json:"revIndex"`
 	Role     string `json:"role"`
 	RoleOK   bool   `json:"roleOK"`
+	Seal     bool   `json:"seal,omitempty"` // гэрчилгээ e-Seal → тамганы дардас (APPEARANCE_SPEC.md §6)
 }
 
 // ObjNum / ByteRange — CorpusHook-д: экспортлогдоогүй талбарууд.

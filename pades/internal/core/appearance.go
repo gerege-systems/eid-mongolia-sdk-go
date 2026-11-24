@@ -28,7 +28,9 @@ type Visible struct {
 	Role       string
 	Lang       string // "mn" | "en"
 	Date       string // «YYYY-MM-DD HH:MM (+08)»
-	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>
+	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>; Seal бол хэрэглэгдэхгүй
+	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): гарын үсэг зурагчийн гэрчилгээ e-Seal үед л.
+	Seal bool
 	// Avoid — scan the page and move the stamp off existing content (PLACEMENT_SPEC.md); false = exactly (X, Y).
 	Avoid bool
 	// Exact — with Avoid: never move; the page is still scanned so the status says "overlap" when content is under
@@ -57,6 +59,8 @@ type AppearanceParams struct {
 	Lang   string
 	Date   string
 	URL    string
+	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): QR/URL/үүрэг үгүй, SealLabels; Role, URL үл тооно.
+	Seal bool
 }
 
 // APPEARANCE_SPEC.md §3-ийн тогтмолууд (h100 = 1/100 pt).
@@ -78,6 +82,12 @@ const (
 var AppearanceLabels = map[string]string{
 	"mn": "eID Mongolia-аар зурсан",
 	"en": "Signed with eID Mongolia",
+}
+
+// SealLabels — тамганы дардасны 2 дахь мөр (APPEARANCE_SPEC.md §6).
+var SealLabels = map[string]string{
+	"mn": "eID Mongolia-аар тамгалсан",
+	"en": "Sealed with eID Mongolia",
 }
 
 // Round100 — pt → h100: floor(v × 100 + 0.5) (IEEE-754 double; бүх хэлэнд ижил).
@@ -124,6 +134,9 @@ type apLine struct {
 
 // AppearanceContent — form XObject-ийн content stream (APPEARANCE_SPEC.md §3).
 func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error) {
+	if p.Seal {
+		return sealContent(p, reg, bld)
+	}
 	label, ok := AppearanceLabels[p.Lang]
 	if !ok {
 		return nil, fmt.Errorf("%w: хэл %q", ErrAppearance, p.Lang)
@@ -196,6 +209,53 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 		w.op("Q")
 	}
 	w.op("EMC")
+	return w.ops.Bytes(), nil
+}
+
+// sealContent — байгууллагын тамганы дардасны content stream (APPEARANCE_SPEC.md §6): иргэний дардастай ижил хүрээ,
+// фонт, мөрийн дүрэм; QR, /EIDVerify BDC, үүрэг үгүй; бичвэр pad-аас эхэлж бүтэн өргөнийг (W − 2·pad) эзэлнэ.
+func sealContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error) {
+	label, ok := SealLabels[p.Lang]
+	if !ok {
+		return nil, fmt.Errorf("%w: хэл %q", ErrAppearance, p.Lang)
+	}
+	if p.W <= 0 || p.H <= 0 || p.W > MaxAppearanceSide || p.H > MaxAppearanceSide {
+		return nil, fmt.Errorf("%w: хэмжээ", ErrAppearance)
+	}
+	p.Role = ""
+	tw := p.W - 2*apPad
+	w := &pageWriter{reg: reg, bld: bld}
+	var lines []apLine
+	for f := apMaxSize; f >= apMinSize && lines == nil && tw > 0; f-- {
+		lines = apLayout(w, p, label, f, tw)
+	}
+	if lines == nil {
+		return nil, fmt.Errorf("%w: хэт жижиг (бичвэр багтахгүй)", ErrAppearance)
+	}
+	total := 0
+	for _, l := range lines {
+		total += l.size * apLeading
+	}
+	cm, _, _, err := apRotation(p.Rotate, p.W, p.H)
+	if err != nil {
+		return nil, err
+	}
+	if cm != "" {
+		w.op("q")
+		w.op("%s", cm)
+	}
+	w.op("%s RG", colOK)
+	w.op("1 w")
+	w.op("0.5 0.5 %s %s re S", Num100(p.W-100), Num100(p.H-100))
+	cursor := p.H - apPad - (p.H-2*apPad-total)/2
+	for _, l := range lines {
+		cursor -= l.size * apLeading
+		w.op("%s rg", l.color)
+		w.op("BT /F%d %d Tf %s %s Td %s Tj ET", l.font, l.size, Num100(apPad), Num100(cursor+l.size*apDescent), w.glyphHex(l.font, l.text))
+	}
+	if cm != "" {
+		w.op("Q")
+	}
 	return w.ops.Bytes(), nil
 }
 

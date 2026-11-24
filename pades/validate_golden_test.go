@@ -93,7 +93,7 @@ func vCases() []vCase {
 		{Name: "encrypted-aes-128", Input: "validate/input/encrypted-aes-128.pdf", Offline: true},
 		{Name: "encrypted-aes-256", Input: "validate/input/encrypted-aes-256.pdf", Offline: true},
 		{Name: "encrypted-user-password", Input: "validate/input/encrypted-rc4-128-userpw.pdf", Offline: true},
-	}, v4Cases()...)
+	}, append(v4Cases(), sealVCases()...)...)
 }
 
 // vResponses — онлайн тохиолдлын OCSP/CRL хариу (тестийн 04-ийн түлхүүрээр). Шалгах цаг = goldenNow.
@@ -274,6 +274,9 @@ func vUpdate(t *testing.T, mpath string) {
 		write("qualified-phone.pdf", vSignQualified(t, p))
 	}
 	for name, b := range v4Inputs(t, p) {
+		write(name+".pdf", b)
+	}
+	for name, b := range sealVInputs(t, p) {
 		write(name+".pdf", b)
 	}
 

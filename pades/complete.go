@@ -70,6 +70,9 @@ type Completed struct {
 	// ClaimedRole — PrepareOptions.ClaimedRole (signedAttrs-д орсон); хоосон = хувиараа. Registration үүнийг
 	// RegistrationOptions.OnBehalfOf-той тулгана.
 	ClaimedRole string
+	// Placement — харагдах тамганы дардасны байршил (зөвхөн SealPDF бөглөнө; үл харагдах бол nil). Иргэний урсгалд
+	// Prepared.Placement.
+	Placement *Placement
 }
 
 // Complete — иргэний гарын үсгийг DTBS дээр шалгаад TSA → CMS → embed → OCSP/CRL (genTime-ийн дараа) → DSS →

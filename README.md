@@ -1054,8 +1054,18 @@ done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOpt
 Урсгал: тамганы гэрчилгээ → `Prepare` (SignerCert = тамганы cert) → 32 байт DTBS-ийг `POST /seal/{orgEtsi}`-ээр (SHA-256)
 тамгалуулна → `Complete`. PDF eID руу очихгүй. **RFC 3161 timestamp заавал** (eID TSA, `SealOptions.Complete.TSAURL`):
 TSA хүрэхгүй бол `TSA_UNAVAILABLE`, тамгагүй/цагийн тэмдэггүй файл буцаахгүй; OCSP/CRL + DSS → B-LT, дараа нь
-self-validation. Тамга үл харагдах, баталгаажуулалтын (QR) хуудасгүй — тамга иргэний гарын үсгийн бүртгэлд
-(`POST /pdf/signatures`) ордоггүй тул `/verify/{docID}` холбоос өгөхгүй. Шалгагч (`pades.ValidatePDF`, CA
+self-validation. Баталгаажуулалтын (QR) хуудасгүй — тамга иргэний гарын үсгийн бүртгэлд (`POST /pdf/signatures`)
+ордоггүй тул `/verify/{docID}` холбоос өгөхгүй.
+
+**Харагдах дардас (анхдагч, Unreleased).** Тамга баримтын сүүлийн (eID verify биш) хуудсанд байгууллагын тамганы дардас
+үлдээнэ: байгууллагын нэр, «eID Mongolia-аар тамгалсан» / «Sealed with eID Mongolia», тамгалсан цаг — QR, холбоос, үүрэг
+үгүй (`pades/APPEARANCE_SPEC.md` §6). Байршил: 220 × 64 pt, баруун доод булан (36 pt зай; жижиг хуудсанд багтаана);
+тэнд агуулга байвал PLACEMENT_SPEC-ийн дүрмээр чөлөөт байрлал руу, чөлөөт газаргүй бол баруун доод буланд агуулга дээгүүр
+(`overlap`). Хуудсанд дардас багтахгүй бол (жишээ нь маш жижиг хуудас) тамга үл харагдана, `done.Placement` = nil.
+`SealOptions.Appearance` — байршлыг өөрөө өгөх (иргэний `Appearance`-тэй ижил, `Exact` ч), `SealOptions.Invisible: true` —
+өмнөх үл харагдах гаралт (байт-ижил). Үр дүн `done.Placement`-д. Өмнөх гарын үсгүүд (иргэний харагдах гарын үсэг ч)
+хүчинтэй хэвээр. **Анхаар:** энэ хувилбараас өмнөх шалгагчид (CA `/v3/validate/pdf`, TS SDK) тамганы дардсыг таньдаггүй
+тул өмнөх гарын үсгийг өөрчлөгдсөн гэж мэдээлнэ — тэдгээр шинэчлэгдэх хүртэл `Invisible: true` ашиглана уу. Шалгагч (`pades.ValidatePDF`, CA
 `/v3/validate/pdf`) энэ гарын үсгийг `certificate.usage = "seal"` гэж ангилна — хэрэглэгчид «Байгууллагын тамга» гэж
 харуулна уу.
 Алдаа: `CodeSignerInvalid` (cert e-Seal биш, эсвэл тамгалах хооронд cert солигдсон — дахин оролд),
@@ -1100,8 +1110,14 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   `c.Seal.Seal(ctx, orgEtsi, digest, eid.SHA256)` (POST /seal/{orgEtsi}; non-interactive, needs the RP permission
   `SEAL:<orgEtsi>`; 429 → `*APIError.Retryable()`); the response signature is verified against the returned e-Seal
   certificate (`eid.IsSealCertificate`). `pades.SealPDF(ctx, c.Seal, orgEtsi, pdf, pades.SealOptions{…})` seals a PDF
-  as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page, invisible); validators report
-  `usage: "seal"`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
+  as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page); validators report `usage: "seal"`.
+  **Unreleased:** the seal now leaves a visible organisation stamp by default (organisation name, «Sealed with eID
+  Mongolia», time; no QR/link — `pades/APPEARANCE_SPEC.md` §6) on the last non-verify page, bottom-right (fitted to
+  small pages; invisible when no stamp fits), moved off page content when possible (`SealOptions.Appearance` positions
+  it, `Completed.Placement` reports where it went, nil when invisible);
+  `SealOptions{Invisible: true}` gives the previous, byte-identical invisible output. Validators older than this release
+  (CA `/v3/validate/pdf`, TS SDK) report a seal stamp as a modification of earlier signatures — keep `Invisible: true`
+  until they are updated. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
   approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
   `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`). The operator can switch
   issuance and sealing off platform-wide: `RequestCertificate` / `Seal` / `pades.SealPDF` then fail with
