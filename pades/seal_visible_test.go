@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	dpdf "github.com/digitorus/pdf"
@@ -261,4 +262,84 @@ func TestSealPDFVerifyPageFirst(t *testing.T) {
 		t.Fatalf("placement %+v", pl)
 	}
 	f.wantAllValid(t, res.PDF, []string{"sign", "seal"}, []bool{false, true})
+}
+
+// padPDF — doc-д n байт өгөгдөлтэй, хаанаас ч заагдаагүй нэг stream объекттой incremental update (classic xref) нэмнэ.
+func padPDF(t *testing.T, doc []byte, n int) []byte {
+	t.Helper()
+	r, err := dpdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := r.Trailer()
+	root, info := tr.Key("Root").GetPtr(), tr.Key("Info").GetPtr()
+	num := tr.Key("Size").Int64()
+	var prev int
+	if _, err := fmt.Sscan(string(doc[bytes.LastIndex(doc, []byte("startxref"))+len("startxref"):]), &prev); err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	b.Write(doc)
+	b.WriteString("\n")
+	off := b.Len()
+	fmt.Fprintf(&b, "%d 0 obj\n<< /Length %d >>\nstream\n", num, n)
+	b.Write(bytes.Repeat([]byte{'0'}, n))
+	b.WriteString("\nendstream\nendobj\n")
+	x := b.Len()
+	infoRef := ""
+	if tr.Key("Info").Kind() != dpdf.Null {
+		infoRef = fmt.Sprintf(" /Info %d 0 R", info.GetID())
+	}
+	fmt.Fprintf(&b, "xref\n%d 1\n%010d 00000 n \ntrailer\n<< /Size %d /Root %d 0 R%s /Prev %d >>\nstartxref\n%d\n%%%%EOF\n",
+		num, off, num+1, root.GetID(), infoRef, prev, x)
+	return b.Bytes()
+}
+
+// TestSealPDFNearSizeLimit — оролт хэмжээний хязгаарт ойр: үл харагдах тамга багтах ч автомат дардасны фонт (~82 KB)
+// гаралтыг хэтрүүлэх тул SealPDF анхдагч нь үл харагдах тамга руу шилжинэ (Placement nil, Valid); дуудагчийн
+// Appearance-тэй бол PDF_TOO_LARGE хэвээр.
+func TestSealPDFNearSizeLimit(t *testing.T) {
+	f := newSealFixture(t, 88017)
+	base := readInput(t, "quartz-pdf13.pdf")
+	so := sealOpts(f.p, f.leaf)
+	invisible := PrepareOptions{SignerCert: f.leaf.Raw, Chain: so.Chain, Reason: so.Reason, SigningTime: so.SigningTime}
+	overhead := func(doc []byte, a *Appearance) int {
+		t.Helper()
+		o := invisible
+		o.Appearance = a
+		prep, err := Prepare(doc, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, err := decodeState(prep.State)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(st.PDF) - len(doc)
+	}
+	probe := padPDF(t, base, 1000)
+	inv, vis := overhead(probe, nil), overhead(probe, defaultSealAppearance(probe))
+	if vis-inv < 40_000 {
+		t.Fatalf("overheads: invisible %d, visible %d", inv, vis)
+	}
+	// len(doc) + inv ≤ MaxInputBytes < len(doc) + vis (Prepare: len(prepared) + 256 KiB ≤ MaxOutputBytes).
+	target := MaxOutputBytes - (256 << 10) - (inv+vis)/2
+	doc := padPDF(t, base, 1000+target-len(probe))
+	if d := len(doc) - target; d < -100 || d > 100 || len(doc) > MaxInputBytes { // /Length, startxref digits differ slightly
+		t.Fatalf("size %d, target %d, max %d", len(doc), target, MaxInputBytes)
+	}
+	o := invisible
+	o.Appearance = defaultSealAppearance(doc)
+	if _, err := Prepare(doc, o); ErrorCode(err) != CodePDFTooLarge {
+		t.Fatalf("automatic stamp should not fit: %v", err)
+	}
+	res := f.seal(t, doc, SealOptions{})
+	if res.Placement != nil {
+		t.Fatalf("placement %+v", res.Placement)
+	}
+	f.wantAllValid(t, res.PDF, []string{"seal"}, []bool{false})
+	so.Appearance = &Appearance{X: 340, Y: 36, Width: 220, Height: 64}
+	if _, err := SealPDF(context.Background(), f.sealer, "NTRMN-6235972", doc, so); ErrorCode(err) != CodePDFTooLarge {
+		t.Fatalf("explicit appearance: %v", err)
+	}
 }

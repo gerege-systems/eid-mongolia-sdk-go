@@ -6,9 +6,11 @@ import (
 	"testing"
 )
 
-// TestSealImprintEveryPageShapes — experiment (2026-11-24): can ONE later signature revision (an organisation e-Seal
-// after a citizen signature) put an imprint at the bottom-right of EVERY page without the earlier signature turning
-// modified_after_signing? Two-page base, one signature revision on top, both profiles (testRevisions → later()).
+// TestSealImprintEveryPageShapes — guards the shapes a later signature revision (e.g. an organisation e-Seal after a
+// citizen signature) may NOT use to put an imprint on every page: a signature field with one widget per page (/Kids), the
+// imprint appended to every page's content, and /Stamp annotations on every page — each leaves the earlier signature
+// modified_after_signing. Control: one visible signature widget on one page is a signature-only extension. Two-page
+// base, one signature revision on top, both profiles (testRevisions → later()).
 //
 // Already covered elsewhere (cited, not rebuilt):
 //   - one merged field/widget listed in the /Annots of two pages → rejected (revisions_review2_test.go:135);

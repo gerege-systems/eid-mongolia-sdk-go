@@ -248,5 +248,7 @@ The variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`,
   moved; none → overlap at the requested bottom-right). On a Letter/A4 page this is 220 × 64 at `(pw − 256, 36)`.
   If `suggestPlacement` fails, `w ≤ 0` or `h ≤ 0`, or `prepare` rejects the automatic stamp with `REQUEST_INVALID`
   (e.g. the text does not fit, §6.2), the seal is written **invisible** instead (`Completed.placement` = null); the
-  caller asked for nothing, so the old invisible result is the fallback rather than an error.
+  caller asked for nothing, so the old invisible result is the fallback rather than an error. The same fallback applies
+  when the automatic stamp's fonts (~82 KB) push the prepared file over the size limit (`PDF_TOO_LARGE`); an explicit
+  `appearance` still returns `REQUEST_INVALID` / `PDF_TOO_LARGE`.
 - The result is `Completed.placement` (null when invisible).

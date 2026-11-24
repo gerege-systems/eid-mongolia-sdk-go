@@ -85,8 +85,9 @@ func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOp
 		}
 	}
 	p, err := Prepare(pdf, po)
-	if auto && ErrorCode(err) == CodeRequestInvalid {
-		// Автомат дардас хуудсанд багтсангүй (бичвэр, хайрцаг) — дуудагч юу ч хүсээгүй тул үл харагдах тамга (§6.4).
+	if code := ErrorCode(err); auto && (code == CodeRequestInvalid || code == CodePDFTooLarge) {
+		// Автомат дардас хуудсанд багтсангүй (бичвэр, хайрцаг), эсвэл дардасны ~82 KB фонтоор гаралт хэмжээнээс хэтэрсэн —
+		// дуудагч юу ч хүсээгүй тул үл харагдах тамга (§6.4).
 		po.Appearance = nil
 		p, err = Prepare(pdf, po)
 	}
