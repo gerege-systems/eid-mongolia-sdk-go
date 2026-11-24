@@ -148,4 +148,35 @@ func TestOwnVisibleSignature(t *testing.T) {
 			t.Fatalf("алдаа хүлээсэн: %v", err)
 		}
 	})
+	// ownTextLimit-ээс урт /Name (257 байт): ownVisible дардсыг үүсгэхээс (квадрат мөр таслалт) өмнө татгалзана —
+	// дүгнэлт өмнөхтэй ижил (эхний гарын үсэг modified_after_signing). Бичигч ≤ 120 нэгж бичдэг тул 120 кирилл
+	// тэмдэгтийн нэрийн hex (486 байт) зайд 257 байтын literal + хоосон зай байт-байраар нь сольж бичнэ.
+	t.Run("/Name 256 байтаас урт", func(t *testing.T) {
+		long := p.Citizen(t, strings.Repeat("Б", 60), strings.Repeat("Д", 59), "3333333333", 2048)
+		name := pades.SignerDisplayName(long.Cert)
+		doc := p.Sign(t, one, long, padestest.SignOptions{TSAURL: tsa, SigningTime: visTime, Visible: visSpec(name, 2, nil)})
+		if rep := mustPDF(t, v, doc); rep.Indication != Valid {
+			t.Fatalf("хяналт (120 тэмдэгтийн нэр): %+v", rep)
+		}
+		i := bytes.LastIndex(doc, []byte("/Name <feff"))
+		if i < 0 {
+			t.Fatal("/Name <feff…> алга")
+		}
+		i += len("/Name ")
+		j := i + bytes.IndexByte(doc[i:], '>') + 1
+		repl := "(" + strings.Repeat("A", ownTextLimit+1) + ")"
+		if j-i < len(repl) {
+			t.Fatalf("зай %d < %d", j-i, len(repl))
+		}
+		bad := append([]byte(nil), doc...)
+		copy(bad[i:j], repl+strings.Repeat(" ", j-i-len(repl)))
+		rep := mustPDF(t, v, bad)
+		for _, s := range rep.Signatures {
+			if s.SignerName == "ALICE BOLD" {
+				wantModified(t, s)
+				return
+			}
+		}
+		t.Fatalf("эхний гарын үсэг алга: %+v", rep)
+	})
 }

@@ -180,7 +180,7 @@ the PDF or the options selects it. The certificate is an **e-Seal certificate** 
 1. `basicConstraints` is absent or has `cA = FALSE`;
 2. the `keyUsage` extension is present, bit 1 (`nonRepudiation` / `contentCommitment`) is **set** and bit 0
    (`digitalSignature`) is **clear** (other bits are ignored);
-3. there is **no** `extendedKeyUsage` extension.
+3. there are **no** EKU purposes (the `extendedKeyUsage` extension is absent or empty).
 
 (= Go `eid.IsSealCertificate` = validator `sealCertificate`; the citizen SIGN certificate has `digitalSignature` set, so
 it is never an e-Seal certificate.) A certificate that cannot be parsed is not an e-Seal certificate. e-Seal certificate

@@ -25,7 +25,7 @@ type sigMeta struct {
 }
 
 // sealCertificate — APPEARANCE_SPEC.md §6.1 (eid.IsSealCertificate-тэй ижил): CA биш, keyUsage-д nonRepudiation
-// (contentCommitment) байгаа ба digitalSignature байхгүй, extendedKeyUsage-гүй. Задрахгүй бол false (иргэний дүрэм).
+// (contentCommitment) байгаа ба digitalSignature байхгүй, EKU-ийн зорилгогүй (extendedKeyUsage алга эсвэл хоосон). Задрахгүй бол false (иргэний дүрэм).
 func sealCertificate(der []byte) bool {
 	c, err := x509.ParseCertificate(der)
 	if err != nil || c.IsCA {
@@ -96,7 +96,9 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	}
 	ns, ok := sd["Name"].(pdfStr)
 	ms, ok2 := sd["M"].(pdfStr)
-	if !ok || !ok2 {
+	// sigValue нь ownTextLimit-ээс урт /Name-ийг ямар ч байсан татгалзана; энд эрт татгалзаж олон мегабайт нэрийг
+	// дардасны (квадрат) мөр таслалтаас хол байлгана.
+	if !ok || !ok2 || len(ns) > ownTextLimit {
 		return fail
 	}
 	m := string(ms)

@@ -177,7 +177,12 @@ func (w *pageWriter) wrapLimit(id, size int, s string, limit, maxLines int) []st
 	fits := func(t string) bool { return w.width1000(id, size, t) <= limit }
 	var lines []string
 	cur := ""
+	// len(lines) > maxLines болмогц цааш мөр үүсгэхгүй: доорх «…» таслалт зөвхөн эхний maxLines мөрийг ашигладаг тул
+	// гаралт ижил, харин урт (олон мегабайт) бичвэрийн мөр таслалт квадрат хугацаа зарцуулахгүй.
 	for _, word := range strings.Split(s, " ") {
+		if len(lines) > maxLines {
+			break
+		}
 		if word == "" {
 			continue
 		}
@@ -193,7 +198,7 @@ func (w *pageWriter) wrapLimit(id, size int, s string, limit, maxLines int) []st
 			lines = append(lines, cur)
 			cur = ""
 		}
-		for !fits(word) { // үг дангаараа урт → тэмдэгтээр
+		for len(lines) <= maxLines && !fits(word) { // үг дангаараа урт → тэмдэгтээр
 			r := []rune(word)
 			n := 1
 			for n < len(r) && fits(string(r[:n+1])) {
