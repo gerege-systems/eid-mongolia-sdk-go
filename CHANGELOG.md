@@ -1,5 +1,61 @@
 # Changelog
 
+## v0.30.0 — 2026-11-24
+
+> **Upgrade notice (integrators must upgrade):**
+> - `pades.SealPDF` output is now **visible by default** (an organisation e-Seal stamp on the last page);
+>   `SealOptions{Invisible: true}` restores the previous invisible output byte-for-byte.
+> - Validators in Go SDK ≤ v0.29 (and TS SDK < 0.48) report every earlier signature as **modified** on a PDF that got a
+>   visible seal stamp after them, and Go SDK ≤ v0.29 `Complete` **fails self-validation** when signing such a PDF.
+>   Upgrade to Go SDK v0.30.0 / TS SDK 0.48.0 (the CA `/v3/validate/pdf` already accepts the stamp, APPEARANCE_SPEC §6.3).
+
+### Tests — иргэний гарын үсгийн дараа тамгалах (`TestSealPDFAfterCitizenSignature`)
+
+- **Юу:** иргэний PIN2 гарын үсэгтэй (verify хуудас + DSS) PDF-ийг `SealPDF`-ээр тамгалах, мөн эсрэг дараалал (тамга →
+  иргэн): хоёр гарын үсэг хоёулаа valid PAdES-BASELINE-LT (usage "sign" ба "seal"), хоёр дахь нь цэвэр incremental append
+  (өмнөх файл яг угтвар).
+- **Яагаад:** `TestSealPDF` зөвхөн гарын үсэггүй PDF-ийг тамгалдаг байсан — иргэний гарын үсэг тамгалалтаар эвдрэхгүйг
+  батлах тест байгаагүй.
+- **Хаана:** `pades/seal_test.go` (тест + `citizenSign` helper). Бүтээгдэхүүний код өөрчлөгдөөгүй.
+- **Шалгалт:** PR-ийн CI (go test -race).
+### Fixed — харагдах дардасны validator: урт /Name-ийг эрт татгалзана; мөр таслалт хязгаартай
+
+- **Юу:**
+  - `ValidatePDF` (own-signer, харагдах widget — `ownVisible`): Sig толийн `/Name` нь `ownTextLimit`-ээс (256 байт) урт
+    бол дардсыг дахин үүсгэхээс өмнө татгалзана. Дүгнэлт өөрчлөгдөөгүй (`sigValue` ийм нэрийг аль хэдийн татгалздаг —
+    эхний гарын үсэг `modified_after_signing`); олон мегабайт `/Name` квадрат мөр таслалтыг ажиллуулахаа больсон (TS SDK
+    0.48.0-ийн засвартай ижил).
+  - `wrapLimit` (дардас/verify хуудасны мөр таслалт): `maxLines`-аас илүү мөр гармагц цааш мөр үүсгэхгүй — гаралт
+    байт-ижил (golden өөрчлөгдөөгүй).
+  - Үг хэллэг: e-Seal гэрчилгээний EKU нөхцөл = «EKU-ийн зорилго байхгүй (extendedKeyUsage алга эсвэл хоосон)» —
+    `APPEARANCE_SPEC.md` §6.1, `eid.IsSealCertificate`, `sealCertificate`-ийн тайлбар, README (код өөрчлөгдөөгүй).
+- **Яагаад:** v0.30.0-ийн review-ийн дагалдах засвар.
+- **Хаана:** `pades/internal/validate/appearance.go`, `pades/internal/core/vpage.go`, `pades/APPEARANCE_SPEC.md`,
+  `seal.go`, `README.md`; тест `pades/internal/validate/appearance_test.go` (`/Name 256 байтаас урт`).
+- **Шалгалт:** PR-ийн CI (go test -race, golden — нэг ч golden/testdata өөрчлөгдөөгүй).
+### Changed — `pades.SealPDF`: харагдах байгууллагын тамганы дардас (анхдагч)
+
+- **Юу:** `SealPDF` анхдагчаар баримтын сүүлийн (eID verify биш) хуудсанд байгууллагын **тамганы дардас** үлдээнэ:
+  байгууллагын нэр, «eID Mongolia-аар тамгалсан» / «Sealed with eID Mongolia», тамгалсан цаг — QR, холбоос, үүрэггүй
+  (`pades/APPEARANCE_SPEC.md` §6). Байршил: 220 × 64 pt, баруун доод булан (36 pt; жижиг хуудсанд багтаана, дардас
+  багтахгүй бол үл харагдах тамга — `Completed.Placement` nil), агуулгатай давхцвал PLACEMENT_SPEC-ээр чөлөөт байрлал
+  руу, чөлөөт газаргүй бол баруун доод буланд (`overlap`). Шинэ `SealOptions.Appearance`
+  (байршлыг дуудагч өгнө, `Exact` ч), `SealOptions.Invisible`, `Completed.Placement`, тогтмолууд `SealStampWidth/Height/Margin`.
+  Дардасны хувилбарыг ЗӨВХӨН гарын үсэг зурагчийн гэрчилгээ сонгоно (e-Seal гэрчилгээ: CA биш, keyUsage = nonRepudiation
+  ба digitalSignature-гүй, EKU-гүй) — иргэний дардас өөрчлөгдөөгүй (golden v1–v11 байт-ижил). Validator (`ValidatePDF`,
+  own-signer профайл) e-Seal гэрчилгээнд зөвхөн тамганы дардсыг, бусдад зөвхөн иргэний дардсыг хүлээн авна (таарахгүй бол
+  өмнөх гарын үсэг `modified_after_signing`).
+- **Зан өөрчлөлт (RP):** `SealPDF`-ийн анхдагч гаралт одоо ХАРАГДАНА. `SealOptions{Invisible: true}` өмнөх үл харагдах
+  гаралтыг байт-ижил сэргээнэ.
+- **Анхаар:** энэ хувилбараас ӨМНӨХ шалгагчид (CA `/v3/validate/pdf`, TS SDK `validatePdf`) тамганы дардсыг таньдаггүй тул
+  түүний өмнөх бүх гарын үсгийг өөрчлөгдсөн гэж мэдээлнэ. CA ба TS SDK-ийн validator §6.3-ыг гаргахаас өмнө RP харагдах
+  тамга ашиглахгүй (`Invisible: true`).
+- **Release:** CA `/v3/validate/pdf` (§6.3) ба TS SDK 0.48.0 гарсны дараа v0.30.0-оор гаргасан.
+- **Хаана:** `pades/seal.go`, `pades/prepare.go`, `pades/complete.go`, `pades/internal/core/appearance.go`,
+  `pades/internal/core/signature.go`, `pades/internal/validate/{appearance,extract}.go`; спец `APPEARANCE_SPEC.md` §6,
+  `PLACEMENT_SPEC.md` §1, `PROFILE.md`; golden v12 (`testdata/golden` seal тохиолдлууд, `testdata/validate` 5 тохиолдол).
+- **Шалгалт:** PR-ийн CI (go test -race; golden-external pyHanko/qpdf).
+
 ## v0.29.0 — 2026-11-20
 
 ### Added — RP-ийн санаачилсан тамганы эрхийн хүсэлт (`Seal.RequestGrant`, `GrantStatus`, `WaitForGrant`, `Organization.SealGrants`)
