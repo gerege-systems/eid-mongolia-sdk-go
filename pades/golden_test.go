@@ -53,7 +53,10 @@ type goldenCase struct {
 	Name  string `json:"name"`
 	Input string `json:"input"` // input/<file> эсвэл "case:<name>" (өмнөх тохиолдлын гаралт)
 	// Signer — "" = pki/citizen (иргэн), "seal" = pki/seal (байгууллагын e-Seal, RSA; тамганы дардас — APPEARANCE_SPEC.md §6).
-	Signer string         `json:"signer,omitempty"`
+	Signer string `json:"signer,omitempty"`
+	// SealQR — e-Seal гэрчилгээний дардас QR-тэй (APPEARANCE_SPEC.md §6.5, golden v13); Prepare-ийн нийтийн бус сонголт
+	// (PrepareOptions.sealQR) — native SDK-ууд энэ тохиолдлуудад QR-тэй тамгыг дотооддоо асаана.
+	SealQR bool           `json:"sealQr,omitempty"`
 	Prep   PrepareOptions `json:"prepare"`
 	Expect goldenExpect   `json:"expect"`
 }
@@ -210,6 +213,24 @@ func goldenCases() []goldenCase {
 			DocID: "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e", Lang: "en"}, Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 		{Name: "seal-visible-third", Input: "case:libreoffice-contract-visible-second", Signer: "seal", Prep: visible(PrepareOptions{
 			Reason: "Нэхэмжлэх"}, Appearance{X: 356, Y: 36, Width: 220, Height: 64})},
+		// QR-тэй тамганы дардас (APPEARANCE_SPEC.md §6.5, golden v13; signer = pki/seal, sealQr): (a) гарын үсэггүй 2 хуудастай
+		// баримт (verify хуудасгүй, docId = opts); (b) en, 1 хуудас; (c) /Rotate 90; (d) иргэн (verify хуудастай) + QR тамга
+		// (docId хуудаснаас); (e) QR тамга + иргэн — docId-г тамганы /EIDVerify-ээс (§6.6 алхам 2, opts.docId-гүй); (f) QR
+		// тамга + QR тамга; (g) QR-гүй тамга (v12) + иргэн — олдох docId алга → opts.docId (шинэ), хоёр дардас өөр docId-тай.
+		{Name: "seal-qr-visible", Input: "input/libreoffice-contract.pdf", Signer: "seal", SealQR: true, Prep: visible(PrepareOptions{
+			DocID: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f", Reason: "Нэхэмжлэх"}, Appearance{X: 356, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-qr-visible-en", Input: "input/quartz-pdf13.pdf", Signer: "seal", SealQR: true, Prep: visible(PrepareOptions{
+			DocID: "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a", Lang: "en"}, Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-qr-rotated90", Input: "input/quartz-rotated90.pdf", Signer: "seal", SealQR: true, Prep: visible(PrepareOptions{
+			DocID: "a0e1f2a3-4b5c-4e6f-8a7b-8c9d0e1f2a3b"}, Appearance{X: 36, Y: 36, Width: 220, Height: 64})},
+		{Name: "citizen-then-seal-qr", Input: "case:quartz-pdf13-visible", Signer: "seal", SealQR: true, Prep: visible(PrepareOptions{
+			Reason: "Нэхэмжлэх"}, Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-qr-then-citizen", Input: "case:seal-qr-visible", Prep: visible(PrepareOptions{},
+			Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-qr-then-seal-qr", Input: "case:seal-qr-visible", Signer: "seal", SealQR: true, Prep: visible(PrepareOptions{
+			Lang: "en"}, Appearance{X: 356, Y: 36, Width: 220, Height: 64})},
+		{Name: "sealv12-then-citizen", Input: "case:seal-visible", Prep: visible(PrepareOptions{
+			DocID: "b1f2a3b4-5c6d-4f7a-9b8c-9d0e1f2a3b4c"}, Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
 	}
 }
 
@@ -596,7 +617,7 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 			t.Fatalf("%s: pki/seal.pem алга (-update)", c.Name)
 		}
 	}
-	o.SignerCert = signer.cert.Raw
+	o.SignerCert, o.sealQR = signer.cert.Raw, c.SealQR
 	o.Chain = [][]byte{p.ca04.cert.Raw, p.ca03.cert.Raw, p.ca02.cert.Raw}
 	o.SigningTime = goldenTime
 	var sugErr error

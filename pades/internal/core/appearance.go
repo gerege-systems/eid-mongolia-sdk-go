@@ -28,8 +28,9 @@ type Visible struct {
 	Role       string
 	Lang       string // "mn" | "en"
 	Date       string // «YYYY-MM-DD HH:MM (+08)»
-	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>; Seal бол хэрэглэгдэхгүй
-	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): гарын үсэг зурагчийн гэрчилгээ e-Seal үед л.
+	URL        string // https://ca.eidmongolia.mn/verify/<docID>/<revIndex>; Seal-тэй хоосон бол QR-гүй тамга (§6.2)
+	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): гарын үсэг зурагчийн гэрчилгээ e-Seal үед л. URL-тэй
+	// бол QR-тэй тамга (§6.5), хоосон бол QR-гүй (§6.2).
 	Seal bool
 	// Avoid — scan the page and move the stamp off existing content (PLACEMENT_SPEC.md); false = exactly (X, Y).
 	Avoid bool
@@ -48,6 +49,10 @@ type VisibleTamper struct {
 	AnnotsPage int
 	// Extra — хуучин объектуудыг (дугаар → бие, үе 0) энэ revision-д дахин бичнэ.
 	Extra map[uint32][]byte
+	// SealRole — QR-тэй тамганы дардсанд (Seal + URL) Role-ийн мөрийг зурна (§6.5 хориглодог — сөрөг вектор).
+	SealRole bool
+	// NoMinModule — QR модулийн 1 pt-ийн доод хязгаарыг алгасна (45 pt-оос намхан дардас — сөрөг вектор).
+	NoMinModule bool
 }
 
 // AppearanceParams — form XObject-ийн оролт (validator ч мөн үүгээр дахин үүсгэнэ).
@@ -59,8 +64,12 @@ type AppearanceParams struct {
 	Lang   string
 	Date   string
 	URL    string
-	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): QR/URL/үүрэг үгүй, SealLabels; Role, URL үл тооно.
+	// Seal — байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6): SealLabels, Role үл тооно. URL хоосон бол QR-гүй
+	// (§6.2), эс бөгөөс иргэний дардасны бүтэц (§3) — QR, /EIDVerify BDC — тамганы label-тай, үүргийн мөргүй (§6.5).
 	Seal bool
+	// sealRole, noMinModule — ЗӨВХӨН тестийн сөрөг вектор (VisibleTamper.SealRole / NoMinModule); validator хэзээ ч
+	// тавихгүй (өөр багц — тавих боломжгүй).
+	sealRole, noMinModule bool
 }
 
 // APPEARANCE_SPEC.md §3-ийн тогтмолууд (h100 = 1/100 pt).
@@ -132,12 +141,20 @@ type apLine struct {
 	color, text string
 }
 
-// AppearanceContent — form XObject-ийн content stream (APPEARANCE_SPEC.md §3).
+// AppearanceContent — form XObject-ийн content stream (APPEARANCE_SPEC.md §3; Seal бол §6.2 эсвэл §6.5).
 func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error) {
-	if p.Seal {
+	if p.Seal && p.URL == "" {
 		return sealContent(p, reg, bld)
 	}
-	label, ok := AppearanceLabels[p.Lang]
+	labels := AppearanceLabels
+	if p.Seal {
+		// §6.5: иргэний дардас (§3) яг ижил — label = тамганых, үүргийн мөр хэзээ ч үгүй.
+		labels = SealLabels
+		if !p.sealRole {
+			p.Role = ""
+		}
+	}
+	label, ok := labels[p.Lang]
 	if !ok {
 		return nil, fmt.Errorf("%w: хэл %q", ErrAppearance, p.Lang)
 	}
@@ -153,7 +170,7 @@ func AppearanceContent(p AppearanceParams, reg, bld *assets.Font) ([]byte, error
 	}
 	n := len(m)
 	mod := (p.H - 2*apPad) / n
-	if mod < apMinModule {
+	if mod < apMinModule && (!p.noMinModule || mod <= 0) {
 		return nil, fmt.Errorf("%w: хэт жижиг (өндөр ≥ %s pt)", ErrAppearance, Num100(2*apPad+n*apMinModule))
 	}
 	tx := apPad + mod*n + apGap

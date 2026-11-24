@@ -1,11 +1,14 @@
 package pades
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
@@ -21,6 +24,22 @@ func sealVCases() []vCase {
 		{Name: "seal-after-two-citizens", Input: "golden/output/seal-visible-third.pdf", Offline: true},
 		{Name: "seal-stamp-citizen-cert", Input: "validate/input/seal-stamp-citizen-cert.pdf", Offline: true},
 		{Name: "citizen-stamp-seal-cert", Input: "validate/input/citizen-stamp-seal-cert.pdf", Offline: true},
+		// v13 — QR-тэй тамганы дардас (APPEARANCE_SPEC.md §6.5). Эерэг: golden/output-ийн шинэ тохиолдлууд (QR-гүй
+		// тамгын дараах иргэн өөр docId-тай — хоёр дардасны docId зөрөх нь өөрчлөлт биш).
+		{Name: "seal-qr-visible", Input: "golden/output/seal-qr-visible.pdf", Offline: true},
+		{Name: "seal-qr-visible-en", Input: "golden/output/seal-qr-visible-en.pdf", Offline: true},
+		{Name: "seal-qr-rotated90", Input: "golden/output/seal-qr-rotated90.pdf", Offline: true},
+		{Name: "citizen-then-seal-qr", Input: "golden/output/citizen-then-seal-qr.pdf", Offline: true},
+		{Name: "seal-qr-then-citizen", Input: "golden/output/seal-qr-then-citizen.pdf", Offline: true},
+		{Name: "seal-qr-then-seal-qr", Input: "golden/output/seal-qr-then-seal-qr.pdf", Offline: true},
+		{Name: "sealv12-then-citizen", Input: "golden/output/sealv12-then-citizen.pdf", Offline: true},
+		// Сөрөг (2 дахь гарын үсэг B-B, golden/output/quartz-pdf13.pdf дээр): эхний гарын үсэг modified_after_signing.
+		{Name: "seal-qr-citizen-cert", Input: "validate/input/seal-qr-citizen-cert.pdf", Offline: true},
+		{Name: "seal-qr-with-role", Input: "validate/input/seal-qr-with-role.pdf", Offline: true},
+		{Name: "seal-qr-wrong-rev", Input: "validate/input/seal-qr-wrong-rev.pdf", Offline: true},
+		{Name: "seal-qr-docid-vs-page", Input: "validate/input/seal-qr-docid-vs-page.pdf", Offline: true},
+		{Name: "seal-v12-with-marker", Input: "validate/input/seal-v12-with-marker.pdf", Offline: true},
+		{Name: "seal-qr-height-44pt", Input: "validate/input/seal-qr-height-44pt.pdf", Offline: true},
 	}
 }
 
@@ -34,15 +53,72 @@ func sealVInputs(t *testing.T, p *goldenPKI) map[string][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	docID := docIDFromPage(base)
+	if docID == "" {
+		t.Fatal("base: docId алга")
+	}
+	url := pageVerifyURL + docID + "/2"
+	sealQR := func(v *core.Visible) { v.Seal = true }
 	return map[string][]byte{
 		"seal-stamp-citizen-cert": vMismatchedStamp(t, p, base, p.citizen, true),
 		"citizen-stamp-seal-cert": vMismatchedStamp(t, p, base, p.seal, false),
+		// v13 (§6.3 delta): иргэний гэрчилгээ + QR-тэй тамга; e-Seal + үүргийн мөр (CMS-д claimedRole-той); маркерын rev
+		// буруу; маркерын docId ≠ verify хуудасных; маркер + QR-гүй тамганы content; 44 pt (QR модуль < 1 pt).
+		"seal-qr-citizen-cert": vStampRev(t, p, base, p.citizen, "", sealQR),
+		"seal-qr-with-role": vStampRev(t, p, base, p.seal, vRole, func(v *core.Visible) {
+			v.Seal, v.Role, v.Tamper = true, vRole, &core.VisibleTamper{SealRole: true}
+		}),
+		"seal-qr-wrong-rev": vStampRev(t, p, base, p.seal, "", func(v *core.Visible) { v.Seal, v.URL = true, pageVerifyURL+docID+"/3" }),
+		"seal-qr-docid-vs-page": vStampRev(t, p, base, p.seal, "", func(v *core.Visible) {
+			v.Seal, v.URL = true, pageVerifyURL+"0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f/2"
+		}),
+		"seal-v12-with-marker": vStampRev(t, p, base, p.seal, "", func(v *core.Visible) {
+			v.Seal, v.URL, v.Tamper = true, "", &core.VisibleTamper{Body: vFormContent(func(c []byte) []byte {
+				return append(append([]byte("/EIDVerify <</URL ("+url+")>> BDC\n"), c...), "EMC\n"...)
+			})}
+		}),
+		"seal-qr-height-44pt": vStampRev(t, p, base, p.seal, "", func(v *core.Visible) {
+			v.Seal, v.H, v.Tamper = true, 4400, &core.VisibleTamper{NoMinModule: true}
+		}),
 	}
 }
 
-// vMismatchedStamp — base-д signer-ийн 2 дахь гарын үсгийг (B-B: timestamp, DSS-гүй) 1-р хуудсанд 340, 36, 220 × 64 pt
-// дардастай нэмнэ; дардасны хувилбар = seal (гэрчилгээнээс үл хамааран — Prepare-ийн зам үүнийг хэзээ ч гаргахгүй).
+// vRole — сөрөг векторын claimedRole (CMS signer-attributes-v2).
+const vRole = "Захирал, Тест ХХК (NTRMN-1234567)"
+
+// vMismatchedStamp — base-д signer-ийн 2 дахь гарын үсгийг (B-B) нэмнэ; дардасны хувилбар = seal (QR-гүй тамга, §6.2)
+// эсвэл иргэний (§3) — гэрчилгээнээс үл хамааран (Prepare-ийн зам үүнийг хэзээ ч гаргахгүй).
 func vMismatchedStamp(t *testing.T, p *goldenPKI, base []byte, signer *gCert, seal bool) []byte {
+	t.Helper()
+	return vStampRev(t, p, base, signer, "", func(v *core.Visible) {
+		if v.Seal = seal; seal {
+			v.URL = ""
+		}
+	})
+}
+
+// vFormContent — form XObject-ийн content stream-ийг f-ээр сольж /Length-ийг шинэчилнэ (VisibleTamper.Body).
+func vFormContent(f func([]byte) []byte) func(string, []byte) []byte {
+	length := regexp.MustCompile(`^<< /Length \d+`)
+	return func(role string, b []byte) []byte {
+		if role != "form" {
+			return b
+		}
+		i, j := bytes.Index(b, []byte(">>\nstream\n")), bytes.LastIndex(b, []byte("\nendstream"))
+		if i < 0 || j < i {
+			panic("form: stream алга")
+		}
+		c := f(bytes.Clone(b[i+len(">>\nstream\n") : j]))
+		out := length.ReplaceAll(bytes.Clone(b[:i]), fmt.Appendf(nil, "<< /Length %d", len(c)))
+		out = append(append(out, ">>\nstream\n"...), c...)
+		return append(out, "\nendstream"...)
+	}
+}
+
+// vStampRev — base-д signer-ийн 2 дахь гарын үсгийг (B-B: timestamp, DSS-гүй) 1-р хуудсанд 340, 36, 220 × 64 pt
+// дардастай нэмнэ. Анхдагч дардас = иргэний (URL = verify хуудасны docId, rev 2); edit нь түүнийг өөрчилнө. role —
+// CMS-ийн claimedRole.
+func vStampRev(t *testing.T, p *goldenPKI, base []byte, signer *gCert, role string, edit func(*core.Visible)) []byte {
 	t.Helper()
 	docID := docIDFromPage(base)
 	if docID == "" {
@@ -51,12 +127,13 @@ func vMismatchedStamp(t *testing.T, p *goldenPKI, base []byte, signer *gCert, se
 	name := core.SignerDisplayName(signer.cert)
 	at := goldenTime.In(signingZone)
 	vis := core.Visible{Page: 1, X: 34000, Y: 3600, W: 22000, H: 6400, Name: name, Lang: "mn",
-		Date: at.Format("2006-01-02 15:04") + " (+08)", URL: pageVerifyURL + docID + "/2", Seal: seal}
+		Date: at.Format("2006-01-02 15:04") + " (+08)", URL: pageVerifyURL + docID + "/2"}
+	edit(&vis)
 	prep, err := core.PrepareSignatureVisible(base, at, name, "", vis)
 	if err != nil {
 		t.Fatal(err)
 	}
-	attrs, err := core.SignedAttributesWithRole(prep.Digest, signer.cert, "")
+	attrs, err := core.SignedAttributesWithRole(prep.Digest, signer.cert, role)
 	if err != nil {
 		t.Fatal(err)
 	}

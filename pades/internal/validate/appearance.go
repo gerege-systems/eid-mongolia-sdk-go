@@ -37,6 +37,10 @@ func sealCertificate(der []byte) bool {
 
 const apVerifyPrefix = "https://ca.eidmongolia.mn/verify/"
 
+// apMarker — /EIDVerify BDC мөрийн эхлэл. e-Seal гэрчилгээнд form stream үүгээр эхэлбэл QR-тэй тамга (§6.5, apURLRe
+// ЗААВАЛ таарна), эс бөгөөс QR-гүй тамга (§6.2).
+var apMarker = []byte("/EIDVerify")
+
 var apURLRe = regexp.MustCompile(`^/EIDVerify <</URL \(https://ca\.eidmongolia\.mn/verify/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/([1-9][0-9]?)\)>> BDC\n`)
 
 // ownVisible — own горимын харагдах widget d (объект widget): widget ба /AP-ийн 11 объект яг PAdES бичигчийнх.
@@ -120,14 +124,19 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	if !ok {
 		return fail
 	}
-	// Хувилбарыг ЗӨВХӨН гэрчилгээ сонгоно (§6.1): e-Seal → тамганы дардас (URL/QR/үүрэг үгүй), бусад → иргэний дардас.
+	// Хувилбарыг гэрчилгээ сонгоно (§6.1): иргэн → иргэний дардас (§3, /EIDVerify ЗААВАЛ); e-Seal → тамганы дардас,
+	// QR-тэй эсэхийг form stream-ийн эхлэл (/EIDVerify) шийднэ (§6.3): тэмдэгтэй → QR-тэй (§6.5, URL-ийн шалгалт иргэнийхтэй
+	// ижил, үүрэг үгүй), тэмдэггүй → QR-гүй (§6.2).
 	p := core.AppearanceParams{W: w, H: h, Rotate: rot, Name: pdfTextString(ns), Date: date, Seal: meta.seal}
-	if !meta.seal {
+	if !meta.seal || bytes.HasPrefix(form.data, apMarker) {
 		sm := apURLRe.FindSubmatch(form.data)
 		if sm == nil || string(sm[2]) != strconv.Itoa(meta.revIndex) || c.docID != "" && string(sm[1]) != c.docID {
 			return fail
 		}
-		p.Role, p.URL = meta.role, apVerifyPrefix+string(sm[1])+"/"+string(sm[2])
+		p.URL = apVerifyPrefix + string(sm[1]) + "/" + string(sm[2])
+		if !meta.seal {
+			p.Role = meta.role
+		}
 	}
 	for _, lang := range []string{"mn", "en"} {
 		p.Lang = lang
