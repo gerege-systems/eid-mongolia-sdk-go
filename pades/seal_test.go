@@ -1,10 +1,13 @@
 package pades
 
 import (
+	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -96,6 +99,78 @@ func TestSealPDF(t *testing.T) {
 		b, _ := json.Marshal(sig)
 		t.Fatalf("%s", b)
 	}
+}
+
+// citizenSign — иргэний ердийн урсгал (Prepare + verify хуудас → PIN2 DTBS RSA PKCS#1 v1.5 → Complete, TSA + DSS).
+func citizenSign(t *testing.T, p *goldenPKI, pdf []byte) *Completed {
+	t.Helper()
+	prep, err := Prepare(pdf, testOpts(p, p.citizen.cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Complete(context.Background(), prep.State, sig, completeOpts(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+// TestSealPDFAfterCitizenSignature — иргэний гарын үсэгтэй PDF-ийг тамгалах (ба эсрэг дараалал): хоёр гарын үсэг хоёулаа
+// valid PAdES-BASELINE-LT, хоёр дахь нь цэвэр incremental append (өмнөх файл яг угтвар).
+func TestSealPDFAfterCitizenSignature(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	key, leaf := sealLeaf(t, p, x509.KeyUsageContentCommitment, 88005)
+	seal := func(t *testing.T, pdf []byte) *Completed {
+		t.Helper()
+		res, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key}, "NTRMN-6235972", pdf, sealOpts(p, leaf))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	check := func(t *testing.T, first, out []byte, wantUsage []string) {
+		t.Helper()
+		if !bytes.HasPrefix(out, first) {
+			t.Fatal("second signature is not a pure incremental append")
+		}
+		rep, err := Verify(out, VerifyOptions{Roots: [][]byte{p.root.cert.Raw}, Issuers: [][]byte{p.ca04.cert.Raw}, Time: goldenNow})
+		if err != nil || rep.Indication != Valid || len(rep.Signatures) != 2 {
+			b, _ := json.Marshal(rep)
+			t.Fatalf("%v %s", err, b)
+		}
+		for i, s := range rep.Signatures {
+			if s.Indication != Valid || s.SignatureLevel != "PAdES-BASELINE-LT" || s.Timestamp == nil || s.Certificate == nil ||
+				s.Certificate.Usage != wantUsage[i] {
+				b, _ := json.Marshal(s)
+				t.Fatalf("signature %d (want usage %q): %s", i, wantUsage[i], b)
+			}
+		}
+	}
+
+	t.Run("citizen-then-seal", func(t *testing.T) {
+		signed := citizenSign(t, p, readInput(t, "quartz-pdf13.pdf"))
+		if !signed.HasPage || signed.RevIndex != 1 {
+			t.Fatalf("citizen: %+v", signed.RevIndex)
+		}
+		sealed := seal(t, signed.PDF)
+		if sealed.HasPage || sealed.RevIndex != 2 || len(sealed.PriorCMSSHA256) != 1 {
+			t.Fatalf("seal: rev=%d page=%v prior=%d", sealed.RevIndex, sealed.HasPage, len(sealed.PriorCMSSHA256))
+		}
+		check(t, signed.PDF, sealed.PDF, []string{"sign", "seal"})
+	})
+
+	t.Run("seal-then-citizen", func(t *testing.T) {
+		sealed := seal(t, readInput(t, "quartz-pdf13.pdf"))
+		signed := citizenSign(t, p, sealed.PDF)
+		if signed.HasPage || signed.RevIndex != 2 {
+			t.Fatalf("citizen: rev=%d page=%v", signed.RevIndex, signed.HasPage)
+		}
+		check(t, sealed.PDF, signed.PDF, []string{"seal", "sign"})
+	})
 }
 
 func TestSealPDFRejects(t *testing.T) {
