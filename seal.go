@@ -368,7 +368,9 @@ func (s *SealService) Seal(ctx context.Context, orgEtsi string, digest []byte, h
 }
 
 // IsSealCertificate — e-Seal профайл: KeyUsage-д nonRepudiation (contentCommitment) байгаа, digitalSignature байхгүй,
-// EKU байхгүй (CA/SDK шалгагчийн "seal" ангилалтай ижил дүрэм).
+// EKU байхгүй (CA/SDK шалгагчийн "seal" ангилалтай ижил дүрэм). PDF-ийн дардасны хувилбар (pades/APPEARANCE_SPEC.md §6.1)
+// энэ дүрмийг дагана; KeyUsage = зөвхөн nonRepudiation боловч танихгүй EKU-тэй гэрчилгээг шалгагчийн usage "seal" гэж
+// тэмдэглэдэг ч энэ функц false буцаадаг тул тэр гэрчилгээ иргэний дардастай (зөрөө нь зөвхөн тэр тохиолдолд).
 func IsSealCertificate(c *x509.Certificate) bool {
 	if c == nil || c.IsCA {
 		return false

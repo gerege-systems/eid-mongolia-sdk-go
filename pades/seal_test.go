@@ -73,7 +73,8 @@ func sealOpts(p *goldenPKI, leaf *x509.Certificate) SealOptions {
 		Complete: completeOpts(&p2)}
 }
 
-// TestSealPDF — тамганы гэрчилгээ → Prepare → SHA-256 DTBS тамгалуулах → Complete → PAdES-BASELINE-LT, usage "seal".
+// TestSealPDF — АНХДАГЧ горим (харагдах тамганы дардас, автомат байршил): тамганы гэрчилгээ → Prepare → SHA-256 DTBS
+// тамгалуулах → Complete → PAdES-BASELINE-LT, usage "seal". Invisible горим — TestSealPDFInvisible.
 func TestSealPDF(t *testing.T) {
 	p := loadOrCreatePKI(t)
 	key, leaf := sealLeaf(t, p, x509.KeyUsageContentCommitment, 88001)
@@ -85,7 +86,7 @@ func TestSealPDF(t *testing.T) {
 	if s.hash != eid.SHA256 || len(s.digest) != 32 {
 		t.Fatalf("seal call: %s %d", s.hash, len(s.digest))
 	}
-	if res.HasPage || res.RevIndex != 1 || res.ClaimedRole != "" {
+	if res.HasPage || res.RevIndex != 1 || res.ClaimedRole != "" || res.Placement == nil {
 		t.Fatalf("%+v", res)
 	}
 	rep, err := Verify(res.PDF, VerifyOptions{Roots: [][]byte{p.root.cert.Raw}, Issuers: [][]byte{p.ca04.cert.Raw}, Time: goldenNow})
@@ -95,7 +96,7 @@ func TestSealPDF(t *testing.T) {
 	}
 	sig := rep.Signatures[0]
 	if sig.SignatureLevel != "PAdES-BASELINE-LT" || sig.Timestamp == nil || sig.Certificate == nil || sig.Certificate.Usage != "seal" ||
-		sig.SignerName != "Gerege Systems LLC" {
+		sig.SignerName != "Gerege Systems LLC" || !sig.Visible {
 		b, _ := json.Marshal(sig)
 		t.Fatalf("%s", b)
 	}
@@ -119,16 +120,30 @@ func citizenSign(t *testing.T, p *goldenPKI, pdf []byte) *Completed {
 	return res
 }
 
-// TestSealPDFAfterCitizenSignature — иргэний гарын үсэгтэй PDF-ийг тамгалах (ба эсрэг дараалал): хоёр гарын үсэг хоёулаа
-// valid PAdES-BASELINE-LT, хоёр дахь нь цэвэр incremental append (өмнөх файл яг угтвар).
+// TestSealPDFAfterCitizenSignature — иргэний гарын үсэгтэй PDF-ийг тамгалах (ба эсрэг дараалал), харагдах (анхдагч) ба
+// Invisible хоёр горимоор: хоёр гарын үсэг хоёулаа valid PAdES-BASELINE-LT, хоёр дахь нь цэвэр incremental append
+// (өмнөх файл яг угтвар); тамга харагдах эсэх нь горимтой таарна.
 func TestSealPDFAfterCitizenSignature(t *testing.T) {
+	for _, invisible := range []bool{false, true} {
+		t.Run(map[bool]string{false: "visible", true: "invisible"}[invisible], func(t *testing.T) {
+			testSealAfterCitizen(t, invisible)
+		})
+	}
+}
+
+func testSealAfterCitizen(t *testing.T, invisible bool) {
 	p := loadOrCreatePKI(t)
 	key, leaf := sealLeaf(t, p, x509.KeyUsageContentCommitment, 88005)
 	seal := func(t *testing.T, pdf []byte) *Completed {
 		t.Helper()
-		res, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key}, "NTRMN-6235972", pdf, sealOpts(p, leaf))
+		o := sealOpts(p, leaf)
+		o.Invisible = invisible
+		res, err := SealPDF(context.Background(), &fakeSealer{cert: leaf.Raw, key: key}, "NTRMN-6235972", pdf, o)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if (res.Placement == nil) != invisible {
+			t.Fatalf("placement %+v, invisible %v", res.Placement, invisible)
 		}
 		return res
 	}
@@ -144,7 +159,8 @@ func TestSealPDFAfterCitizenSignature(t *testing.T) {
 		}
 		for i, s := range rep.Signatures {
 			if s.Indication != Valid || s.SignatureLevel != "PAdES-BASELINE-LT" || s.Timestamp == nil || s.Certificate == nil ||
-				s.Certificate.Usage != wantUsage[i] {
+				s.Certificate.Usage != wantUsage[i] || !s.ExtendedBySignaturesOnly && i == 0 ||
+				wantUsage[i] == "seal" && s.Visible == invisible {
 				b, _ := json.Marshal(s)
 				t.Fatalf("signature %d (want usage %q): %s", i, wantUsage[i], b)
 			}

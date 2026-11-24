@@ -31,16 +31,17 @@ type SealOptions struct {
 	// Complete — TSA/OCSP/CRL тохиргоо (Complete-тэй ижил). RFC 3161 timestamp ЗААВАЛ: TSA унавал CodeTSAUnavailable,
 	// тамгагүй файл буцаахгүй.
 	Complete CompleteOptions
-	// Appearance — дардасны байршил (иргэний харагдах гарын үсэгтэй ижил утга: Page, X, Y, Width, Height, Lang, Exact).
-	// nil бол автомат: SealStampWidth × SealStampHeight, сүүлийн (eID verify биш) хуудасны баруун доод буланд
-	// (SealStampMargin), Exact биш. Invisible үед үл тооно.
+	// Appearance — дардасны байршил (иргэний харагдах гарын үсэгтэй ижил утга: Page, X, Y, Width, Height, Lang, Exact);
+	// буруу бол REQUEST_INVALID. nil бол автомат (APPEARANCE_SPEC.md §6.4): сүүлийн (eID verify биш) хуудасны баруун доод
+	// буланд ≤ SealStampWidth × SealStampHeight (жижиг хуудсанд багтаана), Exact биш; хуудсанд дардас багтахгүй бол
+	// үл харагдах тамга (Completed.Placement nil). Invisible үед үл тооно.
 	Appearance *Appearance
 	// Invisible — дардасгүй (v0.29-ийн SealPDF-тэй байт-ижил гаралт).
 	Invisible bool
 }
 
-// Автомат дардасны хэмжээ ба захын зай (pt): X = хуудасны харагдах өргөн − SealStampWidth − SealStampMargin (≥ 0),
-// Y = SealStampMargin, Page = 0.
+// Автомат дардасны дээд хэмжээ ба захын зай (pt) — APPEARANCE_SPEC.md §6.4: w = min(SealStampWidth, pw − 8),
+// h = min(SealStampHeight, ph − 8), x = pw − w − min(SealStampMargin, (pw − w)/2), y = min(SealStampMargin, (ph − h)/2).
 const (
 	SealStampWidth  = 220
 	SealStampHeight = 64
@@ -76,14 +77,19 @@ func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOp
 		return nil, newErr(CodeSignerInvalid, "гэрчилгээ e-Seal биш (KeyUsage = зөвхөн nonRepudiation байх ёстой)", nil)
 	}
 	po := PrepareOptions{SignerCert: cert.Raw, Chain: o.Chain, SignerName: o.SignerName, Reason: o.Reason, SigningTime: o.SigningTime}
+	auto := false
 	if !o.Invisible {
 		if po.Appearance = o.Appearance; po.Appearance == nil {
-			if po.Appearance, err = defaultSealAppearance(pdf); err != nil {
-				return nil, err
-			}
+			po.Appearance = defaultSealAppearance(pdf)
+			auto = po.Appearance != nil
 		}
 	}
 	p, err := Prepare(pdf, po)
+	if auto && ErrorCode(err) == CodeRequestInvalid {
+		// Автомат дардас хуудсанд багтсангүй (бичвэр, хайрцаг) — дуудагч юу ч хүсээгүй тул үл харагдах тамга (§6.4).
+		po.Appearance = nil
+		p, err = Prepare(pdf, po)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +108,20 @@ func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOp
 	return res, nil
 }
 
-// defaultSealAppearance — автомат дардас: page 0 (сүүлийн eID verify биш хуудас, PLACEMENT_SPEC §1a)-ийн харагдах
-// өргөнөөс баруун доод булан. Хуудсыг SuggestPlacement-ээр (Prepare-тэй ижил дүрэм) олно.
-func defaultSealAppearance(pdf []byte) (*Appearance, error) {
-	s, err := SuggestPlacement(pdf, Appearance{Width: SealStampWidth, Height: SealStampHeight})
+// defaultSealAppearance — автомат дардас (APPEARANCE_SPEC.md §6.4): хуудсыг НЭГ удаа шийднэ — SuggestPlacement-ийн page 0
+// (сүүлийн eID verify биш хуудас, PLACEMENT_SPEC §1a, §6b) — ба түүнийг Page-ээр тодорхой дамжуулна; тэр хуудасны харагдах
+// хэмжээнд багтаасан баруун доод булан. Хуудсыг уншиж чадахгүй эсвэл 8 pt-оос нарийн/намхан бол nil (үл харагдах тамга;
+// жинхэнэ алдааг Prepare өөрөө буцаана).
+func defaultSealAppearance(pdf []byte) *Appearance {
+	s, err := SuggestPlacement(pdf, Appearance{Width: 1, Height: 1})
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	return &Appearance{X: max(0, s.PageWidth-SealStampWidth-SealStampMargin), Y: SealStampMargin, Width: SealStampWidth,
-		Height: SealStampHeight}, nil
+	const gap = 4 // хуудасны ирмэгээс дардас хүртэл хамгийн бага зай (pt)
+	w, h := min(SealStampWidth, s.PageWidth-2*gap), min(SealStampHeight, s.PageHeight-2*gap)
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+	return &Appearance{Page: s.Page, X: s.PageWidth - w - min(SealStampMargin, (s.PageWidth-w)/2), Y: min(SealStampMargin, (s.PageHeight-h)/2),
+		Width: w, Height: h}
 }

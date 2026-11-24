@@ -8,7 +8,33 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"testing"
+
+	dpdf "github.com/digitorus/pdf"
+	"github.com/go-pdf/fpdf"
 )
+
+func pageCount(t *testing.T, doc []byte) int {
+	t.Helper()
+	r, err := dpdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r.NumPage()
+}
+
+// smallPDF — w × h pt нэг хуудас (дээд талд бичвэр).
+func smallPDF(t *testing.T, w, h float64) []byte {
+	t.Helper()
+	d := fpdf.NewCustom(&fpdf.InitType{UnitStr: "pt", Size: fpdf.SizeType{Wd: w, Ht: h}})
+	d.AddPage()
+	d.SetFont("Helvetica", "", 6)
+	d.Text(4, 12, "RECEIPT")
+	var b bytes.Buffer
+	if err := d.Output(&b); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
 
 // Харагдах тамганы дардас — SealPDF-ийн анхдагч (APPEARANCE_SPEC.md §6, PLACEMENT_SPEC.md): өмнөх гарын үсэг бүр
 // хүчинтэй, өөрчлөгдөөгүй ("extended by signatures only"), гаралт нь оролтын цэвэр incremental append.
@@ -184,4 +210,55 @@ func TestSealPDFInvisible(t *testing.T) {
 		}
 		f.wantAllValid(t, res.PDF, []string{"seal"}, []bool{false})
 	}
+}
+
+// TestSealPDFSmallPages — автомат дардас жижиг хуудсанд (APPEARANCE_SPEC.md §6.4): 58 мм-ийн баримт (164 pt өргөн) →
+// 156 × 64 pt, x = 4, харагдана; дардас багтахгүй жижиг хуудас → үл харагдах тамга (Placement nil), алдаагүй. Дуудагчийн
+// өгсөн Appearance нь багтахгүй бол REQUEST_INVALID хэвээр.
+func TestSealPDFSmallPages(t *testing.T) {
+	f := newSealFixture(t, 88015)
+	receipt := f.seal(t, smallPDF(t, 164, 600), SealOptions{})
+	wantPlacement(t, receipt.Placement, Placement{Page: 1, X: 4, Y: 36, Width: 156, Height: 64, Status: "requested"})
+	f.wantAllValid(t, receipt.PDF, []string{"seal"}, []bool{true})
+
+	tiny := smallPDF(t, 40, 60)
+	res := f.seal(t, tiny, SealOptions{})
+	if res.Placement != nil {
+		t.Fatalf("tiny page: placement %+v", res.Placement)
+	}
+	f.wantAllValid(t, res.PDF, []string{"seal"}, []bool{false})
+
+	so := sealOpts(f.p, f.leaf)
+	so.Appearance = &Appearance{X: 0, Y: 0, Width: 40, Height: 60}
+	if _, err := SealPDF(context.Background(), f.sealer, "NTRMN-6235972", tiny, so); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatalf("explicit appearance on a tiny page: %v", err)
+	}
+}
+
+// TestSealPDFVerifyPageFirst — verify хуудас эхэнд (VerifyPagePosition first): автомат дардас баримтын сүүлийн (verify
+// биш) 3-р хуудсанд — хуудсыг нэг удаа шийдэж Prepare-д тодорхой дамжуулна.
+func TestSealPDFVerifyPageFirst(t *testing.T) {
+	f := newSealFixture(t, 88016)
+	o := testOpts(f.p, f.p.citizen.cert)
+	o.VerifyPagePosition = VerifyPageFirst
+	prep, err := Prepare(readInput(t, "libreoffice-contract.pdf"), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := rsa.SignPKCS1v15(nil, f.p.citizen.key, crypto.SHA256, prep.DTBS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := Complete(context.Background(), prep.State, sig, completeOpts(f.p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageCount(t, signed.PDF) != 3 {
+		t.Fatalf("pages %d", pageCount(t, signed.PDF))
+	}
+	res := f.seal(t, signed.PDF, SealOptions{})
+	if pl := res.Placement; pl == nil || pl.Page != 3 || pl.Width != 220 || pl.Height != 64 {
+		t.Fatalf("placement %+v", pl)
+	}
+	f.wantAllValid(t, res.PDF, []string{"sign", "seal"}, []bool{false, true})
 }

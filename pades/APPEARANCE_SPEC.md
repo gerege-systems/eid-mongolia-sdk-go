@@ -185,6 +185,9 @@ the PDF or the options selects it. The certificate is an **e-Seal certificate** 
 (= Go `eid.IsSealCertificate` = validator `sealCertificate`; the citizen SIGN certificate has `digitalSignature` set, so
 it is never an e-Seal certificate.) A certificate that cannot be parsed is not an e-Seal certificate. e-Seal certificate
 → seal stamp (§6.2); any other certificate → citizen stamp (§3), byte-identical to golden v3–v9.
+The stamp variant follows this rule only, and may differ from the validator's `certificate.usage` label: a certificate
+with keyUsage = nonRepudiation only plus an extendedKeyUsage extension of unrecognised purposes is labelled `"seal"` by
+the usage classifier but is **not** an e-Seal certificate here, so it draws (and is validated against) the citizen stamp.
 
 ### 6.2 Content stream (uncompressed, LF after every line; `W = w`, `H = h`)
 
@@ -237,8 +240,13 @@ The variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`,
 ### 6.4 SealPDF default (Go `pades.SealOptions`)
 
 - `invisible: true` → the invisible signature of PROFILE.md §2 (byte-identical to SealPDF before golden v12).
-- `appearance` given → used as is (§1, PLACEMENT_SPEC; `exact` honoured).
-- neither → automatic: `page = 0` (PLACEMENT_SPEC §1a: the last page that is not an eID verify page; fallback the last
-  page), `w = 220`, `h = 64`, `y = 36`, `x = max(0, pageWidth − 220 − 36)` where `pageWidth` is the visible width of
-  that page (`suggestPlacement(...).pageWidth`), `exact = false` → PLACEMENT_SPEC §6 (free → requested; else the first
-  free candidate → moved; none → overlap at the requested bottom-right). The result is `Completed.placement`.
+- `appearance` given → used as is (§1, PLACEMENT_SPEC; `exact` honoured); an invalid one is `REQUEST_INVALID`.
+- neither → automatic. The page is resolved once: `s = suggestPlacement(pdf, {width: 1, height: 1})` (PLACEMENT_SPEC
+  §1a/§6b: the last page that is not an eID verify page); `page = s.page` is then passed explicitly. With `pw, ph` =
+  `s.pageWidth, s.pageHeight` (pt): `w = min(220, pw − 8)`, `h = min(64, ph − 8)`, `x = pw − w − min(36, (pw − w)/2)`,
+  `y = min(36, (ph − h)/2)`, `exact = false` → PLACEMENT_SPEC §6 (free → requested; else the first free candidate →
+  moved; none → overlap at the requested bottom-right). On a Letter/A4 page this is 220 × 64 at `(pw − 256, 36)`.
+  If `suggestPlacement` fails, `w ≤ 0` or `h ≤ 0`, or `prepare` rejects the automatic stamp with `REQUEST_INVALID`
+  (e.g. the text does not fit, §6.2), the seal is written **invisible** instead (`Completed.placement` = null); the
+  caller asked for nothing, so the old invisible result is the fallback rather than an error.
+- The result is `Completed.placement` (null when invisible).
