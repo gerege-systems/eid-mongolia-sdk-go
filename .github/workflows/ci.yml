@@ -35,40 +35,6 @@ jobs:
         run: "! go list -deps ./... | grep -qx github.com/digitorus/pdf"
       - run: go test -race ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
-  # TEMPORARY: remove before merge (golden v13 review additions, feat/seal-stamp-qr)
-  golden-gen:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-      - name: generate golden v13 additions (TEMPORARY)
-        run: |
-          go test ./pades/ -run '^TestGolden$' -update -count=1
-          go test ./pades/ -run '^TestValidateGolden$' -update -count=1
-          git status --porcelain
-          # Existing goldens (v13 included) must stay byte-identical: only the validate manifest may change, by additions.
-          for f in $(git diff --name-only); do
-            case "$f" in
-              pades/testdata/validate/manifest.json) ;;
-              *) echo "UNEXPECTED CHANGE: $f"; exit 1 ;;
-            esac
-          done
-          removed=$(git diff -U0 -- pades/testdata/validate/manifest.json | grep '^-' | grep -v '^---' | grep -vE '^-\s*}\s*$' || true)
-          if [ -n "$removed" ]; then echo "REMOVED/CHANGED LINES:"; echo "$removed"; exit 1; fi
-          git add -A pades/testdata
-          git diff --cached --stat
-          out="$RUNNER_TEMP/golden-v13b"
-          mkdir -p "$out"
-          git diff --cached --name-only > "$out/FILES.txt"
-          while read -r f; do mkdir -p "$out/$(dirname "$f")"; cp "$f" "$out/$f"; done < "$out/FILES.txt"
-      # TEMPORARY: remove before merge (golden v13 review additions, feat/seal-stamp-qr)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: golden-v13b
-          path: ${{ runner.temp }}/golden-v13b/
-          if-no-files-found: error
   # Статик шинжилгээ ба мэдэгдэж буй эмзэг байдал — хувилбар pin хийсэн, олдвор бүр улаан. govulncheck нь stdlib-ийн
   # эмзэг байдлыг ч тоолдог тул сүүлийн patch Go (stable) дээр ажиллана.
   lint:
