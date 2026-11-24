@@ -122,9 +122,9 @@ func docIDFromStamps(doc []byte, verified map[uint32]bool) (id string, err error
 			continue
 		}
 		sig := v.Key("V")
-		sp := sig.GetPtr()
+		sp, xp := sig.GetPtr(), x.Ptr()
 		// Шууд бус лавлагаа: шууд толь widget-ийн өөрийн ptr-тэй (extract.go-той ижил шалгалт).
-		if sig.Kind() != pdf.Dict || sp.GetID() == x.Ptr().GetID() || !verified[sp.GetID()] {
+		if sig.Kind() != pdf.Dict || sp.GetID() == xp.GetID() || !verified[sp.GetID()] {
 			continue
 		}
 		s := stamps[sp.GetID()]
