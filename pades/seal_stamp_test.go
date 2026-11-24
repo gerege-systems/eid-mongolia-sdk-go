@@ -62,7 +62,8 @@ var sealStampRect = Appearance{X: 340, Y: 36, Width: 220, Height: 64, Exact: tru
 //
 // Conclusion: every signature — the citizen's and all N seals — stays Valid PAdES-BASELINE-LT; each earlier one is
 // extended by signatures only and reports visible_later_signature. Cost per page: one Sealer.Seal call, one TSA call,
-// one full revision (+DSS). Limit: MaxSignatures (16) caps the file at 15 sealed pages after one citizen signature.
+// one full revision (+DSS), ~165 KB each. Limits: MaxSignatures (16) caps the file at 15 sealed pages after one citizen
+// signature; MaxOutputBytes (10 MB) is the other ceiling.
 func TestSealVisibleStampEveryPage(t *testing.T) {
 	ctx := context.Background()
 	p := loadOrCreatePKI(t)
@@ -158,6 +159,9 @@ func TestSealVisibleStampEveryPage(t *testing.T) {
 	if rep.Indication != Valid || len(got) != pages+1 {
 		t.Fatalf("report: %s", observed)
 	}
+	// Observed (CI 2026-11-24): every signature Valid, PAdES-BASELINE-LT, no problems, visible. None covers the whole
+	// file — even the last seal is followed by its own DSS revision — but each is extended by signatures/LTV only;
+	// every earlier one reports visible_later_signature.
 	for i, s := range got {
 		wantUsage := "seal"
 		if i == 0 {
@@ -165,25 +169,37 @@ func TestSealVisibleStampEveryPage(t *testing.T) {
 		}
 		last := i == len(got)-1
 		if s.Usage != wantUsage || s.Indication != Valid || len(s.Problems) != 0 || s.Level != "PAdES-BASELINE-LT" || !s.Visible ||
-			s.Whole != last || s.Extended == last || s.Later != len(got)-1-i || s.VisibleLater == last {
+			s.Whole || !s.Extended || s.Later != len(got)-1-i || s.VisibleLater == last {
 			t.Errorf("signature %d: %s", i, observed)
 		}
 	}
+	// Exact bottom-right sits on page content on all three pages ("overlap", accepted), and on page 2 over the
+	// citizen's stamp (moved by placement to y=60).
+	for i, o := range obs {
+		if o.Page != i+1 || o.Status != "overlap" || o.OverlapsCitizen != (o.Page == 2) {
+			t.Errorf("seal %d placement: %s", i+1, observed)
+		}
+	}
+	// Cost: one Sealer.Seal + one TSA request per page; each seal revision (+DSS) adds ~165 KB (the stamp's
+	// appearance embeds its fonts every time) — 317 KB citizen-signed → 818 KB after 3 seals.
 	if sealCalls != pages || ct.n["tsa.pki.test"] != pages {
 		t.Errorf("calls: %s", observed)
+	}
+	for _, o := range obs {
+		if o.Growth < 150_000 || o.Growth > 185_000 {
+			t.Errorf("growth: %s", observed)
+		}
 	}
 	if MaxSignatures != 16 {
 		t.Errorf("MaxSignatures = %d: the per-page seal limit (MaxSignatures-1 pages after one citizen signature) changed", MaxSignatures)
 	}
-	// TEMP (first CI run only): surface the observed figures; replaced by exact assertions once seen.
-	t.Errorf("OBSERVED %s", observed)
 }
 
 // TestSealAfterImprintUnsigned — V4 on an UNSIGNED document: the imprint is drawn into every page first (here with
 // pdfcpu's text watermark — the SDK writer has no page-content stamping API, so in production this would be a
 // pre-processing step or new product code), then one invisible SealPDF covers the whole file.
 //
-// Conclusion: the single seal is Valid and covers the whole document — but the imprint must be on the pages BEFORE
+// Conclusion: the single seal is Valid (only its own DSS revision follows it) — but the imprint must be on the pages BEFORE
 // any signature; on a citizen-signed PDF it is a content change (see V4 above).
 func TestSealAfterImprintUnsigned(t *testing.T) {
 	p := loadOrCreatePKI(t)
@@ -209,8 +225,9 @@ func TestSealAfterImprintUnsigned(t *testing.T) {
 		b, _ := json.Marshal(rep)
 		t.Fatalf("%v %s", err, b)
 	}
-	if s := rep.Signatures[0]; s.Indication != Valid || !s.CoversWholeDocument || s.Certificate == nil || s.Certificate.Usage != "seal" ||
-		s.SignatureLevel != "PAdES-BASELINE-LT" {
+	// Like every Complete output, the seal is followed by its DSS revision: not "whole document", but extended by LTV only.
+	if s := rep.Signatures[0]; s.Indication != Valid || len(s.Problems) != 0 || s.CoversWholeDocument || !s.ExtendedBySignaturesOnly ||
+		s.LaterSignatures != 0 || s.Certificate == nil || s.Certificate.Usage != "seal" || s.SignatureLevel != "PAdES-BASELINE-LT" {
 		b, _ := json.Marshal(s)
 		t.Fatalf("%s", b)
 	}
