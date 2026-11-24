@@ -19,9 +19,12 @@ self-validation-д. Алдааны код нь эхний унасан алхм�
 | 9 | DocMDP түгжээ: Catalog `/Perms /DocMDP` толь, эсвэл (6)-ийн аль нэг гарын үсгийн толийн `/Reference` массивын мөр (`/TransformMethod` нь `/DocMDP` эсвэл байхгүй) `/TransformParams /P 1` | `PDF_LOCKED` |
 | 10 | гарын үсэг бүр: `/SubFilter /ETSI.CAdES.detached` **ба** signer cert-ийн олгогч нь eID-ийн олгогч CA (шигтгэсэн 04 `eID Mongolia Issuing CA`, 05 `eID Mongolia Organization Issuing CA`, мөн одоогийн signerCert-ийн олгогч = `chain[0]`) — issuer DN байт тэнцүү ба cert-ийн гарын үсэг тэр CA-ийн түлхүүрээр хүчинтэй — **ба** SignerInfo-ийн unsignedAttrs-д `id-aa-signatureTimeStampToken` (1.2.840.113549.1.9.16.2.14) **ба** эцсийн Catalog-д `/DSS` толь | `PDF_FOREIGN_SIGNATURE` |
 
-`revIndex = (6)-ийн тоо + 1`. Гарын үсэгтэй баримтад verify хуудас **нэмэгдэхгүй**; docID-г (`opts.docId` хоосон бол)
-баримтын `/Subtype /Link` annotation-ийн `/A /URI` = `https://ca.eidmongolia.mn/verify/<lowercase UUID>`-ээс уншина
-(эхнийх нь); `opts.docId` өгсөн ба таарахгүй → `REQUEST_INVALID`.
+`revIndex = (6)-ийн тоо + 1`. Гарын үсэгтэй баримтад verify хуудас **нэмэгдэхгүй**. docId — APPEARANCE_SPEC.md §6.6
+(golden v13): гарын үсэгтэй баримтад (1) `/Subtype /Link` annotation-ийн `/A /URI` = `https://ca.eidmongolia.mn/verify/<lowercase
+UUID>` (эхнийх нь), (2) эс бөгөөс хамгийн эрт зурсан `/EIDVerify` тэмдэгтэй дардасных (`docIdFromStamps`), (3) эс бөгөөс
+`opts.docId`; олдсон docId-тай `opts.docId` зөрвөл → `REQUEST_INVALID`; (4) юу ч алга ба энэ гарын үсэг QR зурах бол
+(иргэний харагдах дардас, QR-тэй тамга) санамсаргүй UUID — гарын үсэгтэй баримтад ч (өмнө нь «docId заавал»
+`REQUEST_INVALID`); бусад үед хоосон. Гарын үсэггүй баримтад `opts.docId`, эс бөгөөс санамсаргүй (өөрчлөгдөөгүй).
 
 **Validator-тэй нийцэл.** Go-ийн `Complete` эцэст нь CA-ийн шалгагчаар бүх гарын үсгийг `valid` + `PAdES-BASELINE-LT`
 байхыг шаарддаг (PROFILE.md). #8–#10 нь түүний бүтцийн/криптограф хэсгийг (integrity, CAdES, eID олгогч, timestamp,

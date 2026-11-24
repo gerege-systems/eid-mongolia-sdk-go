@@ -391,7 +391,10 @@ coordinates. Result (pt):
   `docId` read from its verify page link (the first `/Subtype /Link` whose `/URI` is `https://ca.eidmongolia.mn/verify/`
   + a lowercase UUID, as Prepare reads it); an unsigned document skips no page (Prepare uses the caller's or a fresh
   random `docId` there). Hence the result equals `Prepared.placement` except for an unsigned input that already carries
-  verify pages of the `docId` the caller passes to Prepare (golden `page0-two-verify`, synthetic).
+  verify pages of the `docId` the caller passes to Prepare (golden `page0-two-verify`, synthetic). Prepare's other
+  `docId` sources on a signed document (a stamp's `/EIDVerify` marker, the caller's `docId`, a random one —
+  APPEARANCE_SPEC §6.6) apply only when the `docId` scan above found no verify-page link; §1a is evaluated with
+  whichever `docId` Prepare uses, unchanged.
 - Golden v7: every visible case carries `expect.suggestion` (the full object above, for that case's input) and
   `exact-out-of-bounds` carries `expect.suggestionError` = `REQUEST_INVALID`; ports compare field-for-field (numbers as
   JSON numbers) and assert `suggestion ⊇ placement` for every case except `page0-two-verify`.

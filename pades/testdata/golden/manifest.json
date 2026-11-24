@@ -15,18 +15,23 @@
     "POST http://tsa.pki.test/ 0a9b2969b1f68c48": "http/48-d9c9027bb98e.der",
     "POST http://tsa.pki.test/ 0dc8ca4957b79ce6": "http/17-7e33f76f0433.der",
     "POST http://tsa.pki.test/ 10c7bbb3ed71d86d": "http/49-a16e2a15c2d2.der",
+    "POST http://tsa.pki.test/ 14ca3da2121bd486": "http/66-1ac424593dbd.der",
     "POST http://tsa.pki.test/ 16d05d0179e5c3f3": "http/22-ff6c617bdd1e.der",
     "POST http://tsa.pki.test/ 171b17428be41b21": "http/50-608ded6902de.der",
+    "POST http://tsa.pki.test/ 1728481cf08c4456": "http/67-1fde289e1a3b.der",
     "POST http://tsa.pki.test/ 1821245bf1ca4568": "http/51-4e207ab4e8f5.der",
     "POST http://tsa.pki.test/ 1b9ef7e26fb462c0": "http/41-c670fa827a92.der",
     "POST http://tsa.pki.test/ 1d0875ce859cec87": "http/52-14986f765274.der",
+    "POST http://tsa.pki.test/ 2b671c19126b1056": "http/68-d7803e9b0ed6.der",
     "POST http://tsa.pki.test/ 39a01abcb7cc5f62": "http/53-d9965b705297.der",
     "POST http://tsa.pki.test/ 466c567599f24e6e": "http/07-1369ee615430.der",
     "POST http://tsa.pki.test/ 5a86b0872c94145e": "http/43-85cc6324b11b.der",
+    "POST http://tsa.pki.test/ 6373a57e79199027": "http/69-45fa8aa01523.der",
     "POST http://tsa.pki.test/ 6b8e51d6f594ee9c": "http/09-e556daafa098.der",
     "POST http://tsa.pki.test/ 6c9f0578d15defd4": "http/44-e10022ad95aa.der",
     "POST http://tsa.pki.test/ 738170c7ab14a8a8": "http/24-8f4b7df94839.der",
     "POST http://tsa.pki.test/ 79cc607a03d7543c": "http/54-be7d661f8f4b.der",
+    "POST http://tsa.pki.test/ 87b457cabe60deb1": "http/70-e0d81af4bde0.der",
     "POST http://tsa.pki.test/ 8b3f01e6113f2de8": "http/30-ea8e206164c9.der",
     "POST http://tsa.pki.test/ 8c0ccba26b95753f": "http/46-cb4481ed5129.der",
     "POST http://tsa.pki.test/ 8dad7b20fd0e2ad8": "http/10-b719e53d897d.der",
@@ -47,10 +52,12 @@
     "POST http://tsa.pki.test/ c66c7733cbdeb4a1": "http/58-854841f91e4f.der",
     "POST http://tsa.pki.test/ c9ddd869f78c02c4": "http/59-10081cc29980.der",
     "POST http://tsa.pki.test/ ce437db6d963f071": "http/35-afe9e68c1497.der",
+    "POST http://tsa.pki.test/ ce81e614052a56b7": "http/71-5763e1b6cd17.der",
     "POST http://tsa.pki.test/ d1505b611f85d41c": "http/65-819cced598dd.der",
     "POST http://tsa.pki.test/ d5efd89fe097cd2a": "http/60-d305fe8a61d3.der",
     "POST http://tsa.pki.test/ d76c81c85467f00a": "http/36-175dbd2c5846.der",
     "POST http://tsa.pki.test/ dbce9b70b8a01cd7": "http/20-c8b7bdce3eae.der",
+    "POST http://tsa.pki.test/ e16219566870275e": "http/72-242322b58e6e.der",
     "POST http://tsa.pki.test/ e8d7e7a15a8687f3": "http/16-4b9f46364e26.der",
     "POST http://tsa.pki.test/ f371cc064c806342": "http/61-c600dd00ebb8.der",
     "POST http://tsa.pki.test/ f3f398cecfd52d43": "http/26-8c7d19aa5d9e.der",
@@ -2508,6 +2515,462 @@
             {
               "width": 595.28,
               "height": 841.89
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-qr-visible",
+      "input": "input/libreoffice-contract.pdf",
+      "signer": "seal",
+      "sealQr": true,
+      "prepare": {
+        "signerCert": null,
+        "reason": "Нэхэмжлэх",
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "appearance": {
+          "x": 356,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "87a33381677115e17369a3b8a865ba0b332f00a7368c04f494b2447428ae37d2",
+        "docId": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "digest": "0beffc5fadb40bf4f5709874f215b208b834b1f842c6a08f9a2075967bcb5c7f",
+        "dtbs": "f369d72c1070ce06157f40cf34da934665ce3031694a6fe7c5260add6c7d4614",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d010904312204200beffc5fadb40bf4f5709874f215b208b834b1f842c6a08f9a2075967bcb5c7f308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "c66417617035402d62f9f8727aca2a7ac09ec281206c2a90372b532d848dde275e367c108af44db89f0c57eb45b7c45b9ed970501c40b583a47c2d867e4660883a07ae7e16c6fb3a28aa002f09ccd50da8eb08e4d25487897d63db8151cfdc367ae0fba4603e2e089a9a5fab7a729bd29a9a16fac3c144cd0ed0ca693605519624957e550c049728dd14ea1712ef7e410aa364a7ca5cbdcef0d913ef14939e346f0fa48a8899dd3727518dd253c8f088d8f20610c4d5ccf5aafa86e65a9936dd1d9462f1a4254476cf68a4b25d48cd85a264c99dfea1333e6c7a22244c5069c63b9ee80b7bc9672de3856c41a36e4cce1fb609cdb97837c4613127f9b53be74f",
+        "preparedSha256": "82a18936ee0dadf0a3a6ba09ac2c6e7062012ac30b25740da4ddcf110ab8dc47",
+        "byteRange": [
+          0,
+          31922,
+          89268,
+          107862
+        ],
+        "outSha256": "218d5c9aa8c52a9a5c45cd4e505ee63eb51b447a619e8e6d3d7036d6c03b6e70",
+        "revIndex": 1,
+        "sigRevSha256": "3241ce0387df2988b0eabfd15d7562744fad30080a4a0ec2c54314c78df7268e",
+        "cmsSha256": "e1b23a5d74e18ecb7142e7f800bcc1c02a34a70de603788493f3c3b404925fb6",
+        "placement": {
+          "page": 2,
+          "x": 356,
+          "y": 60,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 356,
+          "y": 60,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-qr-visible-en",
+      "input": "input/quartz-pdf13.pdf",
+      "signer": "seal",
+      "sealQr": true,
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "lang": "en",
+        "appearance": {
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "5f8afb701651cddfdf1bb0dceb9fa242eec3fc795f576baa6612fe181cbdd563",
+        "docId": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "digest": "0c442a48cb4c96313348de57a5b0059d4d33a28c8a4321d86df514bde7bf8b83",
+        "dtbs": "caa6306b496826cc5baf4ac0d9497cc4ee873ed9be701da7a330a3e042c11dce",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d010904312204200c442a48cb4c96313348de57a5b0059d4d33a28c8a4321d86df514bde7bf8b83308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "9de0a6b4b9fe5415d7a144dcfdb10c1eb1bce835070b8460fa83a2d36ff84dcf4e3e7fdd7e4a7b5669653eb2a66dd856fe7fa1705d87bb6c59320762df724c4d929697a980f39487cbe51350ebbb9525d7354b72ec1fcfc6393f55a8b63f594c6404e68af270f3a9152b39261e400f1c49d3e2cade8d65ce3182d40cdde154e1ea4d20fdd5ae4c3e450215b73c0c3e59e3f7d5b343937a603f43770974061db668a1178b2530ba895fb88dc56521b058216163478bb63a55ebf6be907954525e210449383dcad0eff0578c9a91efe000a16f7aa31291e10b0a218c583d0df7648927651ef9e67dcf1e792951b1260d7f25703576449f5980dd2b0cd5c1885bfc",
+        "preparedSha256": "d93b851f3a3aedfab34c21951a58a6d3ea763c423ca6d0a9fc5573aa776396bb",
+        "byteRange": [
+          0,
+          14599,
+          71945,
+          107810
+        ],
+        "outSha256": "d072cbcfe53fb28ba32a57b7b594d52a170bc2238f90832e78eafc2e7c47f218",
+        "revIndex": 1,
+        "sigRevSha256": "aa3814661d5305241bbe0eeb35aa8a557b3845be8e696328d8e1a5dfa39c22be",
+        "cmsSha256": "44eb11d145e69bcd8b7475104cf270d26f2290546de9f5eb75db17c96aa56e11",
+        "placement": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested"
+        },
+        "suggestion": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 1,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-qr-rotated90",
+      "input": "input/quartz-rotated90.pdf",
+      "signer": "seal",
+      "sealQr": true,
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "a0e1f2a3-4b5c-4e6f-8a7b-8c9d0e1f2a3b",
+        "appearance": {
+          "x": 36,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "d327a1260b3f4c6a30b074d0e8ea732195640f8a232ba234d315d9c77e8a5843",
+        "docId": "a0e1f2a3-4b5c-4e6f-8a7b-8c9d0e1f2a3b",
+        "digest": "2960c864d583dd87a0738cf3e22e933bbb466e20c5499590de70939c7ab79d06",
+        "dtbs": "c2210a70cd8c39e37a41007b0a8e11e3c316d3fcd9f643b4266e836481493980",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d010904312204202960c864d583dd87a0738cf3e22e933bbb466e20c5499590de70939c7ab79d06308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "9feadfb7f1f31d171d36d6ee08233f1847384b8ba7ab769107172ce025652c9d44dadf309fb80cb44249ce22521526dca7c65309323257e2771988173e070125941f8c52014102995975b437a8206ea0786dee47473d33739f1b13fab57534ee7cf9779625c868c5dc5eb2de317dd770c22cc1765ab5ba87b4982fdcea69dbcf1cec32e3e58bf8cb97713fa2fa8d2d05d7d88b0d0e65b507b7787b1653f335849c6465a333939f2a94825b29cae7bf376e8126baf6a0201e5f8ce89e6a1e2fc7ea2cff0ce1e3a50de7974b87935b9f38f9392912fcf39db655521a1e95a5315d6f36c7ed47eb16ea253492d479e825fb95d998bb4ad211d8556a40a2053954dd",
+        "preparedSha256": "2cfbdf1c0d547b3945ccec0da6ab7710a4fff0044368bc891c4591ac7001253b",
+        "byteRange": [
+          0,
+          14558,
+          71904,
+          107611
+        ],
+        "outSha256": "7e335fe055fa9aa21fa666acf817e698af131c359ee16508a3a86b5709e41338",
+        "revIndex": 1,
+        "sigRevSha256": "eef0964639c97074523116225be0ef844e4a7881f2035770fa702543ce9b0bc5",
+        "cmsSha256": "8852e6e33a07cf7ce131ef4e1d164a33fc8c5a1f470b5e4538d3b2daaf6beb8f",
+        "placement": {
+          "page": 1,
+          "x": 36,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested"
+        },
+        "suggestion": {
+          "page": 1,
+          "x": 36,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested",
+          "pageWidth": 792,
+          "pageHeight": 612,
+          "pageCount": 1,
+          "pages": [
+            {
+              "width": 792,
+              "height": 612
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "citizen-then-seal-qr",
+      "input": "case:quartz-pdf13-visible",
+      "signer": "seal",
+      "sealQr": true,
+      "prepare": {
+        "signerCert": null,
+        "reason": "Нэхэмжлэх",
+        "signingTime": "0001-01-01T00:00:00Z",
+        "appearance": {
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "b921b34310cfd4f64a3b0de11daeb7e55a42c98bbdb7b479fa30a398634e95d1",
+        "docId": "8a9b0c1d-2e3f-4a5b-8c6d-7e8f9a0b1c2d",
+        "digest": "ac02dcd9df08214713b2e3b42d7e157592f175872e246f3f1a132aaa89c37c01",
+        "dtbs": "689513644445597f8fedef3cb3151d2172a272ec140256f8ee632a05053bbb74",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d01090431220420ac02dcd9df08214713b2e3b42d7e157592f175872e246f3f1a132aaa89c37c01308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "09dee4c1e602da039a1e9a6b86b6e57f8f4bfd738a331d9e4e0670e786ddc28a4b4301e6d366e6f7fb97483559bab5a887138e9cca74f5dc470ea11abc7670f91caa46018308e41c62cbc3e71ac63ca2f9659de85c9c4678e81448d7f8f862651fbc6a156f5f694a0c1f9145c4cf5a7b7abec65974d1a5672def78754f12ab8c06372b835c7ad723ea754801d52841e66ee1bb8dca09ddbdd14783148b025ca547e77a86394eeb79698cce9426a330d7081e44ce836f82bec147c724f08de652c00c1892ad0c20d0e7d68c8c8ff7948e343e4d45812a6ae0deace5165b8741369205cf75880050e0d8369bddfbe253dfdd272eee1359eeb3997cf765a5178f27",
+        "preparedSha256": "a068e210e287a000fc1475423b6a9aa10c86f870f7da30a40646bf3d971da3f0",
+        "byteRange": [
+          0,
+          300405,
+          357751,
+          107946
+        ],
+        "outSha256": "cf3714359094ff011f73952a51d669cc688018c7b1df6b7d91511ca16bf97c61",
+        "revIndex": 2,
+        "sigRevSha256": "bb253cba0f29bf776c9096dbe12ce674d5f972fe4832535c1ca95d7cc3923a7b",
+        "cmsSha256": "fe002c6538f14cfc28ddcf80cf666d269156a18fcd187d31c9fbac289c4a63e3",
+        "priorCmsSha256": [
+          "3a9adf48bacaed7bfc7aa54854701ec4ed63ee6708d06468a3487afb041a0c42"
+        ],
+        "placement": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested"
+        },
+        "suggestion": {
+          "page": 1,
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64,
+          "status": "requested",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 595.28,
+              "height": 841.89
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-qr-then-citizen",
+      "input": "case:seal-qr-visible",
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "appearance": {
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "218d5c9aa8c52a9a5c45cd4e505ee63eb51b447a619e8e6d3d7036d6c03b6e70",
+        "docId": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "digest": "050f95fb98e1ef904d2faffb8dbb56646238fd55ebc35882f82244b5809e3406",
+        "dtbs": "eaf25b72c5acf51467732aaf4334b7378a4ac598c42d1f293a6b3afe80644cdd",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d01090431220420050f95fb98e1ef904d2faffb8dbb56646238fd55ebc35882f82244b5809e3406308183060b2a864886f70d010910022f317430723070306e0420b241059e0db04b9531b777947e1ff9cea97d7b0cf1d0520ad0dee406a49a018f304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e67204341020203ed",
+        "signature": "0fdc71475960b7182059ba2ee915521d7e5ab471d23fe72307289b82d816ce8c9253223b9b24698837eff194591d85057cdcdce5350d0ae6a56b8e82804ae7dbc2f623e3f97a007d60f629006000d793747e0137c31f89a5b8ca44513f09e2daa693cafb1cad497e7da83fe43b1059eb87f9b7e8b2c46823290902caedf76e089786064c6e9b821d691b6b4a238017417958b5f3a1065d18810b12aa63765a1b265789a1fda93e0159b752ac30cf3741a8b7cee1a94a52a3849485b2444fdfffeb2afa68bb2cc87634b4ba5ae75129bb7430be17ea06cd374f8a335014da17f0cfd063f7baeb25238e779eabe19d50b9649f491605271335f75cd10c7e38df8a",
+        "preparedSha256": "2b0bc8b564b10453d31bf035354ffda86d9a5a3090b1b4ca1eeffbe206767fa7",
+        "byteRange": [
+          0,
+          206166,
+          263512,
+          107735
+        ],
+        "outSha256": "c58fe6fcf3daa7dd6518fe9ef080e0fbc03e36569eaa26cf94d4888c70b5d3d0",
+        "revIndex": 2,
+        "sigRevSha256": "120c02353cdb4516da542fcd5a93228e2e744ad59005b5f06a0c7a995a699309",
+        "cmsSha256": "96f9ec50c8d76d9c23ecd0ced8d584da33ab9b0d71f2d97c697d8b3f555f190a",
+        "priorCmsSha256": [
+          "e1b23a5d74e18ecb7142e7f800bcc1c02a34a70de603788493f3c3b404925fb6"
+        ],
+        "placement": {
+          "page": 2,
+          "x": 340,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 340,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "seal-qr-then-seal-qr",
+      "input": "case:seal-qr-visible",
+      "signer": "seal",
+      "sealQr": true,
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "lang": "en",
+        "appearance": {
+          "x": 356,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "218d5c9aa8c52a9a5c45cd4e505ee63eb51b447a619e8e6d3d7036d6c03b6e70",
+        "docId": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "digest": "b3198e62df1c87d52950a89b1bcd5e606fd686a4aa356fc20162c360c0163c1e",
+        "dtbs": "1e0a0d1c96967cf1b971f5e843ff92765893af7077969659a6ba0101fc0867db",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d01090431220420b3198e62df1c87d52950a89b1bcd5e606fd686a4aa356fc20162c360c0163c1e308183060b2a864886f70d010910022f317430723070306e04200877b7ddc6a195049edc4fa1ab34da12a18f02600a439de2e0a5ba6bb06a882d304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e672043410202044c",
+        "signature": "9d4053fe89d7288ae1a7453edb4efc2263f488c345d9f0a1651d51518156d9afb256b3ab807a965479b673435abc84a73f773a025cc16d3efa421a988840e5111c7f86c071328694487424d866fb42910c6442f2faf34c144d29f324e1d04be482d77f467a321b2c18d59f4cc88c7ec4bf96b4ba6daa3df37c75a953aef186b9265ef761e0bcde01d2cc861f24d47cdeb6299fc74aa02a8506ab49bccc5662329d4ac5a9b35a0ddc7bd712a45a94099e59bb5da158d301f8026e460e547790c6f54623fe4a93619fc26e7b727c8e6156d3015552cfbfa94986b4e347b72bdb75b8e39894c97ba309d34c0011a80426549993cee5d8aaae4a6077f62b8318272a",
+        "preparedSha256": "03946d83634342056dfd199c9b70d6ec409ce7b4d2e40c13f398fbd4a48304ee",
+        "byteRange": [
+          0,
+          206166,
+          263512,
+          107805
+        ],
+        "outSha256": "91d742743e22e8943eb49614f885678619c9dd816f370fa5284d22dc9ef0943d",
+        "revIndex": 2,
+        "sigRevSha256": "7f84ba340b04138f37207287f4158141e67933d2bac134c23457b5fb4343190f",
+        "cmsSha256": "c027d79b7fea1df3d736f511ea219139527450a0d4de3730d9d19be7a3ade589",
+        "priorCmsSha256": [
+          "e1b23a5d74e18ecb7142e7f800bcc1c02a34a70de603788493f3c3b404925fb6"
+        ],
+        "placement": {
+          "page": 2,
+          "x": 356,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 356,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "sealv12-then-citizen",
+      "input": "case:seal-visible",
+      "prepare": {
+        "signerCert": null,
+        "signingTime": "0001-01-01T00:00:00Z",
+        "docId": "b1f2a3b4-5c6d-4f7a-9b8c-9d0e1f2a3b4c",
+        "appearance": {
+          "x": 340,
+          "y": 36,
+          "width": 220,
+          "height": 64
+        }
+      },
+      "expect": {
+        "inputSha256": "966291e64340097ccb61ce455e49e816572bb137688d1f868fc5f184bbd912ca",
+        "docId": "b1f2a3b4-5c6d-4f7a-9b8c-9d0e1f2a3b4c",
+        "digest": "f4c2ab2d66244d1eaad14204e6e94b360230d14b433ac0a8d8cc1274b398ce02",
+        "dtbs": "6d4dabd8ee4ef9e7fa552d470dfb93188eb93ffa7a0c56bf9119c4e7d170c044",
+        "signedAttrs": "3181d1301806092a864886f70d010903310b06092a864886f70d010701302f06092a864886f70d01090431220420f4c2ab2d66244d1eaad14204e6e94b360230d14b433ac0a8d8cc1274b398ce02308183060b2a864886f70d010910022f317430723070306e0420b241059e0db04b9531b777947e1ff9cea97d7b0cf1d0520ad0dee406a49a018f304a3044a4423040310b3009060355040613024d4e3131302f0603550403132854455354204f4e4c5920476f6c64656e20654944204d6f6e676f6c69612049737375696e67204341020203ed",
+        "signature": "686dfe1cd95d52c446daa7221af3b21c5f367b39228e35e0b7619150e4a55db2338a623939fef541d47bf0903514c87c6f5d33cb9d62fbe77de322ccad91e169f06c75b31885e33612772e3f03162f0db698c7d49a9dce6f2e3eca5cae1c5eab8f3c6bf20ac94a7e2b18532e6a9917b318ffb86da71f0fa1ca0bf0bd94c177605c2e8b0f76d9097d00f43536ce4edda2ab60d621d6e9e97a823c4ca833cb25ff6d38b10e6c2d7bddd2f5beed731ea06ed50070682fea0bfbc1ed509b674cb8e58168234dc887ffde2d87a60dc903b31bbe8e58593bd4b7380098b17b9ecf0e1a94542eb6d2fe6e40ea73fbe62956d6775c3944a39e7ae8c884fe3813a1cb46bf",
+        "preparedSha256": "a8085c20798a1d7b5af5bde099a1cc1de2886c875f8a316d17768f8bd60c2a66",
+        "byteRange": [
+          0,
+          201553,
+          258899,
+          107573
+        ],
+        "outSha256": "8fe00f0a4f5042fcf71a534c55c3aa3ca7a5c49d6d21b5ab5e3b87e2cb048ef2",
+        "revIndex": 2,
+        "sigRevSha256": "f0ed2e142d887a4472c74b0cbe14c81d7d1a31e22d5ada0b8355e0f08009bc1f",
+        "cmsSha256": "222be8698032d6a3684ae75b893db4c37191f9bb32b85f6686f238fafd493803",
+        "priorCmsSha256": [
+          "9f929611dfa51f0b511ad45f2908063793c7b57930439738f06a1bc4643fb5cd"
+        ],
+        "placement": {
+          "page": 2,
+          "x": 340,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved"
+        },
+        "suggestion": {
+          "page": 2,
+          "x": 340,
+          "y": 132,
+          "width": 220,
+          "height": 64,
+          "status": "moved",
+          "pageWidth": 612,
+          "pageHeight": 792,
+          "pageCount": 2,
+          "pages": [
+            {
+              "width": 612,
+              "height": 792
+            },
+            {
+              "width": 612,
+              "height": 792
             }
           ]
         }

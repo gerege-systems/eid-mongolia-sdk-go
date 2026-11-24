@@ -1065,7 +1065,17 @@ self-validation. Баталгаажуулалтын (QR) хуудасгүй — 
 `SealOptions.Appearance` — байршлыг өөрөө өгөх (иргэний `Appearance`-тэй ижил, `Exact` ч), `SealOptions.Invisible: true` —
 өмнөх үл харагдах гаралт (байт-ижил). Үр дүн `done.Placement`-д. Өмнөх гарын үсгүүд (иргэний харагдах гарын үсэг ч)
 хүчинтэй хэвээр. **Анхаар:** энэ хувилбараас өмнөх шалгагчид (CA `/v3/validate/pdf`, TS SDK) тамганы дардсыг таньдаггүй
-тул өмнөх гарын үсгийг өөрчлөгдсөн гэж мэдээлнэ — тэдгээр шинэчлэгдэх хүртэл `Invisible: true` ашиглана уу. Шалгагч (`pades.ValidatePDF`, CA
+тул өмнөх гарын үсгийг өөрчлөгдсөн гэж мэдээлнэ — тэдгээр шинэчлэгдэх хүртэл `Invisible: true` ашиглана уу.
+
+**QR-тэй тамганы дардас (Unreleased — зөвхөн шалгагчид).** `pades/APPEARANCE_SPEC.md` §6.5: иргэний дардастай ижил бүтэц
+(QR + `/verify/<docId>/<rev>`), тамганы label-тай, үүргийн мөргүй — verify хуудасгүй тамгатай баримтыг (нэхэмжлэх,
+тодорхойлолт) уншуулж шалгах боломжтой болгоно. **Энэ хувилбар зөвхөн шалгагчдад (`pades.ValidatePDF`, `Complete`-ийн
+self-validation) QR-тэй тамгыг таниулна; бичигч (`SealPDF`) QR-гүй дардас гаргасаар** (v0.30.0-тэй байт-ижил), QR-ийн нийтийн
+сонголт алга — тамганы бүртгэлтэй хамт дараагийн хувилбарт. CA ба TS шалгагч §6.5-ыг гаргахаас өмнө QR-тэй тамга бүү
+гарга. QR-гүй дардас үүрд хүчинтэй. Мөн `Prepare`-ийн docId (§6.6): verify хуудасгүй, тамгатай баримтад иргэн харагдах
+гарын үсэг зурж чадна — тамга QR-тэй бол түүний docId-г, QR-гүй бол шинэ docId (өмнө нь `REQUEST_INVALID`).
+
+Шалгагч (`pades.ValidatePDF`, CA
 `/v3/validate/pdf`) энэ гарын үсгийг `certificate.usage = "seal"` гэж ангилна — хэрэглэгчид «Байгууллагын тамга» гэж
 харуулна уу.
 Алдаа: `CodeSignerInvalid` (cert e-Seal биш, эсвэл тамгалах хооронд cert солигдсон — дахин оролд),
@@ -1117,7 +1127,11 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   it, `Completed.Placement` reports where it went, nil when invisible);
   `SealOptions{Invisible: true}` gives the previous, byte-identical invisible output. Validators older than this release
   (CA `/v3/validate/pdf`, TS SDK) report a seal stamp as a modification of earlier signatures — keep `Invisible: true`
-  until they are updated. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
+  until they are updated. **Unreleased:** validators also accept the seal stamp **with QR** (APPEARANCE_SPEC §6.5 — the
+  citizen layout with the seal label and no role line). This release only teaches validators the QR seal stamp;
+  writers (`SealPDF`) still emit the QR-less stamp and there is no public option for the QR yet — it must not be emitted
+  until the CA and TS validators ship §6.5. `Prepare`'s docId (§6.6) now also comes from the earliest QR stamp, so a
+  citizen can sign visibly after a seal (a fresh docId after a QR-less seal) instead of getting `REQUEST_INVALID`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
   approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
   `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`). The operator can switch
   issuance and sealing off platform-wide: `RequestCertificate` / `Seal` / `pades.SealPDF` then fail with
