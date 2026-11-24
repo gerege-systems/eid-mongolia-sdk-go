@@ -19,8 +19,8 @@ import (
 )
 
 // Experiment (2026-11-24): an organisation e-Seal leaving a visible imprint at the bottom-right of EVERY page of a
-// citizen-signed PDF. Test code only — SealPDF itself stays invisible; the visible seal is built from the same
-// Prepare → Sealer.Seal(DTBS) → Complete steps SealPDF wraps, with PrepareOptions.Appearance. Mechanisms:
+// citizen-signed PDF (the shipped feature is ONE seal stamp — seal_visible_test.go). Each per-page seal here is built
+// from the Prepare → Sealer.Seal(DTBS) → Complete steps SealPDF wraps, with PrepareOptions.Appearance. Mechanisms:
 //
 //	V2 — one visible seal signature per page (N revisions)                     → TestSealVisibleStampEveryPage
 //	V3 — one seal field with N widgets (/Kids or one widget in N /Annots)      → rejected by the validator:
@@ -197,7 +197,7 @@ func TestSealVisibleStampEveryPage(t *testing.T) {
 
 // TestSealAfterImprintUnsigned — V4 on an UNSIGNED document: the imprint is drawn into every page first (here with
 // pdfcpu's text watermark — the SDK writer has no page-content stamping API, so in production this would be a
-// pre-processing step or new product code), then one invisible SealPDF covers the whole file.
+// pre-processing step or new product code), then one SealPDF (default: with its own seal stamp) covers the whole file.
 //
 // Conclusion: the single seal is Valid (only its own DSS revision follows it) — but the imprint must be on the pages BEFORE
 // any signature; on a citizen-signed PDF it is a content change (see V4 above).

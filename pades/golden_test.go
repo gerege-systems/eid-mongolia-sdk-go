@@ -50,8 +50,10 @@ var (
 )
 
 type goldenCase struct {
-	Name   string         `json:"name"`
-	Input  string         `json:"input"` // input/<file> эсвэл "case:<name>" (өмнөх тохиолдлын гаралт)
+	Name  string `json:"name"`
+	Input string `json:"input"` // input/<file> эсвэл "case:<name>" (өмнөх тохиолдлын гаралт)
+	// Signer — "" = pki/citizen (иргэн), "seal" = pki/seal (байгууллагын e-Seal, RSA; тамганы дардас — APPEARANCE_SPEC.md §6).
+	Signer string         `json:"signer,omitempty"`
 	Prep   PrepareOptions `json:"prepare"`
 	Expect goldenExpect   `json:"expect"`
 }
@@ -199,6 +201,15 @@ func goldenCases() []goldenCase {
 			VerifyPagePosition: VerifyPageFirst}},
 		{Name: "vpfirst-invalid", Input: "input/quartz-pdf13.pdf", Prep: PrepareOptions{VerifyPage: true, DocID: "5e6f7a8b-9cad-4ebf-8a01-4c5d6e7f8091",
 			FileName: "x.pdf", VerifyPagePosition: "middle"}},
+		// Байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6, golden v12; signer = pki/seal): (a) гарын үсэггүй 2 хуудастай
+		// баримтад SealPDF-ийн автомат байршил (page 0, x = 612 − 220 − 36, y = 36) — footer-оос шилжинэ; (b) en, A4 1 хуудас;
+		// (c) иргэн + иргэн (onBehalfOf) + тамга — хоёр иргэний дардсын дээр.
+		{Name: "seal-visible", Input: "input/libreoffice-contract.pdf", Signer: "seal", Prep: visible(PrepareOptions{
+			DocID: "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d", Reason: "Нэхэмжлэх"}, Appearance{X: 356, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-visible-en", Input: "input/quartz-pdf13.pdf", Signer: "seal", Prep: visible(PrepareOptions{
+			DocID: "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e", Lang: "en"}, Appearance{X: 340, Y: 36, Width: 220, Height: 64})},
+		{Name: "seal-visible-third", Input: "case:libreoffice-contract-visible-second", Signer: "seal", Prep: visible(PrepareOptions{
+			Reason: "Нэхэмжлэх"}, Appearance{X: 356, Y: 36, Width: 220, Height: 64})},
 	}
 }
 
@@ -250,6 +261,8 @@ type gCert struct {
 
 type goldenPKI struct {
 	root, ca02, ca03, ca04, citizen, tsa *gCert
+	// seal — байгууллагын e-Seal (pki/seal.pem; KeyUsage = зөвхөн nonRepudiation, RSA) — golden v12; алга бол nil.
+	seal *gCert
 }
 
 func (p *goldenPKI) chain() []*x509.Certificate {
@@ -294,7 +307,57 @@ func loadOrCreatePKI(t *testing.T) *goldenPKI {
 		}
 		*ptr = c
 	}
+	p.seal = loadOrCreateSeal(t, dir, p)
 	return p
+}
+
+// loadOrCreateSeal — pki/seal.pem + seal.key.pem (golden v12): байгууллагын e-Seal (04-өөс, RSA-2048, KeyUsage = зөвхөн
+// nonRepudiation, EKU-гүй, organizationIdentifier NTRMN-0000000). Алга бол -update үед үүсгэнэ, эс бөгөөс nil.
+func loadOrCreateSeal(t *testing.T, dir string, p *goldenPKI) *gCert {
+	t.Helper()
+	certPath, keyPath := filepath.Join(dir, "seal.pem"), filepath.Join(dir, "seal.key.pem")
+	rawCert, err1 := os.ReadFile(certPath) // #nosec G304 -- тест
+	rawKey, err2 := os.ReadFile(keyPath)   // #nosec G304 -- тест
+	if err1 == nil && err2 == nil {
+		cb, _ := pem.Decode(rawCert)
+		kb, _ := pem.Decode(rawKey)
+		if cb == nil || kb == nil {
+			t.Fatal("seal PEM алга")
+		}
+		cert, err := x509.ParseCertificate(cb.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := x509.ParsePKCS1PrivateKey(kb.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &gCert{cert: cert, key: key}
+	}
+	if !*update {
+		return nil
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1100), Subject: pkix.Name{CommonName: "TEST ONLY Golden Org LLC",
+		Organization: []string{"TEST ONLY Golden Org LLC"}, Country: []string{"MN"},
+		ExtraNames: []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 97}, Value: "NTRMN-0000000"}}},
+		NotBefore: p.citizen.cert.NotBefore, NotAfter: p.citizen.cert.NotAfter, KeyUsage: x509.KeyUsageContentCommitment,
+		OCSPServer: p.citizen.cert.OCSPServer, CRLDistributionPoints: p.citizen.cert.CRLDistributionPoints}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, p.ca04.cert, &key.PublicKey, p.ca04.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _ := x509.ParseCertificate(der)
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644); err != nil { // #nosec G306 -- тест
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o644); err != nil { // #nosec G306 -- ТЕСТИЙН түлхүүр
+		t.Fatal(err)
+	}
+	return &gCert{cert: cert, key: key}
 }
 
 func createPKI(t *testing.T, dir string) {
@@ -368,6 +431,9 @@ func createPKI(t *testing.T, dir string) {
 func (p *goldenPKI) liveResponder(_ *testing.T) http.Handler {
 	byKey := map[string]*gCert{"03": p.ca03, "04": p.ca04, "02": p.ca02, "root": p.root}
 	all := []*gCert{p.ca02, p.ca03, p.ca04, p.citizen, p.tsa}
+	if p.seal != nil {
+		all = append(all, p.seal)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body []byte
 		if r.Body != nil {
@@ -524,7 +590,13 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 	var got goldenExpect
 	got.InputSHA256 = sha256hex(input)
 	o := c.Prep
-	o.SignerCert = p.citizen.cert.Raw
+	signer := p.citizen
+	if c.Signer == "seal" {
+		if signer = p.seal; signer == nil {
+			t.Fatalf("%s: pki/seal.pem алга (-update)", c.Name)
+		}
+	}
+	o.SignerCert = signer.cert.Raw
 	o.Chain = [][]byte{p.ca04.cert.Raw, p.ca03.cert.Raw, p.ca02.cert.Raw}
 	o.SigningTime = goldenTime
 	var sugErr error
@@ -561,7 +633,7 @@ func runGoldenWith(ctx context.Context, t *testing.T, p *goldenPKI, rt http.Roun
 	got.DocID, got.Digest, got.DTBS = prep.DocID, hex.EncodeToString(prep.Digest), hex.EncodeToString(prep.DTBS)
 	got.PreparedSHA256, got.ByteRange = st.PreparedSHA256, st.ByteRange
 	got.Placement = prep.Placement
-	sig, err := rsa.SignPKCS1v15(nil, p.citizen.key, crypto.SHA256, prep.DTBS)
+	sig, err := rsa.SignPKCS1v15(nil, signer.key, crypto.SHA256, prep.DTBS)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,10 @@
 
 `appearance` байхгүй (nil) бол гарын үсэг ҮЛ ХАРАГДАХ — PROFILE.md §2-тэй байт-ижил (v2 golden хэвээр).
 
+**Хоёр хувилбар** (golden v12-аас): гарын үсэг зурагчийн гэрчилгээ e-Seal бол байгууллагын **тамганы дардас** (§6 —
+QR/холбоосгүй, «eID Mongolia-аар тамгалсан»), бусад бүх гэрчилгээнд иргэний дардас (§3, өөрчлөгдөөгүй). Хувилбарыг ЗӨВХӨН
+гэрчилгээ сонгоно (§6.1).
+
 ## 1. Оролт ба байршил
 
 ```
@@ -160,3 +164,81 @@ Form XObject (`formID`):
 `/AA`, `/F 6`, `/Rect` зөрүү, `/AP /D`, AP хуучин объект заана (`/XObject`), content stream өөрчлөлт/нэмэлт бичвэр, URL
 revIndex/docID, `/Matrix`, фонтын тодорхойлолт, ToUnicode, өөр хуудасны `/Annots`, `/Annots`-гүй, ObjStm хуудсыг ижил утгаар,
 ObjStm-ийн хуудас биш объектыг дахин бичих.
+
+## 6. Seal stamp (organisation e-Seal) — golden v12
+
+An organisation e-Seal signature (`pades.SealPDF`, or `prepare` with an e-Seal `signerCert`) draws the **seal stamp**
+instead of the citizen stamp of §3. Everything not stated in this section is exactly §1–§5 (input checks, h100, `/Rect`,
+rotation, the 11 objects and their order, widget bytes, form dictionary, fonts, placement — PLACEMENT_SPEC is unchanged
+and does not depend on the variant).
+
+### 6.1 Variant selection — by the signer certificate only
+
+The variant is a pure function of the signer certificate (the CMS SignerInfo's certificate = `signerCert`); nothing in
+the PDF or the options selects it. The certificate is an **e-Seal certificate** iff all of:
+
+1. `basicConstraints` is absent or has `cA = FALSE`;
+2. the `keyUsage` extension is present, bit 1 (`nonRepudiation` / `contentCommitment`) is **set** and bit 0
+   (`digitalSignature`) is **clear** (other bits are ignored);
+3. there is **no** `extendedKeyUsage` extension.
+
+(= Go `eid.IsSealCertificate` = validator `sealCertificate`; the citizen SIGN certificate has `digitalSignature` set, so
+it is never an e-Seal certificate.) A certificate that cannot be parsed is not an e-Seal certificate. e-Seal certificate
+→ seal stamp (§6.2); any other certificate → citizen stamp (§3), byte-identical to golden v3–v9.
+
+### 6.2 Content stream (uncompressed, LF after every line; `W = w`, `H = h`)
+
+No QR, no `/EIDVerify` marked content, no URL, no role line. Constants as §3 (`pad = 400`, name font `f` = 11 → 7, body
+`b = f − 2`, leading `size × 125`, descent `size × 25`, name ≤ 2 lines).
+
+1. `tx = pad`, `tw = W − 2·pad` (the text uses the full inner width — there is no QR column).
+2. Lines (f = 11, 10, … 7 — the first that fits), in this order:
+   - name: PAGE_SPEC §4 wrap (F2, f, `limit = tw × 10`, ≤ 2 lines, «…» on overflow) — `trim(/Name)`; SealPDF writes the
+     certificate's GIVENNAME SURNAME, else its CN (the organisation name), unless `signerName` is given;
+   - label (F1, b): mn `eID Mongolia-аар тамгалсан`, en `Sealed with eID Mongolia` (the citizen label with the verb
+     changed; same colour and position as the citizen label line);
+   - date (F1, b): `YYYY-MM-DD HH:MM (+08)` from `/M`, exactly as §3.
+   A claimedRole in the CMS is **not** drawn. Fit rule as §3: every line non-empty, `width1000(line) ≤ limit`,
+   `Σ size × 125 ≤ H − 2·pad`; `tw ≤ 0` or no f fits → `REQUEST_INVALID`. There is no QR-module minimum (a 220 × 64 pt
+   stamp fits at f = 11; the smallest height that fits a one-line name is 29.25 pt).
+3. Operations (in this order; the `q` / `cm` / `Q` lines only when rot ≠ 0, with the same `cm` as §3):
+   ```
+   [q
+   <cm>]
+   0.086 0.541 0.31 RG
+   1 w
+   0.5 0.5 <W−100> <H−100> re S
+   <colour> rg                   per line (name 0.118 0.118 0.118; label 0.086 0.541 0.31; date 0.431 0.431 0.431)
+   BT /F<id> <size> Tf <pad> <y> Td <GGGG…> Tj ET
+   [Q]
+   ```
+   `cursor = H − pad − floor((H − 2·pad − Σ size×125) / 2)`; per line `cursor −= size × 125`, `y = cursor + size × 25`.
+   Numbers num100; `<GGGG…>` = PAGE_SPEC §2. The form XObject dictionary is §2's, with both `/F1` and `/F2` (both are
+   used: F2 name, F1 label/date).
+
+Example (golden `seal-visible`, 220 × 64 pt, `TEST ONLY Golden Org LLC`, mn): f = 11, lines F2 11 / F1 9 / F1 9, text at x = 4.
+
+### 6.3 Validator (own-signer profile) — changes to §5
+
+The variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`, computed in Extract from the CMS leaf):
+
+- **Not an e-Seal certificate** → §5 unchanged (citizen stamp; the form must start with the `/EIDVerify` BDC line).
+- **e-Seal certificate** → §5 steps 1–5 and 8–10 unchanged; step 6 is **skipped** (no BDC / URL / revIndex / docId check —
+  the seal stamp has none); step 7 regenerates `AppearanceObjects({W, H, Rotate, Name: /Name, Date, Lang, seal})` (no
+  Role, no URL) for `lang ∈ {mn, en}` and requires all 11 objects to be equal for one language.
+- Fail closed: a citizen certificate whose revision carries a seal stamp, and an e-Seal certificate whose revision
+  carries a citizen stamp, do not match → `errNotSignatureOnly` → every earlier signature `modified_after_signing`
+  (golden validate cases `seal-stamp-citizen-cert`, `citizen-stamp-seal-cert`). The broad (test-only) profile does not
+  regenerate stamps and is unchanged.
+- **Compatibility:** validators that implement only §5 (CA `/v3/validate/pdf` and the TS SDK before their seal-stamp
+  release) report a revision with a seal stamp as a modification of every earlier signature. Writers must not emit
+  the seal stamp to relying parties until those validators implement §6.3.
+
+### 6.4 SealPDF default (Go `pades.SealOptions`)
+
+- `invisible: true` → the invisible signature of PROFILE.md §2 (byte-identical to SealPDF before golden v12).
+- `appearance` given → used as is (§1, PLACEMENT_SPEC; `exact` honoured).
+- neither → automatic: `page = 0` (PLACEMENT_SPEC §1a: the last page that is not an eID verify page; fallback the last
+  page), `w = 220`, `h = 64`, `y = 36`, `x = max(0, pageWidth − 220 − 36)` where `pageWidth` is the visible width of
+  that page (`suggestPlacement(...).pageWidth`), `exact = false` → PLACEMENT_SPEC §6 (free → requested; else the first
+  free candidate → moved; none → overlap at the requested bottom-right). The result is `Completed.placement`.

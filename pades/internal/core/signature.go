@@ -186,7 +186,7 @@ func prepareSignature(base []byte, signingTime time.Time, signerName, reason str
 			}
 		}
 		bodies, err := AppearanceObjects(AppearanceParams{W: vis.W, H: vis.H, Rotate: rot, Name: vis.Name, Role: vis.Role,
-			Lang: vis.Lang, Date: vis.Date, URL: vis.URL}, apIDs)
+			Lang: vis.Lang, Date: vis.Date, URL: vis.URL, Seal: vis.Seal}, apIDs)
 		if err != nil {
 			return nil, err
 		}

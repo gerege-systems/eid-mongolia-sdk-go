@@ -14,14 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 )
 
-// TestSealSampleForAdobe — sample for the owner's visible-seal decision (PR #65): citizen A (visible stamp + verify
-// page) → citizen B (visible stamp, second-signature flow) → organisation e-Seal with a VISIBLE stamp drawn by the
-// existing citizen stamp renderer (placeholder look), auto-placed: page 0 (last non-verify page), preferred bottom-right,
-// not exact. All three signatures stay Valid and unmodified. With EID_SAMPLE_DIR set the three PDFs and the test root
+// TestSealSampleForAdobe — sample for the owner (PR #65): citizen A (visible stamp + verify page) → citizen B (visible
+// stamp, second-signature flow) → SealPDF default: the organisation e-Seal stamp (APPEARANCE_SPEC.md §6), auto-placed on
+// the last non-verify page, preferred bottom-right, not exact. All three signatures stay Valid and unmodified. With EID_SAMPLE_DIR set the three PDFs and the test root
 // (DER) are written there for opening in Adobe Acrobat; otherwise the test only asserts.
 func TestSealSampleForAdobe(t *testing.T) {
 	ctx := context.Background()
@@ -70,19 +67,11 @@ func TestSealSampleForAdobe(t *testing.T) {
 	a, aPl := citizen(readInput(t, "libreoffice-contract.pdf"), p)
 	b, bPl := citizen(a.PDF, &pB)
 
-	// e-Seal, visible, auto-placed (the flow SealPDF would run with an Appearance).
+	// e-Seal: SealPDF default (visible seal stamp, automatic placement).
 	sKey, sLeaf := sealLeaf(t, p, x509.KeyUsageContentCommitment, 88008)
 	so := sealOpts(p, sLeaf)
-	sprep, err := Prepare(b.PDF, PrepareOptions{SignerCert: sLeaf.Raw, Chain: so.Chain, SignerName: sLeaf.Subject.CommonName, Reason: so.Reason,
-		SigningTime: so.SigningTime, Appearance: stamp()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := (&fakeSealer{cert: sLeaf.Raw, key: sKey}).Seal(ctx, "NTRMN-6235972", sprep.DTBS, eid.SHA256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sealed, err := Complete(ctx, sprep.State, r.Signature, so.Complete)
+	so.SignerName = sLeaf.Subject.CommonName
+	sealed, err := SealPDF(ctx, &fakeSealer{cert: sLeaf.Raw, key: sKey}, "NTRMN-6235972", b.PDF, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,13 +82,14 @@ func TestSealSampleForAdobe(t *testing.T) {
 	if !bytes.HasPrefix(b.PDF, a.PDF) || !bytes.HasPrefix(sealed.PDF, b.PDF) {
 		t.Fatal("not a pure incremental append")
 	}
-	// Placement (pt): A and B as the golden libreoffice-contract-visible(-second); the seal stacks above them.
+	// Placement (pt): A and B as the golden libreoffice-contract-visible(-second); the seal (x = 612 − 220 − 36) stacks
+	// above them.
 	wantPl := []Placement{{Page: 2, X: 340, Y: 60, Width: 220, Height: 64, Status: "moved"},
 		{Page: 2, X: 340, Y: 132, Width: 220, Height: 64, Status: "moved"},
-		{Page: 2, X: 340, Y: 204, Width: 220, Height: 64, Status: "moved"}}
-	for i, pl := range []*Placement{aPl, bPl, sprep.Placement} {
+		{Page: 2, X: 356, Y: 204, Width: 220, Height: 64, Status: "moved"}}
+	for i, pl := range []*Placement{aPl, bPl, sealed.Placement} {
 		if pl == nil || *pl != wantPl[i] {
-			g, _ := json.Marshal([]*Placement{aPl, bPl, sprep.Placement})
+			g, _ := json.Marshal([]*Placement{aPl, bPl, sealed.Placement})
 			t.Errorf("placement %d: %s", i, g)
 		}
 	}

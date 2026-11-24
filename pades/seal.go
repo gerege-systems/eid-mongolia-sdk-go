@@ -15,8 +15,10 @@ type Sealer interface {
 	Seal(ctx context.Context, orgEtsi string, digest []byte, hash eid.HashAlgorithm) (*eid.SealResult, error)
 }
 
-// SealOptions — SealPDF-ийн тохиргоо. Байгууллагын тамга үл харагдах, баталгаажуулалтын (QR) хуудасгүй: verify хуудас нь
-// CA-ийн бүртгэл (/verify/{docId}) рүү заадаг ч тамга иргэний гарын үсгийн бүртгэлд (POST /pdf/signatures) ордоггүй.
+// SealOptions — SealPDF-ийн тохиргоо. Баталгаажуулалтын (QR) хуудас нэмэхгүй: verify хуудас нь CA-ийн бүртгэл
+// (/verify/{docId}) рүү заадаг ч тамга иргэний гарын үсгийн бүртгэлд (POST /pdf/signatures) ордоггүй. Анхдагчаар тамга
+// ХАРАГДАНА: баримтын сүүлийн (eID verify биш) хуудсанд байгууллагын тамганы дардас (APPEARANCE_SPEC.md §6 — QR/холбоосгүй),
+// баруун доод буланд, агуулгатай давхцвал чөлөөт байрлал руу (PLACEMENT_SPEC.md).
 type SealOptions struct {
 	// Reason — /Reason (≤ 127 UTF-16 нэгж).
 	Reason string
@@ -29,12 +31,28 @@ type SealOptions struct {
 	// Complete — TSA/OCSP/CRL тохиргоо (Complete-тэй ижил). RFC 3161 timestamp ЗААВАЛ: TSA унавал CodeTSAUnavailable,
 	// тамгагүй файл буцаахгүй.
 	Complete CompleteOptions
+	// Appearance — дардасны байршил (иргэний харагдах гарын үсэгтэй ижил утга: Page, X, Y, Width, Height, Lang, Exact).
+	// nil бол автомат: SealStampWidth × SealStampHeight, сүүлийн (eID verify биш) хуудасны баруун доод буланд
+	// (SealStampMargin), Exact биш. Invisible үед үл тооно.
+	Appearance *Appearance
+	// Invisible — дардасгүй (v0.29-ийн SealPDF-тэй байт-ижил гаралт).
+	Invisible bool
 }
+
+// Автомат дардасны хэмжээ ба захын зай (pt): X = хуудасны харагдах өргөн − SealStampWidth − SealStampMargin (≥ 0),
+// Y = SealStampMargin, Page = 0.
+const (
+	SealStampWidth  = 220
+	SealStampHeight = 64
+	SealStampMargin = 36
+)
 
 // SealPDF — PDF-ийг байгууллагын цахим тамгаар (e-Seal) тамгална: тамганы гэрчилгээ (GET /seal/certificate/{orgEtsi}) →
 // Prepare → DTBS-ийг POST /seal/{orgEtsi}-ээр (SHA-256) тамгалуулна → Complete (TSA + OCSP/CRL + DSS + self-validation)
 // → PAdES-BASELINE-LT. PDF CA руу очихгүй — зөвхөн 32 байт DTBS. Шалгагчид (CA, SDK) энэ гарын үсгийг usage "seal"
-// (байгууллагын тамга) гэж ангилна.
+// (байгууллагын тамга) гэж ангилна. Анхдагчаар дардас харагдана (SealOptions); байршил Completed.Placement-д.
+// Энэ хувилбараас ӨМНӨХ шалгагчид (CA, TS SDK) тамганы дардсыг таньдаггүй тул өмнөх гарын үсгийг modified гэж мэдээлнэ —
+// тэдгээр шинэчлэгдэх хүртэл Invisible: true ашиглана уу.
 //
 // Алдаа: *Error (CodeSignerInvalid — гэрчилгээ e-Seal биш эсвэл тамгалах хооронд гэрчилгээ солигдсон; Prepare/Complete-ийн
 // бусад код) эсвэл Sealer-ийн алдаа хэвээр (*eid.ForbiddenError — SEAL эрхгүй; *eid.APIError 429 — Retryable(); 409
@@ -57,8 +75,15 @@ func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOp
 	if !eid.IsSealCertificate(cert) {
 		return nil, newErr(CodeSignerInvalid, "гэрчилгээ e-Seal биш (KeyUsage = зөвхөн nonRepudiation байх ёстой)", nil)
 	}
-	p, err := Prepare(pdf, PrepareOptions{SignerCert: cert.Raw, Chain: o.Chain, SignerName: o.SignerName, Reason: o.Reason,
-		SigningTime: o.SigningTime})
+	po := PrepareOptions{SignerCert: cert.Raw, Chain: o.Chain, SignerName: o.SignerName, Reason: o.Reason, SigningTime: o.SigningTime}
+	if !o.Invisible {
+		if po.Appearance = o.Appearance; po.Appearance == nil {
+			if po.Appearance, err = defaultSealAppearance(pdf); err != nil {
+				return nil, err
+			}
+		}
+	}
+	p, err := Prepare(pdf, po)
 	if err != nil {
 		return nil, err
 	}
@@ -69,5 +94,21 @@ func SealPDF(ctx context.Context, s Sealer, orgEtsi string, pdf []byte, o SealOp
 	if !bytes.Equal(r.Certificate, cert.Raw) {
 		return nil, newErr(CodeSignerInvalid, "тамгалах хооронд байгууллагын тамганы гэрчилгээ солигдсон — дахин оролдоно уу", nil)
 	}
-	return Complete(ctx, p.State, r.Signature, o.Complete)
+	res, err := Complete(ctx, p.State, r.Signature, o.Complete)
+	if err != nil {
+		return nil, err
+	}
+	res.Placement = p.Placement
+	return res, nil
+}
+
+// defaultSealAppearance — автомат дардас: page 0 (сүүлийн eID verify биш хуудас, PLACEMENT_SPEC §1a)-ийн харагдах
+// өргөнөөс баруун доод булан. Хуудсыг SuggestPlacement-ээр (Prepare-тэй ижил дүрэм) олно.
+func defaultSealAppearance(pdf []byte) (*Appearance, error) {
+	s, err := SuggestPlacement(pdf, Appearance{Width: SealStampWidth, Height: SealStampHeight})
+	if err != nil {
+		return nil, err
+	}
+	return &Appearance{X: max(0, s.PageWidth-SealStampWidth-SealStampMargin), Y: SealStampMargin, Width: SealStampWidth,
+		Height: SealStampHeight}, nil
 }

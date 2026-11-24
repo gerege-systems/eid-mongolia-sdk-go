@@ -28,6 +28,8 @@ the first free spot in a fixed order. When the preferred rect is free, the outpu
 - `Prepared.placement = { page, x, y, width, height, status }` — `x, y, width, height` in pt (`h100 / 100`), `page` the
   1-based page the stamp is on. Callers should surface `overlap` / `unscanned` (e.g. a notice) — the signature is valid
   either way. The final position only changes the widget `/Rect`; the appearance stream depends on `w, h, rot` only.
+- The organisation seal stamp (APPEARANCE_SPEC §6) is placed by exactly these rules; SealPDF's automatic request
+  (APPEARANCE_SPEC §6.4) is page 0, `x = pageWidth − 220 − 36`, `y = 36`, 220 × 64 pt, not exact.
 
 ### 1a. Default page (`page` 0 / absent)
 

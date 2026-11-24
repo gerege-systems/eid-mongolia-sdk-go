@@ -2,6 +2,7 @@ package validate
 
 import (
 	"bytes"
+	"crypto/x509"
 	"fmt"
 	"math"
 	"regexp"
@@ -20,6 +21,18 @@ type sigMeta struct {
 	revIndex int    // ByteRange-ийн төгсгөлөөр эрэмбэлсэн дараалал (1-ээс) — PRECHECKS #6-ийн revIndex
 	role     string // signer-attributes-v2-ийн ганц claimedRole ("" — байхгүй)
 	roleOK   bool   // claimedRole 0 эсвэл яг 1 (хүчинтэй) — эс бөгөөс харагдах дүрслэл үүсгэх боломжгүй
+	seal     bool   // гарын үсэг зурагчийн гэрчилгээ e-Seal (sealCertificate) — тамганы дардас л хүлээн авна (§6)
+}
+
+// sealCertificate — APPEARANCE_SPEC.md §6.1 (eid.IsSealCertificate-тэй ижил): CA биш, keyUsage-д nonRepudiation
+// (contentCommitment) байгаа ба digitalSignature байхгүй, extendedKeyUsage-гүй. Задрахгүй бол false (иргэний дүрэм).
+func sealCertificate(der []byte) bool {
+	c, err := x509.ParseCertificate(der)
+	if err != nil || c.IsCA {
+		return false
+	}
+	return c.KeyUsage&x509.KeyUsageContentCommitment != 0 && c.KeyUsage&x509.KeyUsageDigitalSignature == 0 &&
+		len(c.ExtKeyUsage) == 0 && len(c.UnknownExtKeyUsage) == 0
 }
 
 const apVerifyPrefix = "https://ca.eidmongolia.mn/verify/"
@@ -105,12 +118,15 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	if !ok {
 		return fail
 	}
-	sm := apURLRe.FindSubmatch(form.data)
-	if sm == nil || string(sm[2]) != strconv.Itoa(meta.revIndex) || c.docID != "" && string(sm[1]) != c.docID {
-		return fail
+	// Хувилбарыг ЗӨВХӨН гэрчилгээ сонгоно (§6.1): e-Seal → тамганы дардас (URL/QR/үүрэг үгүй), бусад → иргэний дардас.
+	p := core.AppearanceParams{W: w, H: h, Rotate: rot, Name: pdfTextString(ns), Date: date, Seal: meta.seal}
+	if !meta.seal {
+		sm := apURLRe.FindSubmatch(form.data)
+		if sm == nil || string(sm[2]) != strconv.Itoa(meta.revIndex) || c.docID != "" && string(sm[1]) != c.docID {
+			return fail
+		}
+		p.Role, p.URL = meta.role, apVerifyPrefix+string(sm[1])+"/"+string(sm[2])
 	}
-	url := apVerifyPrefix + string(sm[1]) + "/" + string(sm[2])
-	p := core.AppearanceParams{W: w, H: h, Rotate: rot, Name: pdfTextString(ns), Role: meta.role, Date: date, URL: url}
 	for _, lang := range []string{"mn", "en"} {
 		p.Lang = lang
 		bodies, err := core.AppearanceObjects(p, ids)
