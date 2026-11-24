@@ -5,6 +5,8 @@
   бүх гарын үсэг Valid; (V3) нэг талбар /Kids-ээр олон widget, (V4) тамганы revision-д хуудасны content / /Stamp
   annotation — `modified_after_signing` (татгалзана); гарын үсэггүй баримтад дардсыг урьдчилан зурж нэг тамгаар
   хамгаалах — Valid.
+- **Жишээ:** `TestSealSampleForAdobe` — иргэн A → иргэн B → харагдах тамга (иргэний дардсын түр загвараар, автомат
+  байршил); `EID_SAMPLE_DIR` тавьсан үед PDF-үүдийг бичнэ (PR-ийн CI-ийн түр `seal-sample` artifact, merge-ээс өмнө хасна).
 - **Яагаад:** эзэмшигчийн асуулт — тамга хуудас бүрд дардас үлдээж, иргэний гарын үсгийг эвдэхгүй байж чадах уу.
 - **Хаана:** `pades/seal_stamp_test.go`, `pades/internal/validate/seal_stamp_test.go`. Бүтээгдэхүүний код
   өөрчлөгдөөгүй (`SealOptions`-д Appearance нэмээгүй).

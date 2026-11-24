@@ -35,6 +35,19 @@ jobs:
         run: "! go list -deps ./... | grep -qx github.com/digitorus/pdf"
       - run: go test -race ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
+      # TEMPORARY: remove before merge (Adobe sample for PR #65)
+      - name: seal sample (TEMPORARY)
+        if: matrix.go == 'stable'
+        run: |
+          mkdir -p "$RUNNER_TEMP/seal-sample"
+          EID_SAMPLE_DIR="$RUNNER_TEMP/seal-sample" go test ./pades/ -run '^TestSealSampleForAdobe$' -count=1
+      # TEMPORARY: remove before merge (Adobe sample for PR #65)
+      - if: matrix.go == 'stable'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seal-sample
+          path: ${{ runner.temp }}/seal-sample/
+          if-no-files-found: error
   # Статик шинжилгээ ба мэдэгдэж буй эмзэг байдал — хувилбар pin хийсэн, олдвор бүр улаан. govulncheck нь stdlib-ийн
   # эмзэг байдлыг ч тоолдог тул сүүлийн patch Go (stable) дээр ажиллана.
   lint:
