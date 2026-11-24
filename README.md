@@ -626,7 +626,7 @@ r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{o
 ```
 
 - `Seal` хариуг шалгана: гарын үсэг хариуны гэрчилгээгээр digest дээр таарч, гэрчилгээ нь e-Seal профайл
-  (`eid.IsSealCertificate`: KeyUsage = зөвхөн nonRepudiation, EKU-гүй) байх ёстой — эс бөгөөс `*ValidationError`. Гинж ба
+  (`eid.IsSealCertificate`: KeyUsage = зөвхөн nonRepudiation, EKU-ийн зорилгогүй — extendedKeyUsage алга эсвэл хоосон) байх ёстой — эс бөгөөс `*ValidationError`. Гинж ба
   цуцлалтыг `pades.SealPDF` (OCSP/CRL + self-validation) шалгана.
 - `hashType`: `eid.SHA256` (анхдагч) | `SHA384` | `SHA512`; digest-ийн урт таарахгүй бол сүлжээнд гарахгүй.
 - **429 `RATE_LIMITED`** — `*APIError`, `Retryable()` true бол `RetryAfter`-ийн дараа дахин (RP-д минутад 300 тамгалалт).
