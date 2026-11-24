@@ -47,6 +47,20 @@
   seal stamp) and `citizen-stamp-seal-cert` (an e-Seal certificate drawing the citizen stamp) — both on
   `golden/output/quartz-pdf13.pdf`, second signature B-B (no timestamp/DSS); the first signature is
   `modified_after_signing`. Inputs written by `-update` (Go `vMismatchedStamp`, test-only — Prepare never emits them).
+- **v13** (APPEARANCE_SPEC.md §6.5 seal stamp with QR, §6.3; all earlier cases unchanged): positive (golden/output) —
+  `seal-qr-visible`, `seal-qr-visible-en`, `seal-qr-rotated90`, `citizen-then-seal-qr`, `seal-qr-then-citizen`,
+  `seal-qr-then-seal-qr`, `sealv12-then-citizen` (two stamps with different docIds — not tampering). Negative (second
+  signature B-B on `golden/output/quartz-pdf13.pdf`, 340, 36, 220 × 64 pt on page 1; the first signature is
+  `modified_after_signing`): `seal-qr-citizen-cert` (citizen certificate + QR seal stamp), `seal-qr-with-role` (e-Seal
+  certificate with a CMS claimedRole, QR seal stamp drawn with the role line), `seal-qr-wrong-rev` (marker rev 3),
+  `seal-qr-docid-vs-page` (marker docId ≠ verify-page docId), `seal-v12-with-marker` (marker + QR-less seal content +
+  `EMC`), `seal-qr-height-44pt` (220 × 44 pt, 0.97 pt QR modules), `seal-marker-not-at-start` (marker after the first
+  line of a QR-less seal stream), `seal-qr-flate` (QR seal stream FlateDecode-compressed, `/Filter /FlateDecode`),
+  `seal-qr-marker-crlf` (`BDC\r\n`), `seal-qr-rev-02` (rev `02`), `seal-qr-uuid-uppercase` (on
+  `golden/output/quartz-pdf13-nopage.pdf`, no verify page). Passing controls from the same generator, each negative
+  differing in one field: `seal-qr-control` (QR seal stamp, e-Seal certificate, rev 2, page docId) and
+  `seal-qr-control-nopage` (same on the no-verify-page base). Inputs written by `-update` (Go `vStampRev` with the
+  test-only `core.VisibleTamper` hooks `SealRole`, `NoMinModule`, `Body`).
 - CA-д `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` (бүртгэлээс), `key_medium` (бүртгэлээс) нэмэгдэж болно;
   харьцуулахдаа эдгээрийг хасна. `certificate_level` нь SDK-д (CA-д нэмэх санал).
 

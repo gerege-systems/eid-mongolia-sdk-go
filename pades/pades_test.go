@@ -389,7 +389,9 @@ func TestAppearanceRejects(t *testing.T) {
 			t.Errorf("%s: хүлээсэн REQUEST_INVALID, авсан %v", name, err)
 		}
 	}
-	// Хамгийн бага (45 pt өндөр) хүлээн авна; гарын үсэгтэй, хуудасгүй, docId-гүй баримтад → REQUEST_INVALID.
+	// Хамгийн бага (45 pt өндөр) хүлээн авна; гарын үсэгтэй, хуудасгүй, маркертай дардасгүй баримтад docId-гүй →
+	// REQUEST_INVALID (санамсаргүй docId гарын үсэгтэй баримтад үүсгэхгүй — APPEARANCE_SPEC.md §6.6); дуудагч docId өгвөл
+	// (бүртгэлийг өөрөө хариуцна) түүгээр.
 	o := testOpts(p, p.citizen.cert)
 	vis(Appearance{X: 36, Y: 36, Width: 220, Height: 45})(&o)
 	if _, err := Prepare(doc, o); err != nil {
@@ -404,6 +406,10 @@ func TestAppearanceRejects(t *testing.T) {
 	vis(ok)(&o)
 	if _, err := Prepare(signed, o); ErrorCode(err) != CodeRequestInvalid {
 		t.Fatalf("docId-гүй: %v", err)
+	}
+	o.DocID = "0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f"
+	if prep, err := Prepare(signed, o); err != nil || prep.DocID != o.DocID {
+		t.Fatalf("opts.docId (opt-in): %v", err)
 	}
 }
 

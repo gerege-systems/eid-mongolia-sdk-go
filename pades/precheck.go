@@ -13,42 +13,65 @@ import (
 	"github.com/gerege-systems/pdf"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 )
 
 // precheck — PRECHECKS.md-ийн «хөнгөн» шалгуур (validator-гүй; native SDK-ууд яг ижлээр давтана). Буцаах: шинэ баримт
-// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex. issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
-func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, err error) {
+// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex, шалгасан e-Seal гарын үсгүүд (Sig толины объектын дугаар →
+// байрлал; APPEARANCE_SPEC.md §6.6 docIdFromStamps). issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
+func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, seals map[uint32]int, err error) {
 	if encrypted(doc) {
-		return false, 0, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
+		return false, 0, nil, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
 	}
 	sigs, locked, hasDSS, err := scanSignatures(doc)
 	if err != nil {
-		return false, 0, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", err)
+		return false, 0, nil, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", err)
 	}
 	if len(sigs) == 0 {
-		return true, 1, nil
+		return true, 1, nil, nil
 	}
 	if len(sigs) >= MaxSignatures {
-		return false, 0, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
+		return false, 0, nil, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
 	}
 	leaves := make([]*x509.Certificate, len(sigs))
 	stamped := make([]bool, len(sigs))
 	for i, s := range sigs {
 		leaf, ts, err := checkPriorSignature(doc, s)
 		if err != nil {
-			return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
+			return false, 0, nil, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
 		}
 		leaves[i], stamped[i] = leaf, ts
 	}
 	if locked {
-		return false, 0, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
+		return false, 0, nil, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
 	}
 	for i, s := range sigs {
 		if s.subFilter != "ETSI.CAdES.detached" || !issuedByAny(leaves[i], issuers) || !stamped[i] || !hasDSS {
-			return false, 0, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
+			return false, 0, nil, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
 		}
 	}
-	return false, len(sigs) + 1, nil
+	return false, len(sigs) + 1, stampSources(sigs, leaves), nil
+}
+
+// stampSources — APPEARANCE_SPEC.md §6.6 алхам 2.2-ийн эх: шалгасан гарын үсгүүдээс ЗӨВХӨН e-Seal гэрчилгээтэй
+// (eid.IsSealCertificate) нь, Sig толины объектын дугаар → байрлал (1 + ByteRange[2]+[3] нь бага шалгасан гарын үсгийн
+// тоо — PRECHECKS #6 / validator-ийн revIndex). Иргэний гарын үсэг хэзээ ч docId-ийн эх болохгүй (v0.30.0-ийн зан).
+func stampSources(sigs []sigDict, leaves []*x509.Certificate) map[uint32]int {
+	out := map[uint32]int{}
+	for i, s := range sigs {
+		if !eid.IsSealCertificate(leaves[i]) {
+			continue
+		}
+		rev := 1
+		for _, o := range sigs {
+			if o.byteRange[2]+o.byteRange[3] < s.byteRange[2]+s.byteRange[3] {
+				rev++
+			}
+		}
+		out[s.obj] = rev
+	}
+	return out
 }
 
 type sigDict struct {

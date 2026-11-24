@@ -8,9 +8,10 @@
 
 `appearance` байхгүй (nil) бол гарын үсэг ҮЛ ХАРАГДАХ — PROFILE.md §2-тэй байт-ижил (v2 golden хэвээр).
 
-**Хоёр хувилбар** (golden v12-аас): гарын үсэг зурагчийн гэрчилгээ e-Seal бол байгууллагын **тамганы дардас** (§6 —
-QR/холбоосгүй, «eID Mongolia-аар тамгалсан»), бусад бүх гэрчилгээнд иргэний дардас (§3, өөрчлөгдөөгүй). Хувилбарыг ЗӨВХӨН
-гэрчилгээ сонгоно (§6.1).
+**Гурван хувилбар**: иргэний дардас (§3) — e-Seal биш бүх гэрчилгээнд; e-Seal гэрчилгээнд байгууллагын **тамганы
+дардас** — QR-гүй (§6.2, golden v12, «eID Mongolia-аар тамгалсан») эсвэл QR-тэй (§6.5, golden v13 — иргэний дардасны бүтэц,
+тамганы label). Иргэний/тамганы хувилбарыг ЗӨВХӨН гэрчилгээ сонгоно (§6.1); тамга QR-тэй эсэхийг бичигч сонгоно, validator
+form stream-ийн `/EIDVerify` тэмдгээр таньна (§6.3). Prepare-ийн docId-ийн дүрэм — §6.6.
 
 ## 1. Оролт ба байршил
 
@@ -108,8 +109,8 @@ Form XObject (`formID`):
    ```
    Тоо бүр num100 (QR-ийн `re` мөр модулийн нэгжээр бүхэл). `cursor = H − pad − floor((H − 2·pad − Σ size×125) / 2)`;
    мөр бүрд `cursor −= size × 125`, `y = cursor + size × 25`. `<GGGG…>` = PAGE_SPEC §2 (glyph ID %04X, cmap-д алга → `?`).
-   `url = https://ca.eidmongolia.mn/verify/<docID>/<revIndex>` (revIndex = PRECHECKS #6; docID — verify хуудаснаас / opts;
-   алга бол `REQUEST_INVALID`). BDC-ийн property list нь validator-д URL-ийг өгнө (viewer үл тооно).
+   `url = https://ca.eidmongolia.mn/verify/<docID>/<revIndex>` (revIndex = PRECHECKS #6; docID — §6.6). BDC-ийн property
+   list нь validator-д URL-ийг өгнө (viewer үл тооно).
 
 Жишээ (`quartz-pdf13-visible-second`, 236 × 72 pt, 2 дахь гарын үсэг, onBehalfOf): `mod = 1.72`, `q 1.72 0 0 1.72 4 4.18 cm`,
 `tx = 71.64`, мөрүүд F2 11 (48.75), F1 9 (37, 25.75, 14.5).
@@ -165,12 +166,13 @@ Form XObject (`formID`):
 revIndex/docID, `/Matrix`, фонтын тодорхойлолт, ToUnicode, өөр хуудасны `/Annots`, `/Annots`-гүй, ObjStm хуудсыг ижил утгаар,
 ObjStm-ийн хуудас биш объектыг дахин бичих.
 
-## 6. Seal stamp (organisation e-Seal) — golden v12
+## 6. Seal stamp (organisation e-Seal) — golden v12, v13
 
-An organisation e-Seal signature (`pades.SealPDF`, or `prepare` with an e-Seal `signerCert`) draws the **seal stamp**
-instead of the citizen stamp of §3. Everything not stated in this section is exactly §1–§5 (input checks, h100, `/Rect`,
-rotation, the 11 objects and their order, widget bytes, form dictionary, fonts, placement — PLACEMENT_SPEC is unchanged
-and does not depend on the variant).
+An organisation e-Seal signature (`pades.SealPDF`, or `prepare` with an e-Seal `signerCert`) draws a **seal stamp**
+instead of the citizen stamp of §3: the QR-less seal stamp (§6.2, golden v12) or the seal stamp with QR (§6.5, golden
+v13). Everything not stated in this section is exactly §1–§5 (input checks, h100, `/Rect`, rotation, the 11 objects and
+their order, widget bytes, form dictionary, fonts, placement — PLACEMENT_SPEC is unchanged and does not depend on the
+variant).
 
 ### 6.1 Variant selection — by the signer certificate only
 
@@ -184,7 +186,9 @@ the PDF or the options selects it. The certificate is an **e-Seal certificate** 
 
 (= Go `eid.IsSealCertificate` = validator `sealCertificate`; the citizen SIGN certificate has `digitalSignature` set, so
 it is never an e-Seal certificate.) A certificate that cannot be parsed is not an e-Seal certificate. e-Seal certificate
-→ seal stamp (§6.2); any other certificate → citizen stamp (§3), byte-identical to golden v3–v9.
+→ seal stamp (§6.2 or §6.5); any other certificate → citizen stamp (§3), byte-identical to golden v3–v9. Whether a seal
+stamp carries a QR is the writer's choice (§6.5 «Writers»), never a function of the certificate; a validator recognises
+it by the marker (§6.3).
 The stamp variant follows this rule only, and may differ from the validator's `certificate.usage` label: a certificate
 with keyUsage = nonRepudiation only plus an extendedKeyUsage extension of unrecognised purposes is labelled `"seal"` by
 the usage classifier but is **not** an e-Seal certificate here, so it draws (and is validated against) the citizen stamp.
@@ -223,19 +227,50 @@ Example (golden `seal-visible`, 220 × 64 pt, `TEST ONLY Golden Org LLC`, mn): f
 
 ### 6.3 Validator (own-signer profile) — changes to §5
 
-The variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`, computed in Extract from the CMS leaf):
+The certificate variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`, computed in Extract from
+the CMS leaf). Let `data` be the form XObject's stream data **as stored**: exactly the `/Length` bytes that follow
+`stream` + EOL (never a scan to `endstream`), not decoded whatever `/Filter` says — eID writers never set a filter. A
+`/Filter` entry that is absent or a **direct `null`** counts as absent (a direct null is the same as no entry); any other
+`/Filter` — an indirect reference (even one resolving to null), `[]`, or a name — fails step 7 (the regenerated
+dictionary has none). §5 step 6 reads the same bytes.
 
-- **Not an e-Seal certificate** → §5 unchanged (citizen stamp; the form must start with the `/EIDVerify` BDC line).
-- **e-Seal certificate** → §5 steps 1–5 and 8–10 unchanged; step 6 is **skipped** (no BDC / URL / revIndex / docId check —
-  the seal stamp has none); step 7 regenerates `AppearanceObjects({W, H, Rotate, Name: /Name, Date, Lang, seal})` (no
-  Role, no URL) for `lang ∈ {mn, en}` and requires all 11 objects to be equal for one language.
-- Fail closed: a citizen certificate whose revision carries a seal stamp, and an e-Seal certificate whose revision
-  carries a citizen stamp, do not match → `errNotSignatureOnly` → every earlier signature `modified_after_signing`
-  (golden validate cases `seal-stamp-citizen-cert`, `citizen-stamp-seal-cert`). The broad (test-only) profile does not
-  regenerate stamps and is unchanged.
+- **Not an e-Seal certificate** → §5 unchanged (citizen stamp; `data` must start with the `/EIDVerify` BDC line; Role =
+  the CMS claimedRole).
+- **e-Seal certificate, `data` begins with the 10 bytes `/EIDVerify`** → **QR seal stamp** (§6.5, golden v13): §5 steps
+  1–10 all apply. Step 6 in full: `data` must match the step-6 regex at offset 0, its `<rev>` must equal this
+  signature's revIndex, and when the document has a verify-page link its `<uuid>` must equal that link's docId. Step 7
+  regenerates `AppearanceObjects({W, H, Rotate, Name: /Name, Date, URL: https://ca.eidmongolia.mn/verify/<uuid>/<rev>
+  (from the marker), Lang, seal, Role: ""})` for `lang ∈ {mn, en}` — the CMS claimedRole is **ignored** (step 4 still
+  requires 0 or exactly 1 claimedRole value), so a stamp that draws a role line does not match.
+- **e-Seal certificate, `data` does not begin with `/EIDVerify`** → **QR-less seal stamp** (§6.2, golden v12): step 6 is
+  skipped (no URL / revIndex / docId check — the stamp has none); step 7 regenerates `AppearanceObjects({W, H, Rotate,
+  Name: /Name, Date, Lang, seal})` (no Role, no URL).
+- In both seal cases all 11 objects must be equal for one language. **The marker decides; there is no fallback**: a
+  stream that starts with `/EIDVerify` is checked only as the QR seal stamp and one that does not only as the QR-less
+  stamp — a failure is never retried as the other variant.
+- Fail closed: any mismatch → `errNotSignatureOnly` → every earlier signature `modified_after_signing`. Golden validate
+  negatives (each a second B-B signature on `golden/output/quartz-pdf13.pdf`): v12 `seal-stamp-citizen-cert` (citizen
+  certificate + QR-less seal stamp), `citizen-stamp-seal-cert` (e-Seal certificate + citizen stamp — the marker sends it
+  to the QR seal path, where the label differs); v13 `seal-qr-citizen-cert` (citizen certificate + QR seal stamp),
+  `seal-qr-with-role` (e-Seal certificate, CMS claimedRole, QR seal stamp drawn with the role line), `seal-qr-wrong-rev`
+  (marker `…/3` on signature 2), `seal-qr-docid-vs-page` (marker docId ≠ the verify-page docId),
+  `seal-v12-with-marker` (the correct marker line, then the QR-less seal content, then `EMC`), `seal-qr-height-44pt`
+  (a 220 × 44 pt QR seal stamp drawn with 0.97 pt modules — §6.5 requires ≥ 45 pt), `seal-marker-not-at-start` (a
+  QR-less seal stream with the marker line after its first line → QR-less path, mismatch), `seal-qr-flate` (the QR seal
+  stream FlateDecode-compressed with `/Filter /FlateDecode` → `data` does not start with the marker, QR-less path,
+  mismatch), `seal-qr-marker-crlf` (`BDC\r\n`), `seal-qr-uuid-uppercase` (uppercase uuid, on a document without a verify
+  page), `seal-qr-rev-02` (rev written `02`). Each negative differs in one field from a passing control built by the
+  same generator: `seal-qr-control` (on `quartz-pdf13`), `seal-qr-control-nopage` (on `quartz-pdf13-nopage`, for the
+  uppercase case). The broad (test-only) profile does not regenerate stamps and is unchanged.
+- **Not tightened:** the docIds of different stamps are **not** compared with each other — only each stamp's marker
+  against the verify-page link, when the document has one. Two stamps carrying different docIds (a citizen with a
+  caller-supplied docId after a QR-less seal; files from writers before §6.6) are not tampering: each QR leads to its
+  own signer's record. Golden validate positive `sealv12-then-citizen`; Go test `TestOwnVisibleSealQR`.
 - **Compatibility:** validators that implement only §5 (CA `/v3/validate/pdf` and the TS SDK before their seal-stamp
-  release) report a revision with a seal stamp as a modification of every earlier signature. Writers must not emit
-  the seal stamp to relying parties until those validators implement §6.3.
+  release) report a revision with any seal stamp as a modification of every earlier signature; validators that
+  implement the v12 version of this section (QR-less only) do the same for a QR seal stamp. Writers must not emit the
+  QR-less seal stamp until validators implement §6.3 (v12), and **must not emit the QR seal stamp until the CA and TS
+  validators implement this version (§6.5)**.
 
 ### 6.4 SealPDF default (Go `pades.SealOptions`)
 
@@ -252,3 +287,106 @@ The variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`,
   when the automatic stamp's fonts (~82 KB) push the prepared file over the size limit (`PDF_TOO_LARGE`); an explicit
   `appearance` still returns `REQUEST_INVALID` / `PDF_TOO_LARGE`.
 - The result is `Completed.placement` (null when invisible).
+- The stamp is always the QR-less seal stamp (§6.2): `SealPDF` has no option for §6.5 in this release, and its output is
+  byte-identical to golden v12 (`seal-visible`, `seal-visible-en` DTBS — Go test `TestSealPDFStillQRless`).
+
+### 6.5 Seal stamp with QR — golden v13
+
+The QR seal stamp is the **citizen stamp of §3** with exactly three differences:
+
+1. **Label**: the seal label of §6.2 — mn `eID Mongolia-аар тамгалсан`, en `Sealed with eID Mongolia` (F1, size `b`,
+   colour `0.086 0.541 0.31`, in the label line's place).
+2. **No role line, ever**: §3 step 2 runs with role = "" even when the CMS carries a claimedRole (whatever the caller
+   passes as `claimedRole`; the claimedRole itself still goes into signedAttrs as usual).
+3. **Name** = `trim(/Name)` as in §6.2 (SealPDF: the certificate's GIVENNAME SURNAME, else its CN, unless `signerName`).
+
+Everything else is §3 byte for byte: `url = https://ca.eidmongolia.mn/verify/<docId>/<rev>` (`<rev>` = PRECHECKS #6 — the
+signature's position in the file; `<docId>` = §6.6); `qr = QR(url)` (PAGE_SPEC §7, mask 0); `mod = floor((H − 2·pad) / n)`,
+`mod < 100` → `REQUEST_INVALID` (for the 71/72-byte URL, n = 37: H ≥ 45 pt); `tx = pad + mod·n + gap`, `tw = W − tx −
+pad`; lines in this order — name (F2, f, ≤ 2 lines), label (F1, b), date (F1, b) — with the first f in 11…7 that fits
+(§3 fit rule, evaluated with the seal label); the operations of §3 step 3 in the same order: the content starts with
+`/EIDVerify <</URL (<url>)>> BDC`, then the rotation `q`/`cm` (rot ≠ 0), the frame, the QR block (`q <mod> 0 0 <mod>
+<pad> <floor((H − mod·n)/2)> cm` … `Q`), the text lines at `x = tx`, the closing `Q` (rot ≠ 0), and ends with `EMC`. Form
+dictionary, widget, 11 objects: §2. Placement: PLACEMENT_SPEC, unchanged.
+
+Equivalently, whenever the citizen label and the seal label fit at the same f (every golden case): `content(QR seal, p)
+= content(citizen, p with role "")` with the label line's `<GGGG…>` replaced by the glyphs of the seal label (Go test
+`core.TestSealQRContent`, rot 0/90/180/270, mn/en).
+
+Example (golden `seal-qr-visible`, 220 × 64 pt, `TEST ONLY Golden Org LLC`, mn, docId `8c9d0e1f-…`, rev 1): first line
+`/EIDVerify <</URL (https://ca.eidmongolia.mn/verify/8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f/1)>> BDC`, `mod = 1.51`,
+`q 1.51 0 0 1.51 4 4.06 cm`, `tx = 63.87`, f = 11: `BT /F2 11 Tf 63.87 39.13 Td` (name), `BT /F1 9 Tf 63.87 27.38 Td`
+(seal label), `BT /F1 9 Tf 63.87 16.13 Td` (date).
+
+**Writers.** The QR promises that `/verify/<docId>/<rev>` resolves, so a QR seal stamp may only be emitted by a writer
+that registers the seal. In this release no public API emits it: Go has only an unexported Prepare option, used by the
+golden cases marked `"sealQr": true` in `testdata/golden/manifest.json` (ports enable the variant internally for those
+cases). **Writers must not emit the QR seal stamp until the CA and TS validators ship §6.5 / §6.3.** The QR-less stamp
+(§6.2) stays valid forever — real documents carry it.
+
+Golden v13 (prepare/complete): `seal-qr-visible` (unsigned 2-page contract, no verify page, mn), `seal-qr-visible-en`,
+`seal-qr-rotated90` (`/Rotate 90`), `citizen-then-seal-qr` (docId from the citizen's verify page),
+`seal-qr-then-citizen` (the citizen reuses the seal's docId, §6.6 step 2.2), `seal-qr-then-seal-qr`,
+`sealv12-then-citizen` (QR-less seal first, then a citizen with a caller-supplied docId, §6.6 step 3).
+
+### 6.6 docId resolution in Prepare (all signers)
+
+Runs after the prechecks (PRECHECKS #1–#10), before the verify page and the stamp are built. "Signed" = PRECHECKS #6
+found at least one signature; "verified signatures" = the signature dictionaries (by object number) that PRECHECKS #6
+found and #8–#10 accepted; a verified signature's **position** = 1 + the number of verified signatures with a smaller
+`ByteRange[2] + ByteRange[3]` (= its revIndex, PRECHECKS #6 / §5 step 6). `opts.docId`, when given, must be lowercase
+hex `8-4-4-4-12` (`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`; version/variant nibbles are not
+checked), else `REQUEST_INVALID` (unchanged).
+
+1. **Unsigned document**: `opts.docId` if given, else a fresh random UUID (16 random bytes, `b[6] = b[6] & 0x0f | 0x40`,
+   `b[8] = b[8] & 0x3f | 0x80`, lowercase hex `8-4-4-4-12`) — unchanged. This is the **only** case that generates one.
+2. **Signed document** — the first of these that yields a value is the *found* docId:
+   1. the **verify-page link**: the first dictionary (xref in object-number order, each in-use object read with the
+      generation its xref entry records) with `/Subtype /Link` whose `/A /URI` is `https://ca.eidmongolia.mn/verify/` +
+      a lowercase UUID (unchanged, PRECHECKS);
+   2. else **`docIdFromStamps` — the marked stamp of a verified e-Seal signature.** Only verified signatures whose
+      signer certificate is an e-Seal certificate (§6.1) are sources; a citizen signature's stamp never is (so a
+      document carrying only citizen signatures resolves exactly as in v0.30.0). Walk the same xref the same way. A
+      *widget* is a dictionary whose **own** entries (not inherited from a parent field) are `/FT /Sig` and a `/V` that
+      is an **indirect reference** to one of those e-Seal signature dictionaries (a direct `/V` dictionary, or a
+      reference to anything else, is ignored). An e-Seal signature with **more than one** widget is ignored entirely
+      (one widget per signature, as the validator maps widgets to signatures; a forged widget cannot borrow a genuine
+      `/V`). For a signature with exactly one widget: its `/AP` must resolve to a dictionary whose `/N` resolves to a
+      stream whose `/Filter` is **absent or a direct `null`** (an indirect reference — even one resolving to null —,
+      `[]`, or any name → no candidate; the same rule as §6.3); read the first ≤ 128 bytes of the stream's **`/Length`
+      bytes** (as stored, never a scan to `endstream`); if they match the §5 step-6 regex at offset 0 **and the
+      regex's `<rev>` equals that signature's position**, the signature is a candidate with the regex's `<uuid>`. The
+      docId is the candidate with the smallest `ByteRange[2] + ByteRange[3]` of its signature dictionary (the
+      earliest-signed marked seal stamp — object numbers and xref order do not matter); on a tie, the lower signature
+      object number. Stamps without the marker (QR-less seal stamps) and invisible signatures yield no candidate. A
+      failure reading a candidate's own `/AP`, `/N`, `/Length` or stream bytes fails the whole Prepare with
+      `PDF_INVALID` — a candidate found before the failure is never used (fail closed); the rest of the walk is the
+      PRECHECKS #6 scan, which already succeeded.
+      Step 2.2 is a **hint for choosing the docId, not proof of anything**: the widget is read from the latest xref and
+      can be redefined after signing. Correctness is enforced by the validator (§6.3; and by `Complete`'s
+      self-validation), not by this lookup.
+
+   A found docId and a given, different `opts.docId` → `REQUEST_INVALID`; otherwise the found docId is used — for every
+   signer, visible or **invisible** (an invisible signature on a document with a marked e-Seal stamp and no verify page
+   now gets the stamp's docId; before, it got `opts.docId` or "").
+3. Else (signed, nothing found): `opts.docId` if the caller supplied one — an explicit opt-in: the caller takes
+   responsibility for registering that docId. With today's production CA such a docId on a signed document will not
+   resolve (registration at rev > 1 needs an existing record, `DOC_NOT_FOUND`) until the CA can create a record at
+   rev > 1;
+4. else the docId stays **empty** (`Prepared.docId = ""`). **No random docId is generated on a signed document**: today's
+   production CA rejects a rev > 1 registration for an unknown docId (`DOC_NOT_FOUND`), so the QR could never resolve.
+   A signature that draws a QR (citizen stamp, §6.5 seal stamp) with an empty docId is `REQUEST_INVALID` (exactly as
+   v0.30.0); an invisible signature or a QR-less seal stamp proceeds with the empty docId.
+
+The verify page is still added only to unsigned documents; this rule never adds one. Effect: a citizen can sign a
+seal-first document visibly when the seal has a QR (reusing its docId — golden `seal-qr-then-citizen`); after a QR-less
+seal only with a caller-supplied docId (`sealv12-then-citizen`), otherwise `REQUEST_INVALID` as before. The CA-side
+registry change that allows creating a record at rev > 1 ships later; the default of step 4 may be widened then. No
+earlier golden changes: every earlier signed input has a verify page or only an invisible prior signature. PLACEMENT_SPEC
+§1a is evaluated with the resolved docId exactly as before; steps 2.2–4 apply only when step 2.1 found no verify-page
+link. Step 2.2 stays dormant for documents signed only by citizens, and until QR seal stamps ship together with CA
+registration. Go: `resolveDocID` (`pades/prepare.go`), `docIDFromStamps` (`pades/verify.go`), `stampSources`
+(`pades/precheck.go`: e-Seal signatures → position); tests `TestResolveDocID`, `TestDocIDFromStampsEarliest` (synthetic:
+earlier stamp has the higher object numbers; wrong marker rev; citizen signature; direct, borrowed and unverified `/V`;
+`/Filter []`, name, direct and indirect null), `TestCitizenOnlyDocIDUnchanged`, `TestPrepareDocIDRule`,
+`TestAppearanceRejects`.
