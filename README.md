@@ -1072,8 +1072,11 @@ self-validation. Баталгаажуулалтын (QR) хуудасгүй — 
 тодорхойлолт) уншуулж шалгах боломжтой болгоно. **Энэ хувилбар зөвхөн шалгагчдад (`pades.ValidatePDF`, `Complete`-ийн
 self-validation) QR-тэй тамгыг таниулна; бичигч (`SealPDF`) QR-гүй дардас гаргасаар** (v0.30.0-тэй байт-ижил), QR-ийн нийтийн
 сонголт алга — тамганы бүртгэлтэй хамт дараагийн хувилбарт. CA ба TS шалгагч §6.5-ыг гаргахаас өмнө QR-тэй тамга бүү
-гарга. QR-гүй дардас үүрд хүчинтэй. Мөн `Prepare`-ийн docId (§6.6): verify хуудасгүй, тамгатай баримтад иргэн харагдах
-гарын үсэг зурж чадна — тамга QR-тэй бол түүний docId-г, QR-гүй бол шинэ docId (өмнө нь `REQUEST_INVALID`).
+гарга. QR-гүй дардас үүрд хүчинтэй. Мөн `Prepare`-ийн docId (§6.6): verify хуудасгүй баримтад QR-тэй (маркертай) дардас
+байвал түүний docId-г авна — харагдах ба **үл харагдах** гарын үсэгт ч (өмнө нь үл харагдах нь `opts.docId` эсвэл хоосон
+авдаг байв), өөр `opts.docId` өгвөл `REQUEST_INVALID`. Гарын үсэгтэй баримтад санамсаргүй docId үүсгэхгүй: QR-гүй
+тамгын дараа иргэн харагдах гарын үсэг зурахад `opts.docId` (дуудагч өөрөө бүртгэнэ) заавал, эс бөгөөс `REQUEST_INVALID`
+хэвээр.
 
 Шалгагч (`pades.ValidatePDF`, CA
 `/v3/validate/pdf`) энэ гарын үсгийг `certificate.usage = "seal"` гэж ангилна — хэрэглэгчид «Байгууллагын тамга» гэж
@@ -1130,8 +1133,10 @@ digitorus pkcs7/timestamp and `golang.org/x/text`).
   until they are updated. **Unreleased:** validators also accept the seal stamp **with QR** (APPEARANCE_SPEC §6.5 — the
   citizen layout with the seal label and no role line). This release only teaches validators the QR seal stamp;
   writers (`SealPDF`) still emit the QR-less stamp and there is no public option for the QR yet — it must not be emitted
-  until the CA and TS validators ship §6.5. `Prepare`'s docId (§6.6) now also comes from the earliest QR stamp, so a
-  citizen can sign visibly after a seal (a fresh docId after a QR-less seal) instead of getting `REQUEST_INVALID`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
+  until the CA and TS validators ship §6.5. `Prepare`'s docId (§6.6) on a signed document without a verify page now
+  comes from the earliest verified QR stamp — for visible **and invisible** signatures (invisible ones used to get
+  `opts.docId` or ""); a different `opts.docId` is `REQUEST_INVALID`. No random docId is generated on a signed
+  document: after a QR-less seal a visible citizen signature still needs a caller-supplied `docId`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
   approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
   `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`). The operator can switch
   issuance and sealing off platform-wide: `RequestCertificate` / `Seal` / `pades.SealPDF` then fail with

@@ -16,39 +16,42 @@ import (
 )
 
 // precheck — PRECHECKS.md-ийн «хөнгөн» шалгуур (validator-гүй; native SDK-ууд яг ижлээр давтана). Буцаах: шинэ баримт
-// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex. issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
-func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, err error) {
+// эсэх (гарын үсгийн объект алга), энэ гарын үсгийн revIndex, шалгасан гарын үсгийн толины объектын дугаарууд
+// (APPEARANCE_SPEC.md §6.6 docIdFromStamps). issuers — eID олгогч CA (04/05 + signer-ийн олгогч).
+func precheck(doc []byte, issuers []*x509.Certificate) (newDoc bool, revIndex int, verified map[uint32]bool, err error) {
 	if encrypted(doc) {
-		return false, 0, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
+		return false, 0, nil, newErr(CodePDFEncrypted, "шифрлэгдсэн PDF дэмжигдэхгүй", nil)
 	}
 	sigs, locked, hasDSS, err := scanSignatures(doc)
 	if err != nil {
-		return false, 0, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", err)
+		return false, 0, nil, newErr(CodePDFInvalid, "PDF биш эсвэл эвдэрсэн", err)
 	}
 	if len(sigs) == 0 {
-		return true, 1, nil
+		return true, 1, nil, nil
 	}
 	if len(sigs) >= MaxSignatures {
-		return false, 0, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
+		return false, 0, nil, newErr(CodePDFTooManySignatures, "баримтад хэт олон гарын үсэг байна", nil)
 	}
 	leaves := make([]*x509.Certificate, len(sigs))
 	stamped := make([]bool, len(sigs))
 	for i, s := range sigs {
 		leaf, ts, err := checkPriorSignature(doc, s)
 		if err != nil {
-			return false, 0, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
+			return false, 0, nil, newErr(CodePDFPriorSignatureInvalid, "өмнөх гарын үсэг хүчингүй", err)
 		}
 		leaves[i], stamped[i] = leaf, ts
 	}
 	if locked {
-		return false, 0, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
+		return false, 0, nil, newErr(CodePDFLocked, "баримт certification (DocMDP P=1) гарын үсгээр түгжигдсэн", nil)
 	}
+	verified = make(map[uint32]bool, len(sigs))
 	for i, s := range sigs {
 		if s.subFilter != "ETSI.CAdES.detached" || !issuedByAny(leaves[i], issuers) || !stamped[i] || !hasDSS {
-			return false, 0, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
+			return false, 0, nil, newErr(CodePDFForeignSignature, "баримтад eID-ийн биш гарын үсэг байна", nil)
 		}
+		verified[s.obj] = true
 	}
-	return false, len(sigs) + 1, nil
+	return false, len(sigs) + 1, verified, nil
 }
 
 type sigDict struct {

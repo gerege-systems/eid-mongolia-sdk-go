@@ -228,8 +228,10 @@ Example (golden `seal-visible`, 220 × 64 pt, `TEST ONLY Golden Org LLC`, mn): f
 ### 6.3 Validator (own-signer profile) — changes to §5
 
 The certificate variant is chosen from the signature's certificate by §6.1 (`sigMeta.seal`, computed in Extract from
-the CMS leaf). Let `data` be the form XObject's stream data **as stored in the file** (the bytes between `stream` + EOL
-and `endstream`, not decoded — eID writers never compress it; §5 step 6 reads the same bytes).
+the CMS leaf). Let `data` be the form XObject's stream data **as stored**: exactly the `/Length` bytes that follow
+`stream` + EOL (never a scan to `endstream`), not decoded whatever `/Filter` says — eID writers never set a filter, and a
+`/Filter` entry anywhere in the form dictionary already fails step 7 (the regenerated dictionary has none). §5 step 6
+reads the same bytes.
 
 - **Not an e-Seal certificate** → §5 unchanged (citizen stamp; `data` must start with the `/EIDVerify` BDC line; Role =
   the CMS claimedRole).
@@ -252,12 +254,17 @@ and `endstream`, not decoded — eID writers never compress it; §5 step 6 reads
   `seal-qr-with-role` (e-Seal certificate, CMS claimedRole, QR seal stamp drawn with the role line), `seal-qr-wrong-rev`
   (marker `…/3` on signature 2), `seal-qr-docid-vs-page` (marker docId ≠ the verify-page docId),
   `seal-v12-with-marker` (the correct marker line, then the QR-less seal content, then `EMC`), `seal-qr-height-44pt`
-  (a 220 × 44 pt QR seal stamp drawn with 0.97 pt modules — §6.5 requires ≥ 45 pt). The broad (test-only) profile does
-  not regenerate stamps and is unchanged.
+  (a 220 × 44 pt QR seal stamp drawn with 0.97 pt modules — §6.5 requires ≥ 45 pt), `seal-marker-not-at-start` (a
+  QR-less seal stream with the marker line after its first line → QR-less path, mismatch), `seal-qr-flate` (the QR seal
+  stream FlateDecode-compressed with `/Filter /FlateDecode` → `data` does not start with the marker, QR-less path,
+  mismatch), `seal-qr-marker-crlf` (`BDC\r\n`), `seal-qr-uuid-uppercase` (uppercase uuid, on a document without a verify
+  page), `seal-qr-rev-02` (rev written `02`). Each negative differs in one field from a passing control built by the
+  same generator: `seal-qr-control` (on `quartz-pdf13`), `seal-qr-control-nopage` (on `quartz-pdf13-nopage`, for the
+  uppercase case). The broad (test-only) profile does not regenerate stamps and is unchanged.
 - **Not tightened:** the docIds of different stamps are **not** compared with each other — only each stamp's marker
-  against the verify-page link, when the document has one. Two stamps carrying different docIds (a citizen with a fresh
-  docId after a QR-less seal; files from writers before §6.6) are not tampering: each QR leads to its own signer's
-  record. Golden validate positive `sealv12-then-citizen`; Go test `TestOwnVisibleSealQR`.
+  against the verify-page link, when the document has one. Two stamps carrying different docIds (a citizen with a
+  caller-supplied docId after a QR-less seal; files from writers before §6.6) are not tampering: each QR leads to its
+  own signer's record. Golden validate positive `sealv12-then-citizen`; Go test `TestOwnVisibleSealQR`.
 - **Compatibility:** validators that implement only §5 (CA `/v3/validate/pdf` and the TS SDK before their seal-stamp
   release) report a revision with any seal stamp as a modification of every earlier signature; validators that
   implement the v12 version of this section (QR-less only) do the same for a QR seal stamp. Writers must not emit the
@@ -319,39 +326,50 @@ cases). **Writers must not emit the QR seal stamp until the CA and TS validators
 Golden v13 (prepare/complete): `seal-qr-visible` (unsigned 2-page contract, no verify page, mn), `seal-qr-visible-en`,
 `seal-qr-rotated90` (`/Rotate 90`), `citizen-then-seal-qr` (docId from the citizen's verify page),
 `seal-qr-then-citizen` (the citizen reuses the seal's docId, §6.6 step 2.2), `seal-qr-then-seal-qr`,
-`sealv12-then-citizen` (QR-less seal first, then a citizen with a fresh docId).
+`sealv12-then-citizen` (QR-less seal first, then a citizen with a caller-supplied docId, §6.6 step 3).
 
 ### 6.6 docId resolution in Prepare (all signers)
 
 Runs after the prechecks (PRECHECKS #1–#10), before the verify page and the stamp are built. "Signed" = PRECHECKS #6
-found at least one signature.
+found at least one signature; "verified signatures" = the signature dictionaries (by object number) that PRECHECKS #6
+found and #8–#10 accepted.
 
-1. **Unsigned document**: `opts.docId` if given, else a fresh random UUID (unchanged).
+1. **Unsigned document**: `opts.docId` if given, else a fresh random UUID (16 random bytes, `b[6] = b[6] & 0x0f | 0x40`,
+   `b[8] = b[8] & 0x3f | 0x80`, lowercase hex `8-4-4-4-12`) — unchanged. This is the **only** case that generates one.
 2. **Signed document** — the first of these that yields a value is the *found* docId:
    1. the **verify-page link**: the first dictionary (xref in object-number order, each in-use object read with the
       generation its xref entry records) with `/Subtype /Link` whose `/A /URI` is `https://ca.eidmongolia.mn/verify/` +
       a lowercase UUID (unchanged, PRECHECKS);
-   2. else **`docIdFromStamps`**: walk the same xref the same way; a candidate is a dictionary with `/FT /Sig` whose
-      `/V` resolves to a dictionary with `/Contents` and a 4-element `/ByteRange` whose elements [2] and [3] are
-      integers in `0 … file length`, whose `/AP` resolves to a dictionary whose `/N` resolves to a stream **without
-      `/Filter`**, and whose stream data (as stored; the first ≤ 128 bytes) matches the §5 step-6 regex at offset 0.
-      The docId is the regex's `<uuid>` of the candidate with the smallest `ByteRange[2] + ByteRange[3]` (the
-      earliest-signed marked stamp; on a tie the first found). Stamps without the marker (QR-less seal stamps) and
-      invisible signatures are skipped.
+   2. else **`docIdFromStamps`**. Walk the same xref the same way. A *widget* is a dictionary with `/FT /Sig` whose `/V`
+      is an **indirect reference** to one of the verified signature dictionaries (a direct `/V` dictionary, or a
+      reference to anything else, is ignored). A verified signature with **more than one** widget is ignored entirely
+      (one widget per signature, as the validator maps widgets to signatures; a forged widget cannot borrow a genuine
+      `/V`). For a signature with exactly one widget: its `/AP` must resolve to a dictionary whose `/N` resolves to a
+      stream whose `/Filter` is **absent or `null`** (any other value — a name, or an array, even the empty array `[]` —
+      → no candidate); read the first ≤ 128 bytes of the stream's **`/Length` bytes** (as stored, never a scan to
+      `endstream`); if they match the §5 step-6 regex at offset 0, the signature is a candidate with the regex's
+      `<uuid>`. The docId is the candidate with the smallest `ByteRange[2] + ByteRange[3]` of its signature dictionary
+      (the earliest-signed marked stamp — object numbers and xref order do not matter); on a tie, the lower signature
+      object number. Stamps without the marker (QR-less seal stamps) and invisible signatures yield no candidate.
+      **A read/parse failure anywhere in this walk fails the whole Prepare with `PDF_INVALID`** — a candidate found
+      before the failure is never used (fail closed).
 
-   A found docId with a given, different `opts.docId` → `REQUEST_INVALID`; otherwise the found docId is used.
-3. Else (signed, nothing found): `opts.docId` if given;
-4. else, when this signature draws a QR (a citizen visible stamp, or a §6.5 seal stamp) → a fresh random UUID — **new:
-   also on a document that already has signatures** (before, a citizen visible stamp there was `REQUEST_INVALID`
-   «docId required»); otherwise (an invisible signature, or a QR-less seal stamp) the docId stays empty
-   (`Prepared.docId = ""`, as before).
+   A found docId and a given, different `opts.docId` → `REQUEST_INVALID`; otherwise the found docId is used — for every
+   signer, visible or **invisible** (an invisible signature on a document with a marked stamp and no verify page now
+   gets the stamp's docId; before, it got `opts.docId` or "").
+3. Else (signed, nothing found): `opts.docId` if the caller supplied one — an explicit opt-in: the caller takes
+   responsibility for registering that docId;
+4. else the docId stays **empty** (`Prepared.docId = ""`). **No random docId is generated on a signed document**: today's
+   production CA rejects a rev > 1 registration for an unknown docId (`DOC_NOT_FOUND`), so the QR could never resolve.
+   A signature that draws a QR (citizen stamp, §6.5 seal stamp) with an empty docId is `REQUEST_INVALID` (exactly as
+   v0.30.0); an invisible signature or a QR-less seal stamp proceeds with the empty docId.
 
-Random UUID = 16 random bytes, `b[6] = b[6] & 0x0f | 0x40`, `b[8] = b[8] & 0x3f | 0x80`, lowercase hex `8-4-4-4-12`.
 The verify page is still added only to unsigned documents; this rule never adds one. Effect: a citizen can sign a
-seal-first document visibly — reusing the seal's docId when the seal has a QR (golden `seal-qr-then-citizen`), with a
-fresh one after a QR-less seal (`sealv12-then-citizen`; the golden passes `docId` so the output is deterministic). No
+seal-first document visibly when the seal has a QR (reusing its docId — golden `seal-qr-then-citizen`); after a QR-less
+seal only with a caller-supplied docId (`sealv12-then-citizen`), otherwise `REQUEST_INVALID` as before. The CA-side
+registry change that allows creating a record at rev > 1 ships later; the default of step 4 may be widened then. No
 earlier golden changes: every earlier signed input has a verify page or only an invisible prior signature. PLACEMENT_SPEC
 §1a is evaluated with the resolved docId exactly as before; steps 2.2–4 apply only when step 2.1 found no verify-page
-link (so, in documents written by eID writers, there is no verify page to skip).
-Go: `resolveDocID` (`pades/prepare.go`), `docIDFromStamps` (`pades/verify.go`); tests `TestResolveDocID`,
-`TestDocIDFromStampsEarliest`, `TestPrepareDocIDRule`.
+link. Go: `resolveDocID` (`pades/prepare.go`), `docIDFromStamps` (`pades/verify.go`, verified set from `precheck`);
+tests `TestResolveDocID`, `TestDocIDFromStampsEarliest` (synthetic: earlier stamp has the higher object numbers; direct
+`/V`, borrowed `/V`, unverified `/V`, `/Filter []` vs `null`), `TestPrepareDocIDRule`, `TestAppearanceRejects`.

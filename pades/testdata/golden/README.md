@@ -81,8 +81,8 @@ reference-тэй **ижил байт** гаргаж байгааг шалган�
   2-page contract, no verify page, `docId` from options, mn), `seal-qr-visible-en` (1 page), `seal-qr-rotated90`
   (`/Rotate 90`), `citizen-then-seal-qr` (on `quartz-pdf13-visible`; docId from its verify page, rev 2). Citizen after
   a seal (§6.6): `seal-qr-then-citizen` (no `docId` in options — taken from the seal stamp's `/EIDVerify` marker),
-  `sealv12-then-citizen` (on the QR-less `seal-visible`: nothing to find, `docId` from options; the two stamps carry
-  different docIds); and `seal-qr-then-seal-qr` (en). Generated with `go test ./pades -run '^TestGolden$' -update` on the
+  `sealv12-then-citizen` (on the QR-less `seal-visible`: nothing to find, `docId` from options — required, no random
+  docId on a signed document; the two stamps carry different docIds); and `seal-qr-then-seal-qr` (en). Generated with `go test ./pades -run '^TestGolden$' -update` on the
   CI runner (PR #68).
 - `placement/` — scanner conformance: `vectors.json` (exact occupancy box list + chosen position per input/request) and
   `placement/input/*.pdf` (one fixture per scanner rule). Native SDKs sync this folder too.

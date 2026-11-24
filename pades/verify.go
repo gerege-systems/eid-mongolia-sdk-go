@@ -3,6 +3,7 @@ package pades
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"regexp"
@@ -88,32 +89,54 @@ var stampMarkerRe = regexp.MustCompile(`^/EIDVerify <</URL \(https://ca\.eidmong
 // stampMarkerMax — маркерын мөрийн дээд урт (байт; 99 + нөөц) — form stream-ээс уншина.
 const stampMarkerMax = 128
 
-// docIDFromStamps — Prepare-ийн docId дүрмийн 2-р алхам (APPEARANCE_SPEC.md §6.6): баримтын хамгийн ЭРТ зурсан,
-// /EIDVerify тэмдэгтэй дардасны docId. Нэр дэвшигч = (сүүлийн revision-ий xref-ийн объектын дугаарын дарааллаар)
-// `/FT /Sig` толь; `/V` → `/Contents`-тэй, `/ByteRange` нь 4 элементтэй, [2] ба [3] нь 0…файлын урт бүхэл тоо бүхий толь;
-// `/AP` → толь, `/N` → `/Filter`-гүй stream; stream-ийн түүхий байт stampMarkerRe-ээр эхэлнэ. Хамгийн бага
-// ByteRange[2] + ByteRange[3] (тэнцвэл эхэнд олдсон) нь сонгогдоно. Алга эсвэл задрахгүй → "".
-func docIDFromStamps(doc []byte) (id string) {
+// docIDFromStamps — Prepare-ийн docId дүрмийн 2.2-р алхам (APPEARANCE_SPEC.md §6.6): precheck-ийн криптограф шалгасан
+// гарын үсгүүдийн (verified — Sig толины объектын дугаар) хамгийн ЭРТ зурсан, /EIDVerify тэмдэгтэй дардасны docId.
+// Widget = сүүлийн revision-ий xref-ийн (объектын дугаарын дарааллаар, xref-ийн үетэй) `/FT /Sig` толь, `/V` нь
+// verified-ийн аль нэг толь руу ШУУД БУС лавлагаа. Гарын үсэг бүрт яг НЭГ widget байх ёстой — 2+ widget (зээлсэн /V)
+// бол тэр гарын үсгийг бүхэлд нь алгасна. Widget-ийн `/AP` → толь, `/N` → stream, `/Filter` алга эсвэл null (бусад —
+// хоосон массив ч — алгасна); stream-ийн /Length байтын эхний ≤ 128 байт stampMarkerRe-ээр эхэлнэ. Хамгийн бага
+// ByteRange[2] + ByteRange[3] (тэнцвэл Sig толины объектын дугаар бага) нь сонгогдоно. Алга → "". Задлах явцад
+// алдаа гарвал (panic) аль хэдийн олдсоныг ч хаяж алдаа буцаана — Prepare PDF_INVALID (fail closed).
+func docIDFromStamps(doc []byte, verified map[uint32]bool) (id string, err error) {
 	defer func() {
-		if recover() != nil {
-			id = ""
+		if r := recover(); r != nil {
+			id, err = "", fmt.Errorf("PDF задлах: %v", r)
 		}
 	}()
+	if len(verified) == 0 {
+		return "", nil
+	}
 	r, err := pdf.NewReader(bytes.NewReader(doc), int64(len(doc)))
 	if err != nil {
-		return ""
+		return "", err
 	}
-	best := int64(math.MaxInt64)
+	type stamp struct {
+		widgets int
+		docID   string
+		end     int64
+	}
+	stamps := map[uint32]*stamp{}
 	for _, x := range r.Xref() {
 		v := r.Resolve(x.Ptr(), x.Ptr())
 		if v.Kind() != pdf.Dict || v.Key("FT").Name() != "Sig" {
 			continue
 		}
 		sig := v.Key("V")
-		br := sig.Key("ByteRange")
-		if sig.Kind() != pdf.Dict || sig.Key("Contents").IsNull() || br.Kind() != pdf.Array || br.Len() != 4 ||
-			br.Index(2).Kind() != pdf.Integer || br.Index(3).Kind() != pdf.Integer {
+		sp := sig.GetPtr()
+		// Шууд бус лавлагаа: шууд толь widget-ийн өөрийн ptr-тэй (extract.go-той ижил шалгалт).
+		if sig.Kind() != pdf.Dict || sp.GetID() == x.Ptr().GetID() || !verified[sp.GetID()] {
 			continue
+		}
+		s := stamps[sp.GetID()]
+		if s == nil {
+			s = &stamp{end: -1}
+			stamps[sp.GetID()] = s
+		}
+		if s.widgets++; s.widgets > 1 {
+			continue
+		}
+		if br := sig.Key("ByteRange"); br.Len() == 4 && br.Index(2).Kind() == pdf.Integer && br.Index(3).Kind() == pdf.Integer {
+			s.end = br.Index(2).Int64() + br.Index(3).Int64() // precheck #8: 0 ≤ b, c ≤ len(doc)
 		}
 		ap := v.Key("AP")
 		n := ap.Key("N")
@@ -121,14 +144,18 @@ func docIDFromStamps(doc []byte) (id string) {
 			continue
 		}
 		head, _ := io.ReadAll(io.LimitReader(n.Reader(), stampMarkerMax))
-		sm := stampMarkerRe.FindSubmatch(head)
-		b, c := br.Index(2).Int64(), br.Index(3).Int64()
-		if b < 0 || c < 0 || b > int64(len(doc)) || c > int64(len(doc)) {
-			continue
-		}
-		if end := b + c; sm != nil && end < best {
-			best, id = end, string(sm[1])
+		if sm := stampMarkerRe.FindSubmatch(head); sm != nil {
+			s.docID = string(sm[1])
 		}
 	}
-	return id
+	best, bestObj := int64(math.MaxInt64), uint32(0)
+	for obj, s := range stamps {
+		if s.widgets != 1 || s.docID == "" || s.end < 0 {
+			continue
+		}
+		if s.end < best || s.end == best && obj < bestObj {
+			best, bestObj, id = s.end, obj, s.docID
+		}
+	}
+	return id, nil
 }

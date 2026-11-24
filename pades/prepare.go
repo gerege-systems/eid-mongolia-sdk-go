@@ -187,14 +187,14 @@ func Prepare(doc []byte, o PrepareOptions) (*Prepared, error) {
 
 	inSum := sha256.Sum256(doc)
 	inHex := hex.EncodeToString(inSum[:])
-	newDoc, revIndex, err := precheck(doc, append(eidcrypto.Issuers(), chain[0]))
+	newDoc, revIndex, verified, err := precheck(doc, append(eidcrypto.Issuers(), chain[0]))
 	if err != nil {
 		return nil, err
 	}
 	seal := eid.IsSealCertificate(cert)
 	// QR-тэй дардас: иргэний дардас (§3) эсвэл QR-тэй тамга (§6.5).
 	drawsQR := o.Appearance != nil && (!seal || o.sealQR)
-	docID, err := resolveDocID(doc, newDoc, o.DocID, drawsQR)
+	docID, err := resolveDocID(doc, newDoc, verified, o.DocID)
 	if err != nil {
 		return nil, err
 	}
@@ -299,35 +299,39 @@ func roleText(s string) bool {
 	return utf8.ValidString(s)
 }
 
-// resolveDocID — Prepare-ийн docId (APPEARANCE_SPEC.md §6.6): (1) гарын үсэгтэй баримтын verify хуудасны холбоос;
-// (2) эс бөгөөс хамгийн эрт зурсан /EIDVerify тэмдэгтэй дардасных; (3) эс бөгөөс opts.docId (олдсонтой зөрвөл
-// REQUEST_INVALID); (4) алга бол гарын үсэггүй баримтад эсвэл QR зурах үед санамсаргүй UUID, бусад үед "".
-func resolveDocID(doc []byte, newDoc bool, given string, drawsQR bool) (string, error) {
-	found := ""
-	if !newDoc {
-		if found = docIDFromPage(doc); found == "" {
-			found = docIDFromStamps(doc)
+// resolveDocID — Prepare-ийн docId (APPEARANCE_SPEC.md §6.6). Гарын үсэггүй: opts.docId, эс бөгөөс санамсаргүй.
+// Гарын үсэгтэй: (1) verify хуудасны холбоос; (2) эс бөгөөс шалгасан гарын үсгийн хамгийн эрт зурсан /EIDVerify
+// тэмдэгтэй дардасных (verified — precheck); олдсонтой opts.docId зөрвөл REQUEST_INVALID; (3) эс бөгөөс opts.docId
+// (хоосон байж болно — QR зурах бол visibleSpec REQUEST_INVALID). Гарын үсэгтэй баримтад санамсаргүй docId ҮҮСГЭХГҮЙ:
+// CA одоогоор rev > 1-ийн бүртгэлийг үл мэдэгдэх docId-д татгалздаг (DOC_NOT_FOUND) — QR хэзээ ч шийдэгдэхгүй.
+func resolveDocID(doc []byte, newDoc bool, verified map[uint32]bool, given string) (string, error) {
+	if newDoc {
+		if given != "" {
+			return given, nil
+		}
+		return randUUID()
+	}
+	found := docIDFromPage(doc)
+	if found == "" {
+		var err error
+		if found, err = docIDFromStamps(doc, verified); err != nil {
+			return "", newErr(CodePDFInvalid, "PDF задарсангүй (гарын үсгийн дардас)", err)
 		}
 	}
-	if found != "" {
-		if given != "" && given != found {
-			return "", newErr(CodeRequestInvalid, "docId нь баримтын verify хуудас / дардас дээрхтэй таарахгүй", nil)
-		}
-		return found, nil
+	if found != "" && given != "" && given != found {
+		return "", newErr(CodeRequestInvalid, "docId нь баримтын verify хуудас / дардас дээрхтэй таарахгүй", nil)
 	}
-	if given != "" || !newDoc && !drawsQR {
-		return given, nil
-	}
-	return randUUID()
+	return cmp.Or(found, given), nil
 }
 
 // visibleSpec — Appearance → core.Visible: хуудас (0 → verify биш сүүлийн), h100, хэл, огноо, verify URL. seal (гарын
 // үсэг зурагчийн гэрчилгээ e-Seal) бол тамганы дардас (APPEARANCE_SPEC.md §6): qr бол QR-тэй (§6.5), эс бөгөөс URL-гүй
-// (§6.2). qr үед docId-г resolveDocID үргэлж өгнө.
+// (§6.2). qr бол docId заавал (гарын үсэгтэй баримтад verify хуудас, маркертай дардас, opts.docId-ийн аль нь ч алга →
+// REQUEST_INVALID, v0.30.0-тэй ижил).
 func visibleSpec(doc []byte, o PrepareOptions, name string, now time.Time, docID string, revIndex int, seal, qr bool) (core.Visible, error) {
 	a := o.Appearance
 	if docID == "" && qr {
-		return core.Visible{}, newErr(CodeRequestInvalid, "appearance: docId алга", nil)
+		return core.Visible{}, newErr(CodeRequestInvalid, "appearance: docId заавал (баримтад verify хуудас, QR дардас алга)", nil)
 	}
 	// page 0 / байхгүй = eID verify хуудас БИШ сүүлийн хуудас (PLACEMENT_SPEC §1a); тодорхой дугаар хэвээр.
 	last, n, err := core.DefaultStampPage(doc, pageVerifyURL+docID)

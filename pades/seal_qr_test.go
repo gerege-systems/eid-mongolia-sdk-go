@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
-	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 )
 
 // QR-тэй тамганы дардас (APPEARANCE_SPEC.md §6.5) ба Prepare-ийн docId дүрэм (§6.6) — golden v13-ийн гаралт дээр.
@@ -31,9 +31,23 @@ func readTestdata(t *testing.T, rel string) []byte {
 	return b
 }
 
-// TestResolveDocID — §6.6-ийн салаа бүр: (1) verify хуудас (дардасны маркераас түрүүлнэ), (2) хамгийн эрт зурсан
-// маркертай дардас, (3) opts.docId (олдсонтой зөрвөл REQUEST_INVALID), (4) санамсаргүй — гарын үсэгтэй баримтад ч QR
-// зурах үед; QR зурахгүй бол "".
+// sigObjs — баримтын гарын үсгийн толины объектын дугаарууд (precheck-ийн verified-ийн оронд; криптографгүй).
+func sigObjs(t *testing.T, doc []byte) map[uint32]bool {
+	t.Helper()
+	sigs, _, _, err := scanSignatures(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[uint32]bool{}
+	for _, s := range sigs {
+		out[s.obj] = true
+	}
+	return out
+}
+
+// TestResolveDocID — §6.6-ийн салаа бүр: гарын үсэггүй → opts эсвэл санамсаргүй; гарын үсэгтэй → (2.1) verify хуудас
+// (маркераас түрүүлнэ), (2.2) маркертай дардас, олдсонтой opts.docId зөрвөл REQUEST_INVALID, (3) opts.docId, (4) хоосон —
+// гарын үсэгтэй баримтад санамсаргүй docId хэзээ ч үүсгэхгүй.
 func TestResolveDocID(t *testing.T) {
 	pageAndMarker := readTestdata(t, "validate/input/seal-qr-docid-vs-page.pdf") // хуудас 6f0c…, маркер 0f1e…
 	sealQR := readTestdata(t, "golden/output/seal-qr-visible.pdf")               // маркер 8c9d…, хуудасгүй
@@ -46,25 +60,27 @@ func TestResolveDocID(t *testing.T) {
 		doc    []byte
 		newDoc bool
 		given  string
-		qr     bool
-		want   string // "" | docId | random; err бол хоосон
+		want   string // docId | random | "" (err бол хамаарахгүй)
 		err    bool
 	}{
-		{"(1) verify хуудас маркераас түрүүлнэ", pageAndMarker, false, "", true, pageDocID, false},
-		{"(1) хуудас = opts", pageAndMarker, false, pageDocID, true, pageDocID, false},
-		{"(1) хуудас ≠ opts (маркертай тэнцүү ч)", pageAndMarker, false, otherDocID, true, "", true},
-		{"(2) маркер", sealQR, false, "", true, qrSealDocID, false},
-		{"(2) маркер, QR зурахгүй гарын үсэгт ч", sealQR, false, "", false, qrSealDocID, false},
-		{"(2) маркер = opts", sealQR, false, qrSealDocID, true, qrSealDocID, false},
-		{"(2) маркер ≠ opts", sealQR, false, otherDocID, true, "", true},
-		{"(3) олдсонгүй → opts", sealV12, false, otherDocID, true, otherDocID, false},
-		{"(4) QR-гүй тамгатай баримт, QR → санамсаргүй", sealV12, false, "", true, random, false},
-		{"(4) үл харагдах гарын үсэгтэй баримт, QR → санамсаргүй", invisible, false, "", true, random, false},
-		{"(4) гарын үсэгтэй, QR зурахгүй → хоосон", sealV12, false, "", false, "", false},
-		{"(4) гарын үсэггүй → санамсаргүй (өмнөхтэй ижил)", unsigned, true, "", false, random, false},
+		{"(2.1) verify хуудас маркераас түрүүлнэ", pageAndMarker, false, "", pageDocID, false},
+		{"(2.1) хуудас = opts", pageAndMarker, false, pageDocID, pageDocID, false},
+		{"(2.1) хуудас ≠ opts (маркертай тэнцүү ч)", pageAndMarker, false, otherDocID, "", true},
+		{"(2.2) маркер", sealQR, false, "", qrSealDocID, false},
+		{"(2.2) маркер = opts", sealQR, false, qrSealDocID, qrSealDocID, false},
+		{"(2.2) маркер ≠ opts", sealQR, false, otherDocID, "", true},
+		{"(3) олдсонгүй → opts (opt-in)", sealV12, false, otherDocID, otherDocID, false},
+		{"(4) QR-гүй тамгатай, opts-гүй → хоосон", sealV12, false, "", "", false},
+		{"(4) үл харагдах гарын үсэгтэй, opts-гүй → хоосон", invisible, false, "", "", false},
+		{"(1) гарын үсэггүй → санамсаргүй", unsigned, true, "", random, false},
+		{"(1) гарын үсэггүй → opts", unsigned, true, otherDocID, otherDocID, false},
 	}
 	for _, c := range cases {
-		got, err := resolveDocID(c.doc, c.newDoc, c.given, c.qr)
+		var verified map[uint32]bool
+		if !c.newDoc {
+			verified = sigObjs(t, c.doc)
+		}
+		got, err := resolveDocID(c.doc, c.newDoc, verified, c.given)
 		switch {
 		case c.err:
 			if ErrorCode(err) != CodeRequestInvalid {
@@ -73,7 +89,7 @@ func TestResolveDocID(t *testing.T) {
 		case err != nil:
 			t.Errorf("%s: %v", c.name, err)
 		case c.want == random:
-			if !uuidRe.MatchString(got) || got == qrSealDocID || got == pageDocID {
+			if !uuidRe.MatchString(got) || got == otherDocID {
 				t.Errorf("%s: санамсаргүй UUID хүлээсэн, авсан %q", c.name, got)
 			}
 		case got != c.want:
@@ -82,33 +98,83 @@ func TestResolveDocID(t *testing.T) {
 	}
 }
 
-// TestDocIDFromStampsEarliest — хоёр маркертай дардас (өөр docId) ба verify хуудасгүй: хамгийн эрт зурсан (ByteRange-ийн
-// төгсгөл бага) дардасны docId.
+// stampPDF — docIDFromStamps-ийн синтетик баримт: 1 Catalog, 2 Pages, 3 Page, дараа нь objs (4-өөс). Дардасны stream =
+// маркер (docId, rev) + EMC.
+func stampPDF(objs ...string) []byte {
+	return rawPDF(append([]string{"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"}, objs...)...)
+}
+
+func stampStream(docID string, extra string) string {
+	c := "/EIDVerify <</URL (https://ca.eidmongolia.mn/verify/" + docID + "/1)>> BDC\nEMC\n"
+	return fmt.Sprintf("<< /Length %d%s >>\nstream\n%sendstream", len(c), extra, c)
+}
+
+func stampWidget(sig, form string) string {
+	return "<< /Type /Annot /Subtype /Widget /Rect [0 0 0 0] /P 3 0 R /F 4 /FT /Sig /T (S) /V " + sig + " /AP << /N " + form + " 0 R >> >>"
+}
+
+func stampSig(end int) string {
+	return fmt.Sprintf("<< /Type /Sig /ByteRange [0 10 20 %d] /Contents <00> >>", end-20)
+}
+
+// TestDocIDFromStampsEarliest — §6.6 алхам 2.2: хамгийн эрт зурсан (ByteRange[2]+[3] бага) дардас — xref-ийн дарааллаар
+// СҮҮЛД (объектын дугаар их) байсан ч; зөвхөн шалгасан гарын үсэг рүү шууд бус /V-тэй, гарын үсэг бүрт ганц widget;
+// /Filter алга эсвэл null.
 func TestDocIDFromStampsEarliest(t *testing.T) {
-	sealQR := readTestdata(t, "golden/output/seal-qr-visible.pdf")
-	at := goldenTime.In(signingZone)
-	vis := core.Visible{Page: 1, X: 3600, Y: 3600, W: 22000, H: 6400, Name: "TESTOV GOLDEN", Lang: "mn",
-		Date: at.Format("2006-01-02 15:04") + " (+08)", URL: pageVerifyURL + otherDocID + "/2"}
-	prep, err := core.PrepareSignatureVisible(sealQR, at, "TESTOV GOLDEN", "", vis)
-	if err != nil {
-		t.Fatal(err)
+	const later, earlier, forged = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333"
+	// 4 widget (хожуу, бага дугаар) → 6 sig (end 200); 7 widget (эрт, их дугаар) → 9 sig (end 50).
+	base := []string{stampWidget("6 0 R", "5"), stampStream(later, ""), stampSig(200),
+		stampWidget("9 0 R", "8"), stampStream(earlier, ""), stampSig(50)}
+	verified := map[uint32]bool{6: true, 9: true}
+	cases := []struct {
+		name     string
+		objs     []string
+		verified map[uint32]bool
+		want     string
+	}{
+		{"эрт зурсан нь их дугаартай", base, verified, earlier},
+		{"шууд /V толь (end 0) — үл тооно", append(append([]string{}, base...),
+			"<< /FT /Sig /V << /Type /Sig /ByteRange [0 0 0 0] /Contents <00> >> /AP << /N 11 0 R >> >>", stampStream(forged, "")),
+			verified, earlier},
+		{"зээлсэн /V (9-д 2 widget) — 9 бүхэлдээ үл тооно", append(append([]string{}, base...),
+			stampWidget("9 0 R", "11"), stampStream(forged, "")), verified, later},
+		{"шалгаагүй гарын үсэг рүү /V — үл тооно", append(append([]string{}, base...),
+			stampWidget("12 0 R", "11"), stampStream(forged, ""), stampSig(30)), verified, earlier},
+		{"/Filter [] — нэр дэвшигч биш", []string{stampWidget("6 0 R", "5"), stampStream(earlier, " /Filter []"), stampSig(50)},
+			map[uint32]bool{6: true}, ""},
+		{"/Filter null — нэр дэвшигч", []string{stampWidget("6 0 R", "5"), stampStream(earlier, " /Filter null"), stampSig(50)},
+			map[uint32]bool{6: true}, earlier},
+		{"verified хоосон", base, nil, ""},
 	}
-	if got := docIDFromStamps(prep.PDF); got != qrSealDocID {
-		t.Fatalf("%q, хүлээсэн %q", got, qrSealDocID)
+	for _, c := range cases {
+		got, err := docIDFromStamps(stampPDF(c.objs...), c.verified)
+		if err != nil || got != c.want {
+			t.Errorf("%s: %q %v, хүлээсэн %q", c.name, got, err, c.want)
+		}
 	}
-	if got := docIDFromStamps(readTestdata(t, "golden/output/seal-visible.pdf")); got != "" {
-		t.Fatalf("QR-гүй тамга: %q", got)
+	v12 := readTestdata(t, "golden/output/seal-visible.pdf")
+	if got, err := docIDFromStamps(v12, sigObjs(t, v12)); err != nil || got != "" {
+		t.Fatalf("QR-гүй тамга: %q %v", got, err)
+	}
+	qr := readTestdata(t, "golden/output/seal-qr-visible.pdf")
+	if got, err := docIDFromStamps(qr, sigObjs(t, qr)); err != nil || got != qrSealDocID {
+		t.Fatalf("QR тамга: %q %v", got, err)
 	}
 }
 
-// TestPrepareDocIDRule — Prepare-ийн түвшинд: QR тамгатай баримтад иргэн тамганы docId-г авч rev 2-оор зурна; QR-гүй
-// тамгатай баримтад шинэ санамсаргүй docId (өмнө REQUEST_INVALID байв); opts.docId зөрвөл REQUEST_INVALID.
+// TestPrepareDocIDRule — Prepare-ийн түвшинд: QR тамгатай баримтад иргэн (харагдах ба үл харагдах) тамганы docId-г авна,
+// харагдах нь rev 2-оор зурна; opts.docId зөрвөл REQUEST_INVALID. QR-гүй тамгатай баримтад харагдах иргэн docId-гүй бол
+// REQUEST_INVALID (v0.30.0-тэй ижил), opts.docId-тэй бол түүгээр (opt-in).
 func TestPrepareDocIDRule(t *testing.T) {
 	p := loadOrCreatePKI(t)
-	visible := func(docID string) PrepareOptions {
+	opts := func(docID string, visible bool) PrepareOptions {
 		o := testOpts(p, p.citizen.cert)
 		o.VerifyPage, o.FileName, o.DocID = false, "", docID
-		o.Appearance = &Appearance{X: 340, Y: 36, Width: 220, Height: 64}
+		if visible {
+			o.Appearance = &Appearance{X: 340, Y: 36, Width: 220, Height: 64}
+		}
 		return o
 	}
 	prepared := func(t *testing.T, doc []byte, o PrepareOptions) (string, []byte) {
@@ -123,18 +189,27 @@ func TestPrepareDocIDRule(t *testing.T) {
 		}
 		return prep.DocID, st.PDF
 	}
+	marker := func(id string) []byte { return []byte("/EIDVerify <</URL (" + pageVerifyURL + id + "/2)>> BDC\n") }
 	sealQR := readTestdata(t, "golden/output/seal-qr-visible.pdf")
-	id, pdf := prepared(t, sealQR, visible(""))
-	if id != qrSealDocID || !bytes.Contains(pdf[len(sealQR):], []byte("/EIDVerify <</URL ("+pageVerifyURL+qrSealDocID+"/2)>> BDC\n")) {
+	id, pdf := prepared(t, sealQR, opts("", true))
+	if id != qrSealDocID || !bytes.Contains(pdf[len(sealQR):], marker(qrSealDocID)) {
 		t.Fatalf("QR тамгын дараах иргэн: docId %q", id)
 	}
-	if _, err := Prepare(sealQR, visible(otherDocID)); ErrorCode(err) != CodeRequestInvalid {
-		t.Fatalf("opts.docId ≠ маркер: %v", err)
+	if id, _ := prepared(t, sealQR, opts("", false)); id != qrSealDocID {
+		t.Fatalf("QR тамгын дараах үл харагдах иргэн: docId %q", id)
+	}
+	for _, visible := range []bool{true, false} {
+		if _, err := Prepare(sealQR, opts(otherDocID, visible)); ErrorCode(err) != CodeRequestInvalid {
+			t.Fatalf("opts.docId ≠ маркер (visible %v): %v", visible, err)
+		}
 	}
 	sealV12 := readTestdata(t, "golden/output/seal-visible.pdf")
-	id, pdf = prepared(t, sealV12, visible(""))
-	if !uuidRe.MatchString(id) || !bytes.Contains(pdf[len(sealV12):], []byte("/EIDVerify <</URL ("+pageVerifyURL+id+"/2)>> BDC\n")) {
-		t.Fatalf("QR-гүй тамгын дараах иргэн: docId %q", id)
+	if _, err := Prepare(sealV12, opts("", true)); ErrorCode(err) != CodeRequestInvalid {
+		t.Fatalf("QR-гүй тамгын дараах иргэн, docId-гүй: %v", err)
+	}
+	id, pdf = prepared(t, sealV12, opts(otherDocID, true))
+	if id != otherDocID || !bytes.Contains(pdf[len(sealV12):], marker(otherDocID)) {
+		t.Fatalf("QR-гүй тамгын дараах иргэн, opts.docId: %q", id)
 	}
 }
 
