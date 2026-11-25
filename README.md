@@ -1,3 +1,5 @@
+Монгол · [English](README.en.md) · [中文](README.zh-CN.md)
+
 # eid-mongolia-sdk-go
 
 **eID Mongolia** relying-party SDK for Go — иргэнийг утсаар нь нэвтрүүлэх (authentication) ба хууль ёсны цахим гарын
@@ -14,8 +16,6 @@ TypeScript хувилбартай ([gerege-systems/eid-mongolia-sdk](https://git
 - Багц: `eid` (RP-API, device link, validator, PDF бүртгэл), `eidlogin` (`github.com/gerege-systems/eid-mongolia-sdk-go/eidlogin`
   — «eID-ээр нэвтрэх» товчны net/http handler),
   `pades` (клиент талын PAdES — PDF eID-ийн серверт очихгүй; native SDK-уудын reference).
-
-[English summary](#english)
 
 ## Суулгах
 
@@ -1111,101 +1111,6 @@ CI: `.github/workflows/contract.yml` — PR, `main` push, өдөр бүр 00:00 
 
 ## English
 
-Go relying-party SDK for **eID Mongolia** — feature parity with the TypeScript SDK (Go ≥ 1.25; `eid`/`eidlogin` import the
-standard library plus `golang.org/x/crypto/ocsp`; `pades` also `github.com/gerege-systems/pdf` (hardened digitorus/pdf
-fork, no `replace` needed — delete the old `replace github.com/digitorus/pdf => github.com/craftzbay/pdf …` line unless
-your own code imports digitorus/pdf or digitorus/pdfsign),
-digitorus pkcs7/timestamp and `golang.org/x/text`).
-
-- `eid.NewClient(eid.Config{…})` — RP-API v3: `Auth` (push / device link), `Sign` (raw digest, `OnBehalfOf`), `PDF`
-  (`RegisterSignature` for client-side PAdES), `Organization`, `Session` (long-poll), `Validator`. Every call takes a `context.Context`.
-- Organization e-Seal (v0.24.0): `c.Seal.Certificate(ctx, orgEtsi)` (GET /seal/certificate/{orgEtsi}) and
-  `c.Seal.Seal(ctx, orgEtsi, digest, eid.SHA256)` (POST /seal/{orgEtsi}; non-interactive, needs the RP permission
-  `SEAL:<orgEtsi>`; 429 → `*APIError.Retryable()`); the response signature is verified against the returned e-Seal
-  certificate (`eid.IsSealCertificate`). `pades.SealPDF(ctx, c.Seal, orgEtsi, pdf, pades.SealOptions{…})` seals a PDF
-  as PAdES-BASELINE-LT with a mandatory RFC 3161 timestamp (no verify page); validators report `usage: "seal"`.
-  **Unreleased:** the seal now leaves a visible organisation stamp by default (organisation name, «Sealed with eID
-  Mongolia», time; no QR/link — `pades/APPEARANCE_SPEC.md` §6) on the last non-verify page, bottom-right (fitted to
-  small pages; invisible when no stamp fits), moved off page content when possible (`SealOptions.Appearance` positions
-  it, `Completed.Placement` reports where it went, nil when invisible);
-  `SealOptions{Invisible: true}` gives the previous, byte-identical invisible output. Validators older than this release
-  (CA `/v3/validate/pdf`, TS SDK) report a seal stamp as a modification of earlier signatures — keep `Invisible: true`
-  until they are updated. **Unreleased:** validators also accept the seal stamp **with QR** (APPEARANCE_SPEC §6.5 — the
-  citizen layout with the seal label and no role line). This release only teaches validators the QR seal stamp;
-  writers (`SealPDF`) still emit the QR-less stamp and there is no public option for the QR yet — it must not be emitted
-  until the CA and TS validators ship §6.5. `Prepare`'s docId (§6.6) on a signed document without a verify page now
-  comes from the earliest verified QR **e-Seal** stamp (never a citizen stamp) — for visible **and invisible** signatures (invisible ones used to get
-  `opts.docId` or ""); a different `opts.docId` is `REQUEST_INVALID`. No random docId is generated on a signed
-  document: after a QR-less seal a visible citizen signature still needs a caller-supplied `docId`. Seal-certificate issuance (v0.25.0): `c.Seal.RequestCertificate` (202 PENDING; an organization ADMIN
-  approves with PIN2), `c.Seal.CertificateRequest`, `c.Seal.WaitForCertificate` (honours Retry-After; terminal states →
-  `*eid.SealRequestError`; `eid.ErrSealApproverUnavailable`, `eid.ErrSealRequestNotFound`). The operator can switch
-  issuance and sealing off platform-wide: `RequestCertificate` / `Seal` / `pades.SealPDF` then fail with
-  `503 SEAL_SERVICE_DISABLED` — `errors.Is(err, eid.ErrSealServiceDisabled)`, `APIError.Service` =
-  `eid.SealServiceIssuance` | `eid.SealServiceSealing`, no `Retry-After`, `Retryable()` is always false (never
-  auto-retried); a request approved while issuance is off ends `FAILED` with `Failure: "SEAL_SERVICE_DISABLED"`
-  (also matches `ErrSealServiceDisabled`). Seal 409s carry stable codes (v0.27.0): `eid.ErrOrgNotActive`,
-  `ErrSealNotIssued`, `ErrSealCertRevoked`, `ErrSealKeyUnavailable`, `ErrSealCertExpired`, `ErrSealCertNotYetValid`
-  (`eid.SealErrorCodes`); `Certificate` returns 409 for a revoked / expired / not-issued seal. The RP obtains
-  `SEAL:<orgEtsi>` only after a registry-verified ADMIN of the organization approves it in the eID app with PIN2 (403
-  until then). RP-initiated grant (v0.29.0): `c.Seal.RequestGrant(ctx, orgEtsi, authSessionID)` (POST /seal/grants; the
-  session is an AUTHENTICATION session started by this RP and completed OK ≤ 5 min ago whose person is the
-  organization's registry CEO, who alone gets the PIN2 push), `c.Seal.GrantStatus`, `c.Seal.WaitForGrant` (terminal
-  states → `*eid.SealGrantError`), typed errors `eid.ErrNotOrgCEO`, `ErrAuthSessionTooOld`, `ErrSealGrantAlreadyApproved`
-  … (`eid.SealGrantErrorCodes`); `c.Organization.SealGrants(ctx, personEtsi)` (PKI_READ) lists the organizations where
-  the person is CEO and their APPROVED / PENDING RP grants with seal counts. The seal key is a server-side software key (not a QSCD); certificates are valid for 3 years.
-- `Sign.DeviceLinkByEtsi` / `DeviceLinkByDocument` (sign via QR / Web2App / App2App; `DeviceLinkSession.LinkInput`),
-  `Sign.CertificateChoiceByEtsi` / `CertificateChoiceDeviceLink` + `Validator.ValidateCertificateChoice` → `Signer`,
-  `Sign.DigestForSigner` / `DeviceLinkForSigner` (sign on the chosen device's `documentNumber`; default
-  `sha256WithRSAEncryption`), `ValidateSignOptions.ExpectedAlgorithm` / `ExpectedCertificate`, `ExpiresAt`
-  from the CA's start response (`expiresAt`, RFC 3339; estimated via `Config.SignSessionTTL` on older CAs), and
-  `errors.Is` sentinels `ErrNoSigningCertificate` / `ErrCertChoiceInvalid` / `ErrRequestInvalid`.
-- `eid.BuildDeviceLink` — device link v3 (QR / Web2App / App2App) with HMAC `authCode`, byte-identical to the server
-  golden vectors. Prefer **Web2App** for same-device sign-in; the legacy `/dl?sessionId&vc` link is gone.
-- `Validator.ValidateAuth` / `ValidateSign` — certificate chain to the Mongolian National Root CA
-  (`eid.NationalRootCAPEM`) via `x509.Certificate.Verify` (pathLen, keyCertSign, name constraints, EKU nesting —
-  auth → clientAuth, sign → emailProtection — unknown critical extensions rejected), validity, level, ACSP_V2 / digest signature (RSA-PSS, PKCS#1 v1.5, ECDSA P-256/SHA-256), flow-type relay
-  guard; `CheckRevocation` with your OCSP/CRL hook. Never trust `endResult == OK` alone.
-- JSON responses over 4 MiB fail with `*eid.ResponseTooLargeError` (never truncated). Transient CA errors
-  (`eid.RetryableCodes`, or 429/503 with `Retry-After`) → `APIError.Retryable()` + `RetryAfter`. The upload-based PDF
-  client (`PDF.Prepare` / `Document` / `Token*`, `DocumentVerified`) was removed in v0.4.0 — use `pades`.
-- Show `RoleLabel` / `RightTypeLabel` / `SourceLabel` (representations; session `OnBehalfOf` has `RoleLabel` /
-  `RightTypeLabel`), never translate `Role` / `RightType` / `Source` (machine values). `Config.Language` (`"mn"` | `"en"`) sends `Accept-Language`; unset = server default (mn).
-- `SessionResult.Person` (CA person block, check with `PersonMatchesCertificate`) and `.Raw`; `Person` (PKI_READ:
-  certificates, devices, activity, summary, children); `Token` (USB token certificate issuance and token sign-in).
-- `Client.Share` (SIGN, v0.5.0) — e-mail a signed PDF (valid eID signature required; the CA does not store it) to 1–5
-  recipients; `*eid.ShareError` (`Code`, `Reason` on 422, `Sent`/`Failed`/`Recipients` on 502 `MAIL_FAILED`).
-  `Client.ShareInfo` reads the discovery `share` block (limits, quota; the CA has no share flag since 2026-10-16).
-  `PersonCertificate` gained `IssuedAt`, `RevokedAt`, `RevocationReason` (RFC 5280 name).
-- `c.QR` (QR_PRESENT, v0.21.0) — «My QR» in-person check: `ParseQR` (`EIDMN-QR1:<token>`) → `Start`
-  (`POST /authentication/qr`, nonce auto 22 chars) → `Result` / `Check` → `*QRPresentation` (the citizen's whole «My
-  info» dict in payload order + JPEG photo, signed by the citizen's QUALIFIED key with PIN2: PS256 JWS, `x5c`).
-  `VerifyQRPresentation` checks chain, revocation (OCSP, hard-fail), PSS, claims and data limits; failures are
-  `*QRError{Code}` (`QR_CHAIN_INVALID`, `QR_SIGNATURE_INVALID`, …). Read once — a second read is 410
-  `QR_PRESENTATION_GONE`.
-- Error texts carry no personal identifiers (paths masked, certificates by serial) — safe to log.
-- `eidlogin.New` — "Log in with eID" one-button backend (net/http, mount at `/auth/eid/`): `start` (QR / push by
-  registration number / Web2App 302), `status` (fresh QR every second), `callback` (Web2App + `userChallengeVerifier`).
-  State server-side (`Store`), browser bound by an HttpOnly cookie; identity only after `ValidateAuth`. Pairs with the
-  TS SDK's `<eid-login-button>` web component. The OIDC client (`oidc` package) was removed in v0.2.0.
-  `Identity` carries `SessionID`, `DocumentNumber` and `Certificate` for follow-up signing. Set `Config.ClientIP`
-  (`ForwardedClientIP(n)` behind n trusted proxies, `RemoteAddrIP` otherwise) for the `start:<ip>` limit. On by default:
-  a push the CA refuses for the number (its own JSON 4xx) is answered with a decoy session identical to a real unanswered
-  push (no registration oracle), every push start takes at least `PushFloor` (1 s), the certificate is checked over OCSP
-  (`eid.NewOCSPChecker`, soft-fail when the responder does not answer, revoked/unknown → `FAILED`/`VALIDATION`), and
-  `OnEvent` receives audit events. Opt-outs: `DisableDecoy`, `DisablePushFloor`, `DisableRevocation` (not recommended). Requires eID
-  app iOS ≥ 2.2.3 (59) / Android ≥ 60 (server-enforced minimum is higher).
-- `pades` — client-side PAdES baseline B-LT (the PDF never reaches eID servers; the CA signs only the 32-byte DTBS):
-  `Prepare` (verification page, placeholder, signedAttrs → DTBS + opaque state) → `Complete` (signature check, RFC 3161,
-  CMS, revocation from AIA/CDP — end-entity certificates: OCSP first, CRL as well/as fallback; CA certificates: CRL
-  first, OCSP only when no valid CRL (v0.28.1) — DSS, self-validation with the CA's validator) → `ValidatePDF` (the CA's public validator
-  — same JSON report as `/v3/validate/pdf`, online OCSP/CRL with DSS fallback, `certificate_level`). Derived from the CA writer
-  (profile `pades-client/1`). It is the reference for the native TS/Swift/Kotlin/C# SDKs (PROFILE.md, PAGE_SPEC.md,
-  PRECHECKS.md, WIRE.md; no runtime compression) — golden vectors in `pades/testdata/golden`.
-  Revocation evidence (v0.7.2) counts only if it is for this certificate and its chain issuer (OCSP CertID, CRL issuer/AKI/
-  signature) and fresh at the validation time (timestamp time, else now; ±5 min skew, 24 h max age unless the
-  thisUpdate…nextUpdate window covers it); a signed "revoked" always wins. PDFs nested deeper than 256 levels are
-  rejected (`PDF_INVALID`, `ErrPDFStructure`) before parsing — still treat untrusted PDFs as hostile input (size limit,
-  timeouts, ideally an isolated process).
-- Typed errors via `errors.As`. RP registration: <eIDsupport@gerege.com>. Docs: <https://developer.eidmongolia.mn/#overview>.
+Full English translation: [README.en.md](README.en.md).
 
 License: MIT.
