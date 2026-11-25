@@ -62,34 +62,34 @@ eID 服务器始终将 Web2App 的返回路径规范化为 `/auth/eid/callback`�
 
 ```go
 c, _ := eid.NewClient(eid.Config{
-	Credentials: eid.Credentials{RPUUID: uuid, RPName: "Интернэт банк", APISecret: secret},
-	// Root (01) — итгэлийн тулгуур; завсрын 02 → 03 → 04 нь SDK-д суусан (eid.CitizenIntermediatesPEM, анхдагч).
+	Credentials: eid.Credentials{RPUUID: uuid, RPName: "网上银行", APISecret: secret},
+	// Root (01) 是信任锚；中间证书 02 → 03 → 04 已内置于 SDK（eid.CitizenIntermediatesPEM，默认）。
 	Trust: eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}},
 })
 login, err := eidlogin.New(eidlogin.Config{
 	Client:      c,
-	CallbackURL: "https://bank.example.mn/auth/eid/callback", // host нь callbackHosts-д; утасны урсгалд заавал
+	CallbackURL: "https://bank.example.mn/auth/eid/callback", // host 必须在 callbackHosts 中；手机流程必须提供
 	OnSuccess: func(w http.ResponseWriter, r *http.Request, id *eidlogin.Identity) (*eidlogin.Success, error) {
-		// id.ETSI (PNOMN-…) — хэрэглэгчийг ҮҮГЭЭР таньна; id.GivenName/Surname (латин), id.Person (кирилл, байвал)
-		// id.SessionID, id.DocumentNumber, id.Certificate — дараагийн алхамд (гарын үсэг, гэрчилгээ холбох)
+		// id.ETSI (PNOMN-…) —— 请据此识别用户；id.GivenName/Surname（拉丁文），id.Person（西里尔文，如有）
+		// id.SessionID, id.DocumentNumber, id.Certificate —— 用于后续步骤（签名、关联证书）
 		u, err := users.FindOrCreateByETSI(r.Context(), id.ETSI)
 		if err != nil {
 			return nil, err
 		}
-		sid, err := sessions.Create(r.Context(), u.ID) // ШИНЭ session (session fixation)
+		sid, err := sessions.Create(r.Context(), u.ID) // 新建 session（防 session fixation）
 		if err != nil {
 			return nil, err
 		}
 		http.SetCookie(w, &http.Cookie{Name: "app_session", Value: sid, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		return &eidlogin.Success{Redirect: "/dashboard"}, nil
 	},
-	ClientIP: eidlogin.ForwardedClientIP(1), // nginx/LB нэг hop-ийн ард; proxy-гүй бол eidlogin.RemoteAddrIP
-	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
-	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // анхдагчтай нэгтгэгдэнэ (push 3/мин хэвээр)
+	ClientIP: eidlogin.ForwardedClientIP(1), // 位于一跳 nginx/LB 之后；没有代理时使用 eidlogin.RemoteAddrIP
+	// Store: redisStore,        // 多实例时使用（默认——进程内存）
+	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // 与默认值合并（push 仍为 3/分钟）
 	OnEvent: func(ctx context.Context, kind eidlogin.EventKind, sessionID string, meta map[string]any) {
-		audit.Record(ctx, "auth.eid_"+string(kind), sessionID, meta) // таны аудит
+		audit.Record(ctx, "auth.eid_"+string(kind), sessionID, meta) // 您的审计
 	},
-	// AuditKey: []byte(os.Getenv("EID_AUDIT_KEY")), // pushKey-ийг instance/restart хооронд тогтвортой болгох
+	// AuditKey: []byte(os.Getenv("EID_AUDIT_KEY")), // 使 pushKey 在多个实例/重启之间保持稳定
 })
 if err != nil {
 	log.Fatal(err)
@@ -170,10 +170,10 @@ mux.Handle("/auth/eid/", login)
   若要放宽/替换默认值，请通过 `RateLimits` 指定该类型。
 
 ```go
-lim := eidlogin.DefaultRateLimit()                                  // илэрхий бичих бол
-lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push 3/мин хэвээр
-// lim["start"] = eidlogin.RateRule{}                               // start-ийг nginx/gateway-д хязгаарладаг бол
-lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // олон instance: push-ийг Redis-ээр солино
+lim := eidlogin.DefaultRateLimit()                                  // 若要显式写出
+lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push 仍为 3/分钟
+// lim["start"] = eidlogin.RateRule{}                               // 若在 nginx/gateway 中对 start 限流
+lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // 多实例：用 Redis 替换 push
 cfg.RateLimits = lim
 ```
 
@@ -209,7 +209,7 @@ func (s redisStore) Set(ctx context.Context, tx *eidlogin.Tx, ttl time.Duration)
 	return s.rdb.Set(ctx, s.key(tx.SessionID), b, ttl).Err()
 }
 
-// DEL атомар — зэрэг хоёр status-ийн зөвхөн нэг нь OnSuccess дуудна.
+// DEL 是原子的——两个并发的 status 调用中只有一个会触发 OnSuccess。
 func (s redisStore) Delete(ctx context.Context, sid string) (bool, error) {
 	n, err := s.rdb.Del(ctx, s.key(sid)).Result()
 	return n == 1, err
@@ -229,14 +229,14 @@ eID CA 的 `docs/DEVICE_LINK_V3.md` §5、§7；changelog `2026-10-02-ios-min-ve
 
 ```go
 c, err := eid.NewClient(eid.Config{
-	// BaseURL анхдагч https://rp.eidmongolia.mn (RP-API, /v3-гүй) — mTLS-тэй RP ч мөн энэ хост
+	// BaseURL 默认为 https://rp.eidmongolia.mn（RP-API，不带 /v3）——使用 mTLS 的 RP 也用此主机
 	Credentials: eid.Credentials{
 		RPUUID:    os.Getenv("EID_RP_UUID"),
-		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 тэмдэгт (CA илүүг тэмдэгтээр таслана)
+		RPName:    "网上银行", // 子系统名称，≤ 120 个字符（CA 会截断多余部分）
 		APISecret: os.Getenv("EID_SECRET"),
 	},
 	Trust: eid.TrustConfig{
-		TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01) — production-д ЗААВАЛ
+		TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01)——生产环境必须配置
 		// IntermediatesPEM nil = eid.CitizenIntermediatesPEM (02 MDDC → 03 Gerege → 04 eID Mongolia Issuing CA)
 	},
 })
@@ -249,18 +249,18 @@ TS SDK 自 0.19.0 起的 `pdfTimeoutMs` 同为 80 s）。中间 CA 的来源：<
 ### 3.1. 认证——push
 
 ```go
-s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678", // ETSI / регистр / иргэний дугаар (сервер танина)
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Интернэт банкинд нэвтрэх"}}, nil)
-show(s.VC) // 5 оронтой баталгаажуулах код — ПИН БИШ, зөвхөн харуулна
+s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678", // ETSI / 注册号 / 公民编号（服务器会识别）
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "登录网上银行"}}, nil)
+show(s.VC) // 5 位验证码——不是 PIN，仅用于显示
 
-// long-poll; session-ий хугацаа (ExpiresAt + 15 с; nil бол discovery sessionTtl, эс бөгөөс 600 с) дуустал хүлээнэ.
-// CA хугацаа дууссан session-ийг COMPLETE/TIMEOUT болгоно; MaxWait өгвөл түүгээр таслаж RUNNING-ийг алдаагүй буцаана.
+// long-poll；等待至 session 到期（ExpiresAt + 15 s；为 nil 时用 discovery 的 sessionTtl，否则 600 s）。
+// CA 会将已过期的 session 置为 COMPLETE/TIMEOUT；若提供 MaxWait，则按其截止并返回 RUNNING（不报错）。
 r, err := c.Session.WaitForResult(ctx, s.SessionID, &eid.WaitOptions{ExpiresAt: s.ExpiresAt})
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowNotification})
 if err != nil {
-	return err // *eid.SessionFailedError (USER_REFUSED, TIMEOUT…) эсвэл *eid.ValidationError — ИТГЭХГҮЙ
+	return err // *eid.SessionFailedError (USER_REFUSED, TIMEOUT…) 或 *eid.ValidationError——不要信任
 }
-if err := c.Validator.CheckRevocation(ctx, who.Certificate); err != nil { // TrustConfig.Revocation тохируулсан бол
+if err := c.Validator.CheckRevocation(ctx, who.Certificate); err != nil { // 若已配置 TrustConfig.Revocation
 	return err
 }
 log.Println(who.DocumentNumber, who.Subject.SerialNumber, who.Subject.GivenName, who.Subject.Surname)
@@ -274,11 +274,11 @@ log.Println(who.DocumentNumber, who.Subject.SerialNumber, who.Subject.GivenName,
 则使用 App2App。）旧版 `/dl?sessionId&vc` 链接已于 2026-10-07 从服务器移除——SDK 中不存在。
 
 ```go
-// backend — session эхлүүлээд бүх хариуг СЕРВЕРТ хадгална (SessionToken/SessionSecret/ReceivedAt/ACSP)
+// 后端——发起 session，并将完整响应保存在服务器上 (SessionToken/SessionSecret/ReceivedAt/ACSP)
 s, err := c.Auth.DeviceLinkAnonymous(ctx,
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Интернэт банкинд нэвтрэх"}},
-	&eid.AuthOptions{CallbackURL: "https://bank.example.mn/auth/eid/callback?tx=" + txID}) // товч харуулах бол; host = callbackHosts
-store.Put(s.SessionID, s) // браузерт ЗӨВХӨН SessionID, VC
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "登录网上银行"}},
+	&eid.AuthOptions{CallbackURL: "https://bank.example.mn/auth/eid/callback?tx=" + txID}) // 如需显示按钮；host = callbackHosts
+store.Put(s.SessionID, s) // 只有 SessionID 和 VC 会发送给浏览器
 
 link := func(s *eid.DeviceLinkSession, t eid.DeviceLinkType) (string, error) {
 	return eid.BuildDeviceLink(eid.DeviceLinkInput{
@@ -286,22 +286,22 @@ link := func(s *eid.DeviceLinkSession, t eid.DeviceLinkType) (string, error) {
 		SessionToken: s.SessionToken, SessionSecret: s.SessionSecret,
 		SessionType: eid.SessionAuth, Lang: "mon", ReceivedAt: s.ReceivedAt,
 		RPChallenge: s.ACSP.RPChallenge, RelyingPartyName: s.ACSP.RelyingPartyName,
-		Interactions: s.ACSP.Interactions, InitialCallbackURL: s.ACSP.InitialCallbackURL, // QR-д authCode-д орохгүй
+		Interactions: s.ACSP.Interactions, InitialCallbackURL: s.ACSP.InitialCallbackURL, // 对 QR 而言不参与 authCode
 	})
 }
 
-// GET /eid/qr?sessionId=… — браузер 1 секунд тутам дуудаж QR-ийг дахин зурна (QR ~20 сек хүчинтэй)
+// GET /eid/qr?sessionId=… — 浏览器每秒调用一次并重新绘制 QR（QR 有效期约 20 秒）
 http.HandleFunc("GET /eid/qr", func(w http.ResponseWriter, r *http.Request) {
-	s := store.Get(r.URL.Query().Get("sessionId")) // өөрийн browser session-д хамаарахыг шалга
+	s := store.Get(r.URL.Query().Get("sessionId")) // 检查它是否属于调用者自己的浏览器 session
 	l, err := link(s, eid.LinkQR)
 	if err != nil {
-		http.Error(w, "session дууссан", http.StatusGone)
+		http.Error(w, "session 已结束", http.StatusGone)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]string{"link": l})
 })
-// гар утсанд: товчны href = link(s, eid.LinkWeb2App) (нэг удаа угсарна)
+// 手机端：按钮的 href = link(s, eid.LinkWeb2App)（只生成一次）
 ```
 
 若通过 SSE/WebSocket 推送，请使用 `eid.TickQRDeviceLink(ctx, input, time.Second, send)`——立即发出一个链接，之后每秒一个；
@@ -310,12 +310,12 @@ http.HandleFunc("GET /eid/qr", func(w http.ResponseWriter, r *http.Request) {
 **务必核对您所展示的类型（防中继）：**
 
 ```go
-// QR хуудас → poll-оор дууссан үр дүн
+// QR 页面 → 通过轮询完成的结果
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowQR})
 
-// Web2App товч → callback (?userChallengeVerifier=…) ирсний дараа
+// Web2App 按钮 → 收到 callback（?userChallengeVerifier=…）之后
 who, err = c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{
-	ExpectedFlowType:      eid.FlowWeb2App, // RP-ийн апп дахь товч бол eid.FlowApp2App
+	ExpectedFlowType:      eid.FlowWeb2App, // 若按钮位于 RP 的应用内，则为 eid.FlowApp2App
 	UserChallengeVerifier: callback.Query().Get("userChallengeVerifier"),
 })
 ```
@@ -328,13 +328,13 @@ who, err = c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{
 ```go
 digest := eid.SHA256Base64(docBytes)
 s, err := c.Sign.DigestByEtsi(ctx, "PNOMN-12345678", digest,
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Зээлийн гэрээнд гарын үсэг зурах"}}, nil)
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "签署贷款合同"}}, nil)
 show(s.VC)
 r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
-sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // digest-ийн эсрэг
-// SignOptions.FileName — баримтын нэр CA-ийн /verify хуудас, иргэний түүхэнд харагдана (заавал биш)
+sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // 针对 digest
+// SignOptions.FileName——文档名称，会显示在 CA 的 /verify 页面和公民的历史记录中（可选）
 
-// device-link / push-оор эхлүүлсэн бол урсгалаа тулга (ValidateAuth-тай ижил; зөрвөл *ValidationError)
+// 若通过 device-link / push 发起，请核对所用流程（与 ValidateAuth 相同；不一致则返回 *ValidationError）
 sig, err = c.Validator.ValidateSign(r, digest, eid.SHA256, eid.ValidateSignOptions{ExpectedFlowType: eid.FlowQR})
 ```
 
@@ -359,17 +359,17 @@ certificate-choice，然后让**恰好那台设备（`documentNumber`）** 对 d
 若按 etsi 发起，会由另一部手机签名，签名将与证书不匹配。
 
 ```go
-cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // эсвэл CertificateChoiceDeviceLink (QR; CallbackURL-тай бол Web2App/App2App)
+cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // 或 CertificateChoiceDeviceLink（QR；提供 CallbackURL 时为 Web2App/App2App）
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID) // Signer{Certificate, DocumentNumber}
-dtbs := buildDTBS(signer.Certificate)                                 // 32 байт SHA-256, стандарт base64
-s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{FileName: "Гэрээ.pdf"}) // linked/{documentNumber}
+dtbs := buildDTBS(signer.Certificate)                                 // 32 字节 SHA-256，标准 base64
+s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{FileName: "合同.pdf"}) // linked/{documentNumber}
 // QR / Web2App: c.Sign.DeviceLinkForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{CallbackURL: …})
 r, err = c.Session.WaitForResult(ctx, s.SessionID, nil)
 sig, err := c.Validator.ValidateSign(r, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
 	ExpectedFlowType:    eid.FlowNotification,
-	ExpectedAlgorithm:   s.Sign.SignatureAlgorithm, // sha256WithRSAEncryption — PSS хариуг татгалзана
-	ExpectedCertificate: signer.Certificate,        // өөр гэрчилгээгээр зурсан бол татгалзана
+	ExpectedAlgorithm:   s.Sign.SignatureAlgorithm, // sha256WithRSAEncryption——会拒绝 PSS 响应
+	ExpectedCertificate: signer.Certificate,        // 若使用其他证书签名则拒绝
 })
 ```
 
@@ -385,20 +385,20 @@ allowlist 校验该字段，并将路径规范化为 `/auth/eid/callback`；不�
 `sessionSecretDigest` + `sessionId`（certificate-choice 的 session），没有 `userChallengeVerifier`。
 
 ```go
-// 1. Эхлүүл: value-г браузерийн cookie-д хадгал.
+// 1. 发起：将 value 存入浏览器的 cookie。
 cc, err := c.Sign.CertificateChoiceDeviceLink(ctx, &eid.CertChoiceOptions{
 	CallbackURL: "https://rp.example.mn/auth/eid/callback?value=" + value,
 })
-link, err := eid.BuildDeviceLink(cc.LinkInput(eid.LinkWeb2App, "mon")) // эсвэл LinkApp2App; QR-д LinkQR
-// 2. Certificate choice-ийг шалгаад linked sign эхлүүл (DeviceLinkForSigner / DigestForSigner — дээрх жишээ).
+link, err := eid.BuildDeviceLink(cc.LinkInput(eid.LinkWeb2App, "mon")) // 或 LinkApp2App；QR 使用 LinkQR
+// 2. 验证 certificate choice 后发起 linked sign（DeviceLinkForSigner / DigestForSigner——见上方示例）。
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
-// 3. /auth/eid/callback дээр:
-//    - query-ийн `value` нь браузерийн cookie-той тэнцүү эсэх;
-//    - eid.VerifySessionSecretDigest(q.Get("sessionSecretDigest"), cc.SessionSecret) — cc нь server-side хадгалсан
-//      certificate-choice session (sessionId-аар олно), SessionSecret браузерт хэзээ ч очихгүй;
-//    - callback-ийг ЗӨВХӨН НЭГ УДАА хүлээн ав (хоёр дахь удаа татгалз);
-//    - дараа нь linked SIGN session-ий үр дүнг уншиж (c.Session.WaitForResult → ValidateSign) дүгнэ.
+// 3. 在 /auth/eid/callback 处：
+//    - query 中的 `value` 是否与浏览器的 cookie 相等；
+//    - eid.VerifySessionSecretDigest(q.Get("sessionSecretDigest"), cc.SessionSecret) — cc 为服务器端保存的
+//      certificate-choice session（通过 sessionId 查找）；SessionSecret 绝不会到达浏览器；
+//    - 仅接受该 callback 一次（第二次则拒绝）；
+//    - 然后读取 linked SIGN session 的结果（c.Session.WaitForResult → ValidateSign）并作出判断。
 ```
 
 `eid.SessionSecretDigest(secret)` = `BASE64URL-NOPAD(SHA-256(base64-decode(secret)))`；`VerifySessionSecretDigest` 以
@@ -411,9 +411,9 @@ signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
 qualified 签名——不是组织印章）。为 PDF 签名属于客户端 PAdES——[§7](#7-客户端-pades-pades)。
 
 ```go
-reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678") // иргэн сүүлийн 24 цагт нэвтэрсэн байх
+reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678") // 公民必须在最近 24 小时内登录过
 s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
-// r.OnBehalfOf — СЕРВЕР төлөөллийг шалгасны баталгаа (nil = хувь хүн)
+// r.OnBehalfOf — 服务器已核验代表权的证明（nil = 个人）
 ```
 
 若 `OnBehalfOf` 被拒绝，则看 `*eid.ForbiddenError` / `*eid.APIError` 的 `Code`（`eid.OnBehalfErrorCodes`）：
@@ -437,9 +437,9 @@ MANAGER 填写的文字）、`RightType`（`ADMIN` | `MANAGER`）、`Source`（`
 r, _ := c.Session.WaitForResult(ctx, s.SessionID, nil)
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{})
 if err == nil && eid.PersonMatchesCertificate(r.Person, who.Subject) {
-	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3, жишээ MNG; заавал биш)
+	// r.Person: FirstName (名), LastName (父名), FamilyName (姓氏), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3，例如 MNG；可选)
 }
-// r.Raw — серверийн түүхий JSON (SDK задлаагүй талбарт)
+// r.Raw — 服务器的原始 JSON（用于 SDK 未解析的字段）
 ```
 
 Person 块**不包含在**签名中——必须与证书的 `SERIALNUMBER`（`PNOMN-<civilId>`）比对一致后才能信任。
@@ -460,29 +460,29 @@ USB 令牌的序列号。不要按组织/日期去猜同一令牌的 AUTH + SIGN
 ### 3.7. USB 令牌
 
 ```go
-// гэрчилгээ олголт (TOKEN_ISSUE эрх) — иргэн утсаараа PIN2-оор батална
+// 证书签发（TOKEN_ISSUE 权限）——公民在手机上用 PIN2 确认
 in := eid.TokenCertInput{SignerEtsi: etsi, CSRAuth: csrA, CSRSign: csrS,
-	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""} // "" = хувийн токен
-// push-ээс ӨМНӨ: ижил оролтоор dryRun — session/push үүсэхгүй, алдааны код бодиттой ижил
-pv, err := c.Token.PreviewCertificate(ctx, in) // pv.Supersedes байвал иргэнд анхааруулж зөвшөөрүүлээд ↓
+	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""} // "" = 个人令牌
+// push 之前：用相同输入做 dryRun——不创建 session/push，错误代码与真实调用相同
+pv, err := c.Token.PreviewCertificate(ctx, in) // 若 pv.Supersedes 存在，先警告公民并取得同意，再 ↓
 st, err := c.Token.IssueCertificate(ctx, in)
-// st.Supersedes — хувийн олголтод солигдох өмнөх хувийн токенууд (доор); PIN2-оос өмнө иргэнд анхааруул
+// st.Supersedes——个人签发将替换的此前的个人令牌（见下）；在 PIN2 之前提醒公民
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
-// 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
-// 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
+// 409 eid.CodeTokenInUse — 该序列号属于另一位公民；409 eid.CodeTokenScopeChange——续期会更改 scope（见下）
+// 400 eid.CodeAppAttestationInvalid — 提供了 AppTransaction 但无效（见下）
 // … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
-err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+err = eid.VerifyTokenCertificates(res, csrA, csrS) // 每个证书都与其 CSR 的密钥一致
 
-// токеноор нэвтрэх (AUTH эрх)
+// 使用令牌登录（AUTH 权限）
 ch, err := c.Token.AuthChallenge(ctx)
-digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
-// v0.6.0-аас challenge-ийг бүтнээр нь (RP хадгалсан, эсвэл клиентээс буцаж ирсэн — CA ChallengeID-ээр тулгана):
-// SDK CA-ийн OK-д дангаар итгэхгүй — r||s-ийг гэрчилгээний түлхүүрээр, RPUUID-ийг өөрийнхтэй, гэрчилгээг Trust-аар
-// (гинж, issuer, зориулалт auth) шалгаад дараа нь CA руу илгээнэ.
+digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // 令牌的 CKM_ECDSA → 原始 r||s
+// 自 v0.6.0 起需完整传入 challenge（由 RP 保存，或由客户端回传——CA 通过 ChallengeID 比对）：
+// SDK 不会仅凭 CA 的 OK 就信任——它会用证书密钥验证 r||s，将 RPUUID 与自己的比对，并按 Trust 验证证书
+// （证书链、颁发者、用途为 auth），然后才发送给 CA。
 who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 
-// токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
+// 使用令牌签 PDF——客户端 PAdES（§7）：令牌对 DTBS 签名，RegisterSignature 中使用 Medium: eid.PDFMediumToken
 ```
 
 **续期会保留 scope**（CA 2026-10-16，discovery `tokenCertificate.scopeLockedOnRenewal: true`——
@@ -529,21 +529,21 @@ who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
 if err == nil && info.Enabled {
 	res, err := c.Share(ctx, eid.ShareRequest{
-		File:     signedPDF,                // ≤ 3 080 192 байт, eID-ийн хүчинтэй гарын үсэгтэй PDF
-		Filename: "гэрээ.pdf",              // .pdf өргөтгөлтэй; "" = document.pdf
-		To:       []string{"next@example.mn"}, // 1–5, давхардалгүй
-		Subject:  "Гэрээ — гарын үсэг",      // ≤ 150; CA «‹RP нэр›: …» угтвар тавина
-		Message:  "Хоёр дахь гарын үсгийг зурна уу", // ≤ 1000
+		File:     signedPDF,                // ≤ 3 080 192 字节，带有效 eID 签名的 PDF
+		Filename: "合同.pdf",              // 须带 .pdf 扩展名；"" = document.pdf
+		To:       []string{"next@example.mn"}, // 1–5 个，不可重复
+		Subject:  "合同——签名",      // ≤ 150; CA 会添加“‹RP 名称›: …”前缀
+		Message:  "请添加第二个签名", // ≤ 1000
 		Lang:     "mn",                      // mn | en
 	})
 	var se *eid.ShareError
 	switch {
 	case errors.As(err, &se) && se.Code == eid.CodeMailFailed:
-		// se.Recipients[i] == eid.ShareRecipientFailed — зөвхөн тэднийг дахин илгээ
+		// se.Recipients[i] == eid.ShareRecipientFailed——仅向这些收件人重新发送
 	case errors.As(err, &se) && se.Code == eid.CodeFileNotSigned:
 		// se.Reason: eid.ShareReasonNoSignature | ShareReasonInvalid | ShareReasonUntrusted
 	case err == nil:
-		_ = res.DocID // CA-д бүртгэлтэй бол (имэйлд verify холбоос)
+		_ = res.DocID // 若已在 CA 登记（邮件中会带 verify 链接）
 	}
 }
 ```
@@ -571,27 +571,27 @@ if err == nil && info.Enabled {
 CA 不保存数据副本——presentation **只能读取一次**（再次读取 → 410）。
 
 ```go
-token, err := eid.ParseQR(scanned) // эсвэл c.QR.Parse; "EIDMN-QR1:<43>" биш → errors.Is(err, eid.ErrQRFormatInvalid)
+token, err := eid.ParseQR(scanned) // 或 c.QR.Parse；若不是 "EIDMN-QR1:<43>" → errors.Is(err, eid.ErrQRFormatInvalid)
 sess, err := c.QR.Start(ctx, eid.QRStartRequest{
 	QR:    scanned,
-	Nonce: orderID, // сонголттой: 16–128 хэвлэгдэх ASCII; "" = 22 тэмдэгт санамсаргүй
+	Nonce: orderID, // 可选：16–128 个可打印 ASCII；"" = 22 个随机字符
 })
-if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404: хугацаа дууссан / ашиглагдсан → шинэ QR гаргуул */ }
+if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404：已过期 / 已被使用 → 请重新生成 QR */ }
 
-// sess-ийг (JSON) хадгалж болно — Result-д sid, nonce-ийг тулгана. Polling UI: c.QR.Check(ctx, sess, 0).
+// sess 可以保存（JSON）——Result 会核对 sid 和 nonce。轮询 UI： c.QR.Check(ctx, sess, 0).
 p, err := c.QR.Result(ctx, sess, nil)
 var sf *eid.SessionFailedError // USER_REFUSED, TIMEOUT …
 var qe *eid.QRError
 switch {
 case errors.As(err, &sf):
-case errors.Is(err, eid.ErrQRPending): // хүлээх хугацаа дууссан, session идэвхтэй — дахин Result / Check
-case errors.Is(err, eid.ErrQRPresentationGone): // 410: аль хэдийн уншигдсан → шинэ QR
-case errors.As(err, &qe): // QR_CHAIN_INVALID, QR_SIGNATURE_INVALID … — ИТГЭХГҮЙ
+case errors.Is(err, eid.ErrQRPending): // 等待时间已用尽，但 session 仍有效——请再次调用 Result / Check
+case errors.Is(err, eid.ErrQRPresentationGone): // 410：已被读取 → 请使用新的 QR
+case errors.As(err, &qe): // QR_CHAIN_INVALID, QR_SIGNATURE_INVALID … ——不要信任
 }
-for _, k := range p.Keys { fmt.Println(k, p.Data[k]) } // payload-ийн дараалал
-_ = p.Photo                     // JPEG байт (эсвэл nil)
-_ = p.Signer.ETSI               // = sub, гэрчилгээний serialNumber (PNOMN-…)
-_ = p.SHA256                    // = CA-ийн аудитын qrsha (маргаан тулгах)
+for _, k := range p.Keys { fmt.Println(k, p.Data[k]) } // payload 的顺序
+_ = p.Photo                     // JPEG 字节（或 nil）
+_ = p.Signer.ETSI               // = sub，即证书的 serialNumber（PNOMN-…）
+_ = p.SHA256                    // = CA 审计中的 qrsha（用于争议核对）
 ```
 
 验证（`eid.VerifyQRPresentation(ctx, jws, eid.QRExpect{…}, trust)`——三个 SDK 相同，使用 CA 的
@@ -619,9 +619,9 @@ CA 的其他代码：404 `QR_TOKEN_INVALID` / 410 `QR_PRESENTATION_GONE` → `*Q
 若是公民以组织名义签名，请参见 §3.4（不是印章）。
 
 ```go
-sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — одоогийн олгогдсон тамганы cert
+sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — 当前已签发的印章证书
 r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{orgEtsi} — {digest, hashType}
-// r.Signature — ECDSA (DER) digest дээр, r.Certificate — тамганы cert (DER), r.SealedAt
+// r.Signature — 对 digest 的 ECDSA（DER）签名，r.Certificate——印章证书（DER），r.SealedAt
 ```
 
 - `Seal` 会校验响应：签名必须能用响应中的证书对 digest 验证通过，且证书必须是 e-Seal profile
@@ -674,9 +674,9 @@ r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{o
 _, err := pades.SealPDF(ctx, c.Seal, org, pdf, pades.SealOptions{})
 switch {
 case errors.Is(err, eid.ErrSealNotIssued), errors.Is(err, eid.ErrSealCertRevoked), errors.Is(err, eid.ErrSealCertExpired):
-	// идэвхтэй тамганы гэрчилгээ алга → c.Seal.RequestCertificate (байгууллагын ADMIN PIN2-оор батална)
+	// 没有有效的印章证书 → c.Seal.RequestCertificate（组织的 ADMIN 用 PIN2 确认）
 case errors.Is(err, eid.ErrOrgNotActive):
-	// байгууллага түр зогссон / цуцлагдсан — давтахгүй
+	// 组织已暂停 / 已吊销——不要重试
 }
 ```
 
@@ -689,12 +689,12 @@ eID 设备，≤ 5 人）会在 eID 应用中收到申请，并用 **PIN2** 确�
 ```go
 req, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972") // 202: req.RequestID, req.Status == eid.SealRequestPending
 if errors.Is(err, eid.ErrSealApproverUnavailable) {
-	// байгууллагад идэвхтэй eID-тэй ADMIN алга
+	// 该组织没有拥有有效 eID 的 ADMIN
 }
 sc, err := c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", req.RequestID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
 var se *eid.SealRequestError
 if errors.As(err, &se) {
-	// se.Outcome: REJECTED | EXPIRED | FAILED → шинэ хүсэлт; eid.SealRequestTimeout → ижил RequestID-аар дахин хүлээж болно
+	// se.Outcome: REJECTED | EXPIRED | FAILED → 新的申请；eid.SealRequestTimeout → 可用相同的 RequestID 继续等待
 }
 ```
 
@@ -719,19 +719,19 @@ if errors.As(err, &se) {
 session → 一次申请（用同一个 session 再次调用会返回同一个 PENDING，不会新发 push）。无需 SEAL 权限。
 
 ```go
-// 1) захирлыг танай RP-ээр шинээр нэвтрүүлнэ (Auth.*), session OK болсны дараа 5 минутын дотор:
+// 1) 通过您的 RP 让 CEO 重新登录（Auth.*），在 session 变为 OK 后 5 分钟内：
 g, err := c.Seal.RequestGrant(ctx, "NTRMN-6235972", authSessionID) // 202: g.GrantID, g.Status == eid.SealGrantPending
 switch {
-case errors.Is(err, eid.ErrNotOrgCEO): // 403 — нэвтэрсэн хүн Гүйцэтгэх захирал биш
-case errors.Is(err, eid.ErrAuthSessionTooOld), errors.Is(err, eid.ErrAuthSessionAlreadyUsed): // 409 — дахин нэвтрүүлнэ
-case errors.Is(err, eid.ErrSealGrantAlreadyApproved): // 409 — эрх аль хэдийн бий
+case errors.Is(err, eid.ErrNotOrgCEO): // 403——登录的人不是首席执行官
+case errors.Is(err, eid.ErrAuthSessionTooOld), errors.Is(err, eid.ErrAuthSessionAlreadyUsed): // 409——请重新登录
+case errors.Is(err, eid.ErrSealGrantAlreadyApproved): // 409——权限已存在
 }
-// 2) захирал PIN2-оор зөвшөөртөл:
+// 2) 直到 CEO 用 PIN2 批准：
 g, err = c.Seal.WaitForGrant(ctx, g.GrantID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
 var ge *eid.SealGrantError
 if errors.As(err, &ge) {
-	// ge.Outcome: REJECTED | EXPIRED | FAILED | REVOKED (ge.Failure) → дахин нэвтрүүлж шинэ хүсэлт;
-	// eid.SealGrantTimeout → ижил GrantID-аар дахин хүлээж болно
+	// ge.Outcome: REJECTED | EXPIRED | FAILED | REVOKED（ge.Failure）→ 重新登录并发起新的申请；
+	// eid.SealGrantTimeout → 可用相同的 GrantID 继续等待
 }
 ```
 
@@ -782,7 +782,7 @@ if errors.Is(err, eid.ErrSealServiceDisabled) {
 	if errors.As(err, &ae) {
 		// ae.Status == 503, ae.Service == eid.SealServiceSealing | eid.SealServiceIssuance, ae.Retryable() == false
 	}
-	// автоматаар давтахгүй — хэрэглэгчид «үйлчилгээ түр унтраалттай» гэж харуулж, дараалалд үлдээнэ
+	// 不要自动重试——向用户显示“服务暂时关闭”，并将其留在队列中
 }
 ```
 
@@ -888,36 +888,36 @@ PDF **不会发送到 eID 的任何服务器**（Smart-ID + DigiDoc 模式）：
 ```go
 import "github.com/gerege-systems/eid-mongolia-sdk-go/pades"
 
-// 1. Гэрчилгээ (certificate-choice) — signedAttrs-ийн signingCertificateV2-д hash-аас ӨМНӨ хэрэгтэй.
+// 1. 证书（certificate-choice）——在计算 hash 之前就需要，用于 signedAttrs 中的 signingCertificateV2。
 cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil)
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
-// 2. (байгууллагын нэрийн өмнөөс бол) CA-ийн тооцоолсон мэдүүлсэн үүрэг — өөрчлөхгүй дамжуулна.
+// 2.（以组织名义签名时）CA 计算出的声明角色——原样传递。
 reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678")
-claimedRole := reps.Representations[0].ClaimedRole // OrgEtsi == onBehalfOf-той мөр
-// 3. Prepare — PDF таны серверт үлдэнэ; эхний eID гарын үсэгт QR хуудас (mn, Lang: "en").
+claimedRole := reps.Representations[0].ClaimedRole // OrgEtsi == onBehalfOf 的那一行
+// 3. Prepare——PDF 保留在您的服务器上；首个 eID 签名带 QR 页（mn，Lang: "en"）。
 p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: signer.Certificate.Raw, VerifyPage: true,
-	FileName: "Гэрээ №12.pdf", ClaimedRole: claimedRole, Reason: "Тест ХХК-ийг төлөөлж"})
-// 4. DTBS-ийг ЯГ ТЭР төхөөрөмжөөр зуруулна. DigestForSigner / DeviceLinkForSigner-ийн анхдагч алгоритм =
-//    sha256WithRSAEncryption (PKCS#1 v1.5) — CMS-д заавал (DigestByEtsi-ийн анхдагч rsassa-pss-ийг Complete
-//    REQUEST_INVALID-аар татгалзана).
+	FileName: "合同第12号.pdf", ClaimedRole: claimedRole, Reason: "代表 Test 有限责任公司"})
+// 4. 必须让恰好那台设备对 DTBS 签名。DigestForSigner / DeviceLinkForSigner 的默认算法 =
+//    sha256WithRSAEncryption (PKCS#1 v1.5)——CMS 必须使用（Complete 会拒绝 DigestByEtsi 的默认 rsassa-pss，
+//    返回 REQUEST_INVALID）。
 s, err := c.Sign.DigestForSigner(ctx, signer, base64.StdEncoding.EncodeToString(p.DTBS), interactions,
 	&eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
 res, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
 _, err = c.Validator.ValidateSign(res, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
 	ExpectedAlgorithm: s.Sign.SignatureAlgorithm, ExpectedCertificate: signer.Certificate, ExpectedFlowType: eid.FlowNotification})
 sig, _ := base64.StdEncoding.DecodeString(res.SignatureValueB64)
-// 5. Complete — TSA https://tsa.timeserver.mn/, OCSP/CRL (AIA/CDP), DSS, өөрийн шалгалт.
+// 5. Complete——TSA https://tsa.timeserver.mn/、OCSP/CRL（AIA/CDP）、DSS、自身校验。
 done, err := pades.Complete(ctx, p.State, sig, pades.CompleteOptions{})
-// OCSP/CRL түр унавал SDK өөрөө 2 удаа дахин оролдоно (~1с, ~3с + jitter; PIN дахин асуухгүй) — CompleteOptions.LTVRetries.
-if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State хэвээр — дахин оролдоно */ }
-// 6. CA-ийн бүртгэл (docID, /verify) — заавал. Medium "" бол SessionID-аас (phone ⇔ sessionID); ClaimedRole-той
-// гарын үсэгт OnBehalfOf-гүй бол REQUEST_INVALID (CA-д очихоос өмнө).
+// OCSP/CRL 临时失败时 SDK 会自行重试 2 次（约 1 s、约 3 s + 抖动；不会再次询问 PIN）——CompleteOptions.LTVRetries。
+if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State 保持不变——可再次尝试 */ }
+// 6. 在 CA 登记（docID、/verify）——必须。Medium 为 "" 时由 SessionID 推断（phone ⇔ sessionID）；带 ClaimedRole 的
+// 签名若没有 OnBehalfOf，则返回 REQUEST_INVALID（在到达 CA 之前）。
 reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: s.SessionID,
 	OnBehalfOf: "NTRMN-6235972"})
 _, err = c.PDF.RegisterSignature(ctx, reg) // POST /pdf/signatures
 // done.PDF — PAdES-BASELINE-LT
-rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ийн /v3/validate/pdf-тэй ижил тайлан (§7.2)
+rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // 与 CA 的 /v3/validate/pdf 相同的报告（§7.2）
 ```
 
 完整的、由编译器检查的版本：`pades/example_test.go`（`Example`）。
@@ -960,8 +960,8 @@ rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ий
 （`https://ca.eidmongolia.mn/verify/<docID>/<revIndex>`）：
 
 ```go
-p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "Гэрээ.pdf",
-	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = оролтын eID verify хуудас БИШ сүүлийн хуудас
+p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "合同.pdf",
+	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = 最后一页，而不是输入文档中的 eID verify 页
 ```
 
 - 坐标——pt，自页面 CropBox（若无则用 MediaBox）**屏幕上所见**（应用 `/Rotate` 之后）的左下
@@ -990,16 +990,16 @@ RP 在自己的后端上（无需将文件发往任何地方），使用 CA 公�
 报告与 CA 的 JSON 相同（snake_case）。浏览器中的规则相同：TS SDK 的 `validatePdf`（`@gerege-systems/eid-mongolia-sdk/validate`）。
 
 ```go
-rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // анхдагч: шигтгэсэн үндэсний Root CA, онлайн цуцлалт
+rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // 默认：内置的国家 Root CA，在线吊销检查
 switch pades.ErrorCode(err) {
 case pades.CodePDFNoSignature, pades.CodePDFInvalid, pades.CodePDFTooLarge, pades.CodePDFTooManySignatures: // 4xx
-case pades.CodePDFEncrypted: // v0.7.1: шифрлэгдсэн (/Encrypt) — нууцлалыг арилгаад дахин илгээхийг хэрэглэгчид хэл
-case pades.CodeRequestInvalid: // ValidateOptions.Roots/Intermediates/Issuers задрахгүй
+case pades.CodePDFEncrypted: // v0.7.1：已加密（/Encrypt）——请告知用户移除保护后重新提交
+case pades.CodeRequestInvalid: // ValidateOptions.Roots/Intermediates/Issuers 无法解析
 }
-if rep.Indication == pades.Valid { /* бүх гарын үсэг хүчинтэй */ }
+if rep.Indication == pades.Valid { /* 所有签名均有效 */ }
 for _, s := range rep.Signatures {
-	_ = s.SignerName           // гэрчилгээнээс (claimed_name — PDF-д бичигдсэн, баталгаагүй)
-	_ = s.SigningTime          // итгэмжлэгдсэн RFC 3161 цаг
+	_ = s.SignerName           // 来自证书（claimed_name——写在 PDF 中，未经验证）
+	_ = s.SigningTime          // 受信任的 RFC 3161 时间
 	_ = s.SignatureLevel       // PAdES-BASELINE-B | -T | -LT
 	_ = s.CertificateLevel     // QUALIFIED | QSCD | ADVANCED (qcStatements)
 	_ = s.Problems             // integrity_failed, untrusted_chain, revoked, modified_after_signing …
@@ -1046,8 +1046,8 @@ Golden vector：`pades/testdata/golden/`（README，tag `pades-golden-v6`）—�
 ### 7.3. 使用组织印章为 PDF 盖章——`pades.SealPDF`（v0.24.0）
 
 ```go
-done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOptions{Reason: "Нэхэмжлэх"})
-// done.PDF — PAdES-BASELINE-LT, байгууллагын тамгатай
+done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOptions{Reason: "发票"})
+// done.PDF — PAdES-BASELINE-LT, 带有组织印章
 ```
 
 流程：印章证书 → `Prepare`（SignerCert = 印章证书）→ 通过 `POST /seal/{orgEtsi}` 对 32 字节 DTBS 盖章（SHA-256）
@@ -1087,7 +1087,7 @@ self-validation）识别带 QR 的印章；写入方（`SealPDF`）仍输出不�
 
 ```bash
 go vet ./... && go test -race ./...
-go test ./pades -run Golden -update                                              # golden-ийг дахин бичих (профайл өөрчлөгдөхөд л)
+go test ./pades -run Golden -update                                              # 重写 golden 文件（仅在 profile 变化时）
 ```
 
 测试：CA 服务器的 device link golden 向量（`testdata/devicelink_golden.json`，与 TS SDK 为同一文件）、Smart-ID

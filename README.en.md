@@ -62,34 +62,34 @@ The eID server always normalizes the Web2App return path to `/auth/eid/callback`
 
 ```go
 c, _ := eid.NewClient(eid.Config{
-	Credentials: eid.Credentials{RPUUID: uuid, RPName: "Интернэт банк", APISecret: secret},
-	// Root (01) — итгэлийн тулгуур; завсрын 02 → 03 → 04 нь SDK-д суусан (eid.CitizenIntermediatesPEM, анхдагч).
+	Credentials: eid.Credentials{RPUUID: uuid, RPName: "Internet Bank", APISecret: secret},
+	// Root (01) is the trust anchor; the intermediates 02 → 03 → 04 are built into the SDK (eid.CitizenIntermediatesPEM, the default).
 	Trust: eid.TrustConfig{TrustAnchorsPEM: []string{eid.NationalRootCAPEM}},
 })
 login, err := eidlogin.New(eidlogin.Config{
 	Client:      c,
-	CallbackURL: "https://bank.example.mn/auth/eid/callback", // host нь callbackHosts-д; утасны урсгалд заавал
+	CallbackURL: "https://bank.example.mn/auth/eid/callback", // the host must be in callbackHosts; required for the phone flow
 	OnSuccess: func(w http.ResponseWriter, r *http.Request, id *eidlogin.Identity) (*eidlogin.Success, error) {
-		// id.ETSI (PNOMN-…) — хэрэглэгчийг ҮҮГЭЭР таньна; id.GivenName/Surname (латин), id.Person (кирилл, байвал)
-		// id.SessionID, id.DocumentNumber, id.Certificate — дараагийн алхамд (гарын үсэг, гэрчилгээ холбох)
+		// id.ETSI (PNOMN-…) — identify the user BY THIS; id.GivenName/Surname (Latin), id.Person (Cyrillic, if present)
+		// id.SessionID, id.DocumentNumber, id.Certificate — for the next steps (signing, linking the certificate)
 		u, err := users.FindOrCreateByETSI(r.Context(), id.ETSI)
 		if err != nil {
 			return nil, err
 		}
-		sid, err := sessions.Create(r.Context(), u.ID) // ШИНЭ session (session fixation)
+		sid, err := sessions.Create(r.Context(), u.ID) // a NEW session (session fixation)
 		if err != nil {
 			return nil, err
 		}
 		http.SetCookie(w, &http.Cookie{Name: "app_session", Value: sid, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		return &eidlogin.Success{Redirect: "/dashboard"}, nil
 	},
-	ClientIP: eidlogin.ForwardedClientIP(1), // nginx/LB нэг hop-ийн ард; proxy-гүй бол eidlogin.RemoteAddrIP
-	// Store: redisStore,        // олон instance бол (анхдагч — процессын санах ой)
-	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // анхдагчтай нэгтгэгдэнэ (push 3/мин хэвээр)
+	ClientIP: eidlogin.ForwardedClientIP(1), // behind a single nginx/LB hop; without a proxy use eidlogin.RemoteAddrIP
+	// Store: redisStore,        // for multiple instances (default — process memory)
+	// RateLimits: map[string]eidlogin.RateRule{"start": {Max: 20, Window: time.Minute}}, // merged with the defaults (push stays 3/min)
 	OnEvent: func(ctx context.Context, kind eidlogin.EventKind, sessionID string, meta map[string]any) {
-		audit.Record(ctx, "auth.eid_"+string(kind), sessionID, meta) // таны аудит
+		audit.Record(ctx, "auth.eid_"+string(kind), sessionID, meta) // your audit
 	},
-	// AuditKey: []byte(os.Getenv("EID_AUDIT_KEY")), // pushKey-ийг instance/restart хооронд тогтвортой болгох
+	// AuditKey: []byte(os.Getenv("EID_AUDIT_KEY")), // keep pushKey stable across instances/restarts
 })
 if err != nil {
 	log.Fatal(err)
@@ -170,10 +170,10 @@ limiter holds ≤ 10 000 keys per type: when full, it purges expired windows, an
   To relax/replace a default, pass that type through `RateLimits`.
 
 ```go
-lim := eidlogin.DefaultRateLimit()                                  // илэрхий бичих бол
-lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push 3/мин хэвээр
-// lim["start"] = eidlogin.RateRule{}                               // start-ийг nginx/gateway-д хязгаарладаг бол
-lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // олон instance: push-ийг Redis-ээр солино
+lim := eidlogin.DefaultRateLimit()                                  // if writing it out explicitly
+lim["start"] = eidlogin.RateRule{Func: redisAllow}                  // push stays 3/min
+// lim["start"] = eidlogin.RateRule{}                               // if start is rate-limited in nginx/gateway
+lim["push"] = eidlogin.RateRule{Func: redisAllowPush}               // multiple instances: replace push with Redis
 cfg.RateLimits = lim
 ```
 
@@ -209,7 +209,7 @@ func (s redisStore) Set(ctx context.Context, tx *eidlogin.Tx, ttl time.Duration)
 	return s.rdb.Set(ctx, s.key(tx.SessionID), b, ttl).Err()
 }
 
-// DEL атомар — зэрэг хоёр status-ийн зөвхөн нэг нь OnSuccess дуудна.
+// DEL is atomic — of two concurrent status calls only one invokes OnSuccess.
 func (s redisStore) Delete(ctx context.Context, sid string) (bool, error) {
 	n, err := s.rdb.Del(ctx, s.key(sid)).Result()
 	return n == 1, err
@@ -229,14 +229,14 @@ the eID CA's `docs/DEVICE_LINK_V3.md` §5, §7; changelog `2026-10-02-ios-min-ve
 
 ```go
 c, err := eid.NewClient(eid.Config{
-	// BaseURL анхдагч https://rp.eidmongolia.mn (RP-API, /v3-гүй) — mTLS-тэй RP ч мөн энэ хост
+	// BaseURL defaults to https://rp.eidmongolia.mn (RP-API, no /v3) — an RP with mTLS uses this host too
 	Credentials: eid.Credentials{
 		RPUUID:    os.Getenv("EID_RP_UUID"),
-		RPName:    "Интернэт банк", // дэд системийн нэр, ≤ 120 тэмдэгт (CA илүүг тэмдэгтээр таслана)
+		RPName:    "Internet Bank", // subsystem name, ≤ 120 characters (the CA truncates anything longer)
 		APISecret: os.Getenv("EID_SECRET"),
 	},
 	Trust: eid.TrustConfig{
-		TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01) — production-д ЗААВАЛ
+		TrustAnchorsPEM: []string{eid.NationalRootCAPEM}, // Mongolian National Root CA (01) — REQUIRED in production
 		// IntermediatesPEM nil = eid.CitizenIntermediatesPEM (02 MDDC → 03 Gerege → 04 eID Mongolia Issuing CA)
 	},
 })
@@ -249,18 +249,18 @@ the TS SDK has had the same 80 s `pdfTimeoutMs` since 0.19.0). The source of the
 ### 3.1. Authentication — push
 
 ```go
-s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678", // ETSI / регистр / иргэний дугаар (сервер танина)
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Интернэт банкинд нэвтрэх"}}, nil)
-show(s.VC) // 5 оронтой баталгаажуулах код — ПИН БИШ, зөвхөн харуулна
+s, err := c.Auth.NotificationByEtsi(ctx, "PNOMN-12345678", // ETSI / registry number / civil ID number (the server recognizes it)
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Log in to Internet Bank"}}, nil)
+show(s.VC) // a 5-digit verification code — NOT a PIN, display only
 
-// long-poll; session-ий хугацаа (ExpiresAt + 15 с; nil бол discovery sessionTtl, эс бөгөөс 600 с) дуустал хүлээнэ.
-// CA хугацаа дууссан session-ийг COMPLETE/TIMEOUT болгоно; MaxWait өгвөл түүгээр таслаж RUNNING-ийг алдаагүй буцаана.
+// long-poll; waits until the session expires (ExpiresAt + 15 s; discovery sessionTtl if nil, otherwise 600 s).
+// The CA turns an expired session into COMPLETE/TIMEOUT; if MaxWait is given, it cuts the wait off and returns RUNNING without an error.
 r, err := c.Session.WaitForResult(ctx, s.SessionID, &eid.WaitOptions{ExpiresAt: s.ExpiresAt})
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowNotification})
 if err != nil {
-	return err // *eid.SessionFailedError (USER_REFUSED, TIMEOUT…) эсвэл *eid.ValidationError — ИТГЭХГҮЙ
+	return err // *eid.SessionFailedError (USER_REFUSED, TIMEOUT…) or *eid.ValidationError — DO NOT TRUST
 }
-if err := c.Validator.CheckRevocation(ctx, who.Certificate); err != nil { // TrustConfig.Revocation тохируулсан бол
+if err := c.Validator.CheckRevocation(ctx, who.Certificate); err != nil { // if TrustConfig.Revocation is configured
 	return err
 }
 log.Println(who.DocumentNumber, who.Subject.SerialNumber, who.Subject.GivenName, who.Subject.Surname)
@@ -274,11 +274,11 @@ and after confirmation it returns to your `CallbackURL` with a `userChallengeVer
 App2App.) The legacy `/dl?sessionId&vc` link was removed from the server on 2026-10-07 — it does not exist in the SDK.
 
 ```go
-// backend — session эхлүүлээд бүх хариуг СЕРВЕРТ хадгална (SessionToken/SessionSecret/ReceivedAt/ACSP)
+// backend — start the session and store the whole response ON THE SERVER (SessionToken/SessionSecret/ReceivedAt/ACSP)
 s, err := c.Auth.DeviceLinkAnonymous(ctx,
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Интернэт банкинд нэвтрэх"}},
-	&eid.AuthOptions{CallbackURL: "https://bank.example.mn/auth/eid/callback?tx=" + txID}) // товч харуулах бол; host = callbackHosts
-store.Put(s.SessionID, s) // браузерт ЗӨВХӨН SessionID, VC
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Log in to Internet Bank"}},
+	&eid.AuthOptions{CallbackURL: "https://bank.example.mn/auth/eid/callback?tx=" + txID}) // if showing a button; host = callbackHosts
+store.Put(s.SessionID, s) // ONLY SessionID and VC go to the browser
 
 link := func(s *eid.DeviceLinkSession, t eid.DeviceLinkType) (string, error) {
 	return eid.BuildDeviceLink(eid.DeviceLinkInput{
@@ -286,22 +286,22 @@ link := func(s *eid.DeviceLinkSession, t eid.DeviceLinkType) (string, error) {
 		SessionToken: s.SessionToken, SessionSecret: s.SessionSecret,
 		SessionType: eid.SessionAuth, Lang: "mon", ReceivedAt: s.ReceivedAt,
 		RPChallenge: s.ACSP.RPChallenge, RelyingPartyName: s.ACSP.RelyingPartyName,
-		Interactions: s.ACSP.Interactions, InitialCallbackURL: s.ACSP.InitialCallbackURL, // QR-д authCode-д орохгүй
+		Interactions: s.ACSP.Interactions, InitialCallbackURL: s.ACSP.InitialCallbackURL, // not part of authCode for QR
 	})
 }
 
-// GET /eid/qr?sessionId=… — браузер 1 секунд тутам дуудаж QR-ийг дахин зурна (QR ~20 сек хүчинтэй)
+// GET /eid/qr?sessionId=… — the browser calls this every second and redraws the QR (a QR is valid for ~20 s)
 http.HandleFunc("GET /eid/qr", func(w http.ResponseWriter, r *http.Request) {
-	s := store.Get(r.URL.Query().Get("sessionId")) // өөрийн browser session-д хамаарахыг шалга
+	s := store.Get(r.URL.Query().Get("sessionId")) // check that it belongs to the caller's own browser session
 	l, err := link(s, eid.LinkQR)
 	if err != nil {
-		http.Error(w, "session дууссан", http.StatusGone)
+		http.Error(w, "session ended", http.StatusGone)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]string{"link": l})
 })
-// гар утсанд: товчны href = link(s, eid.LinkWeb2App) (нэг удаа угсарна)
+// on a phone: the button's href = link(s, eid.LinkWeb2App) (built once)
 ```
 
 To push over SSE/WebSocket, use `eid.TickQRDeviceLink(ctx, input, time.Second, send)` — it emits a link immediately, then every second;
@@ -310,12 +310,12 @@ stop it by cancelling `ctx`.
 **Always check the type you showed (relay protection):**
 
 ```go
-// QR хуудас → poll-оор дууссан үр дүн
+// QR page → a result completed via polling
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: eid.FlowQR})
 
-// Web2App товч → callback (?userChallengeVerifier=…) ирсний дараа
+// Web2App button → after the callback (?userChallengeVerifier=…) arrives
 who, err = c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{
-	ExpectedFlowType:      eid.FlowWeb2App, // RP-ийн апп дахь товч бол eid.FlowApp2App
+	ExpectedFlowType:      eid.FlowWeb2App, // eid.FlowApp2App if the button is inside the RP's app
 	UserChallengeVerifier: callback.Query().Get("userChallengeVerifier"),
 })
 ```
@@ -328,13 +328,13 @@ and one that arrived by polling as `QR`.
 ```go
 digest := eid.SHA256Base64(docBytes)
 s, err := c.Sign.DigestByEtsi(ctx, "PNOMN-12345678", digest,
-	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Зээлийн гэрээнд гарын үсэг зурах"}}, nil)
+	[]eid.Interaction{{Type: "displayTextAndPIN", DisplayText60: "Sign the loan agreement"}}, nil)
 show(s.VC)
 r, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
-sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // digest-ийн эсрэг
-// SignOptions.FileName — баримтын нэр CA-ийн /verify хуудас, иргэний түүхэнд харагдана (заавал биш)
+sig, err := c.Validator.ValidateSign(r, digest, eid.SHA256) // against the digest
+// SignOptions.FileName — the document name, shown on the CA's /verify page and in the citizen's history (optional)
 
-// device-link / push-оор эхлүүлсэн бол урсгалаа тулга (ValidateAuth-тай ижил; зөрвөл *ValidationError)
+// if started via device-link / push, check the flow (same as ValidateAuth; a mismatch gives *ValidationError)
 sig, err = c.Validator.ValidateSign(r, digest, eid.SHA256, eid.ValidateSignOptions{ExpectedFlowType: eid.FlowQR})
 ```
 
@@ -359,17 +359,17 @@ certificate-choice first, then have the digest signed **on exactly that device (
 starting by etsi makes a different phone sign, and the signature will not match the certificate.
 
 ```go
-cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // эсвэл CertificateChoiceDeviceLink (QR; CallbackURL-тай бол Web2App/App2App)
+cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil) // or CertificateChoiceDeviceLink (QR; Web2App/App2App if CallbackURL is given)
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID) // Signer{Certificate, DocumentNumber}
-dtbs := buildDTBS(signer.Certificate)                                 // 32 байт SHA-256, стандарт base64
-s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{FileName: "Гэрээ.pdf"}) // linked/{documentNumber}
+dtbs := buildDTBS(signer.Certificate)                                 // 32-byte SHA-256, standard base64
+s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{FileName: "Contract.pdf"}) // linked/{documentNumber}
 // QR / Web2App: c.Sign.DeviceLinkForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{CallbackURL: …})
 r, err = c.Session.WaitForResult(ctx, s.SessionID, nil)
 sig, err := c.Validator.ValidateSign(r, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
 	ExpectedFlowType:    eid.FlowNotification,
-	ExpectedAlgorithm:   s.Sign.SignatureAlgorithm, // sha256WithRSAEncryption — PSS хариуг татгалзана
-	ExpectedCertificate: signer.Certificate,        // өөр гэрчилгээгээр зурсан бол татгалзана
+	ExpectedAlgorithm:   s.Sign.SignatureAlgorithm, // sha256WithRSAEncryption — a PSS response is rejected
+	ExpectedCertificate: signer.Certificate,        // rejected if signed with a different certificate
 })
 ```
 
@@ -385,20 +385,20 @@ allowlist and normalizes the path to `/auth/eid/callback`; if it is not in the a
 `sessionSecretDigest` + `sessionId` (the certificate-choice session), and no `userChallengeVerifier`.
 
 ```go
-// 1. Эхлүүл: value-г браузерийн cookie-д хадгал.
+// 1. Start: store value in the browser's cookie.
 cc, err := c.Sign.CertificateChoiceDeviceLink(ctx, &eid.CertChoiceOptions{
 	CallbackURL: "https://rp.example.mn/auth/eid/callback?value=" + value,
 })
-link, err := eid.BuildDeviceLink(cc.LinkInput(eid.LinkWeb2App, "mon")) // эсвэл LinkApp2App; QR-д LinkQR
-// 2. Certificate choice-ийг шалгаад linked sign эхлүүл (DeviceLinkForSigner / DigestForSigner — дээрх жишээ).
+link, err := eid.BuildDeviceLink(cc.LinkInput(eid.LinkWeb2App, "mon")) // or LinkApp2App; LinkQR for QR
+// 2. Verify the certificate choice, then start the linked sign (DeviceLinkForSigner / DigestForSigner — see the example above).
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
-// 3. /auth/eid/callback дээр:
-//    - query-ийн `value` нь браузерийн cookie-той тэнцүү эсэх;
-//    - eid.VerifySessionSecretDigest(q.Get("sessionSecretDigest"), cc.SessionSecret) — cc нь server-side хадгалсан
-//      certificate-choice session (sessionId-аар олно), SessionSecret браузерт хэзээ ч очихгүй;
-//    - callback-ийг ЗӨВХӨН НЭГ УДАА хүлээн ав (хоёр дахь удаа татгалз);
-//    - дараа нь linked SIGN session-ий үр дүнг уншиж (c.Session.WaitForResult → ValidateSign) дүгнэ.
+// 3. At /auth/eid/callback:
+//    - whether the query's `value` equals the browser's cookie;
+//    - eid.VerifySessionSecretDigest(q.Get("sessionSecretDigest"), cc.SessionSecret) — cc is the server-side stored
+//      certificate-choice session (looked up by sessionId); SessionSecret never reaches the browser;
+//    - accept the callback ONLY ONCE (reject a second time);
+//    - then read the linked SIGN session's result (c.Session.WaitForResult → ValidateSign) and decide.
 ```
 
 `eid.SessionSecretDigest(secret)` = `BASE64URL-NOPAD(SHA-256(base64-decode(secret)))`; `VerifySessionSecretDigest` compares in
@@ -411,9 +411,9 @@ The citizen signs **with their own PIN2 certificate**; eID checks the authority 
 qualified signature — not an organization seal). Signing a PDF is client-side PAdES — [§7](#7-client-side-pades-pades).
 
 ```go
-reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678") // иргэн сүүлийн 24 цагт нэвтэрсэн байх
+reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678") // the citizen must have logged in within the last 24 hours
 s, err := c.Sign.DigestForSigner(ctx, signer, dtbs, ix, &eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
-// r.OnBehalfOf — СЕРВЕР төлөөллийг шалгасны баталгаа (nil = хувь хүн)
+// r.OnBehalfOf — proof that the SERVER checked the representation (nil = an individual)
 ```
 
 If `OnBehalfOf` is rejected, the `Code` of `*eid.ForbiddenError` / `*eid.APIError` (`eid.OnBehalfErrorCodes`):
@@ -437,9 +437,9 @@ Empty for an older CA.
 r, _ := c.Session.WaitForResult(ctx, s.SessionID, nil)
 who, err := c.Validator.ValidateAuth(r, s.ACSP, eid.ValidateAuthOptions{})
 if err == nil && eid.PersonMatchesCertificate(r.Person, who.Subject) {
-	// r.Person: FirstName (нэр), LastName (ЭЦГИЙН нэр), FamilyName (УРГИЙН овог), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3, жишээ MNG; заавал биш)
+	// r.Person: FirstName (name), LastName (FATHER'S name), FamilyName (FAMILY name), CivilID, RegNo, BirthDate, Gender, GeID, Nationality (ISO 3166-1 alpha-3, e.g. MNG; optional)
 }
-// r.Raw — серверийн түүхий JSON (SDK задлаагүй талбарт)
+// r.Raw — the server's raw JSON (for fields the SDK does not parse)
 ```
 
 The person block is **not part of** the signature — trust it only after matching it against the certificate's `SERIALNUMBER` (`PNOMN-<civilId>`).
@@ -460,29 +460,29 @@ USB token the certificate was issued to. Do not guess one token's AUTH + SIGN by
 ### 3.7. USB token
 
 ```go
-// гэрчилгээ олголт (TOKEN_ISSUE эрх) — иргэн утсаараа PIN2-оор батална
+// certificate issuance (TOKEN_ISSUE permission) — the citizen confirms with PIN2 on their phone
 in := eid.TokenCertInput{SignerEtsi: etsi, CSRAuth: csrA, CSRSign: csrS,
-	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""} // "" = хувийн токен
-// push-ээс ӨМНӨ: ижил оролтоор dryRun — session/push үүсэхгүй, алдааны код бодиттой ижил
-pv, err := c.Token.PreviewCertificate(ctx, in) // pv.Supersedes байвал иргэнд анхааруулж зөвшөөрүүлээд ↓
+	TokenSerial: "EP2003-0042A1", OnBehalfOf: ""} // "" = personal token
+// BEFORE the push: dryRun with the same input — no session/push is created, error codes are the same as for real
+pv, err := c.Token.PreviewCertificate(ctx, in) // if pv.Supersedes is set, warn the citizen and get their consent, then ↓
 st, err := c.Token.IssueCertificate(ctx, in)
-// st.Supersedes — хувийн олголтод солигдох өмнөх хувийн токенууд (доор); PIN2-оос өмнө иргэнд анхааруул
+// st.Supersedes — the previous personal tokens a personal issuance will replace (below); warn the citizen before PIN2
 if l, ok := eid.TokenLimitOf(err); ok { /* 409 TOKEN_LIMIT_REACHED: l.Kind, l.Limit, l.Organization */ }
-// 409 eid.CodeTokenInUse — serial өөр иргэнд; 409 eid.CodeTokenScopeChange — сунгалт scope солих гэсэн (доор)
-// 400 eid.CodeAppAttestationInvalid — AppTransaction ирсэн боловч хүчингүй (доор)
+// 409 eid.CodeTokenInUse — the serial belongs to another citizen; 409 eid.CodeTokenScopeChange — a renewal that would change scope (below)
+// 400 eid.CodeAppAttestationInvalid — an AppTransaction was sent but is invalid (below)
 // … c.Session.Poll → r.TokenCertificate.Status == eid.TokenCertIssued
 res, err := c.Token.CertificateResult(ctx, st.SessionID)
-err = eid.VerifyTokenCertificates(res, csrA, csrS) // гэрчилгээ бүр CSR-ийн түлхүүртэй
+err = eid.VerifyTokenCertificates(res, csrA, csrS) // every certificate matches its CSR's key
 
-// токеноор нэвтрэх (AUTH эрх)
+// signing in with the token (AUTH permission)
 ch, err := c.Token.AuthChallenge(ctx)
-digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // токен CKM_ECDSA → түүхий r||s
-// v0.6.0-аас challenge-ийг бүтнээр нь (RP хадгалсан, эсвэл клиентээс буцаж ирсэн — CA ChallengeID-ээр тулгана):
-// SDK CA-ийн OK-д дангаар итгэхгүй — r||s-ийг гэрчилгээний түлхүүрээр, RPUUID-ийг өөрийнхтэй, гэрчилгээг Trust-аар
-// (гинж, issuer, зориулалт auth) шалгаад дараа нь CA руу илгээнэ.
+digest, _ := eid.TokenAuthDigest(ch.RPUUID, ch.Challenge) // the token's CKM_ECDSA → raw r||s
+// since v0.6.0 pass the challenge whole (kept by the RP, or returned from the client — the CA matches it by ChallengeID):
+// the SDK does not trust the CA's OK alone — it checks r||s against the certificate's key, the RPUUID against its own, and the certificate against Trust
+// (chain, issuer, purpose auth) and only then sends it to the CA.
 who, err := c.Token.AuthVerify(ctx, ch, authCertDER, rs)
 
-// токеноор PDF — клиент талын PAdES (§7): токен DTBS-ийг зурна, RegisterSignature-д Medium: eid.PDFMediumToken
+// PDF with a token — client-side PAdES (§7): the token signs the DTBS, with Medium: eid.PDFMediumToken in RegisterSignature
 ```
 
 **Renewal preserves the scope** (CA 2026-10-16, discovery `tokenCertificate.scopeLockedOnRenewal: true` —
@@ -529,21 +529,21 @@ that it has a valid eID signature, sends it, and discards it. A separate email g
 info, err := c.ShareInfo(ctx) // Enabled, MaxFileBytes, MaxRecipients, Quota{PerRPHour, PerRPDay, PerRecipientDay}, …
 if err == nil && info.Enabled {
 	res, err := c.Share(ctx, eid.ShareRequest{
-		File:     signedPDF,                // ≤ 3 080 192 байт, eID-ийн хүчинтэй гарын үсэгтэй PDF
-		Filename: "гэрээ.pdf",              // .pdf өргөтгөлтэй; "" = document.pdf
-		To:       []string{"next@example.mn"}, // 1–5, давхардалгүй
-		Subject:  "Гэрээ — гарын үсэг",      // ≤ 150; CA «‹RP нэр›: …» угтвар тавина
-		Message:  "Хоёр дахь гарын үсгийг зурна уу", // ≤ 1000
+		File:     signedPDF,                // ≤ 3 080 192 bytes, a PDF with a valid eID signature
+		Filename: "contract.pdf",              // with a .pdf extension; "" = document.pdf
+		To:       []string{"next@example.mn"}, // 1–5, no duplicates
+		Subject:  "Contract — signature",      // ≤ 150; the CA adds a "‹RP name›: …" prefix
+		Message:  "Please add the second signature", // ≤ 1000
 		Lang:     "mn",                      // mn | en
 	})
 	var se *eid.ShareError
 	switch {
 	case errors.As(err, &se) && se.Code == eid.CodeMailFailed:
-		// se.Recipients[i] == eid.ShareRecipientFailed — зөвхөн тэднийг дахин илгээ
+		// se.Recipients[i] == eid.ShareRecipientFailed — resend only to those
 	case errors.As(err, &se) && se.Code == eid.CodeFileNotSigned:
 		// se.Reason: eid.ShareReasonNoSignature | ShareReasonInvalid | ShareReasonUntrusted
 	case err == nil:
-		_ = res.DocID // CA-д бүртгэлтэй бол (имэйлд verify холбоос)
+		_ = res.DocID // if registered at the CA (a verify link goes in the email)
 	}
 }
 ```
@@ -571,27 +571,27 @@ calls `c.QR.Start` → on the citizen's phone one sentence ("You are about to sh
 The CA keeps no copy of the data — the presentation is read **only once** (again → 410).
 
 ```go
-token, err := eid.ParseQR(scanned) // эсвэл c.QR.Parse; "EIDMN-QR1:<43>" биш → errors.Is(err, eid.ErrQRFormatInvalid)
+token, err := eid.ParseQR(scanned) // or c.QR.Parse; if it is not "EIDMN-QR1:<43>" → errors.Is(err, eid.ErrQRFormatInvalid)
 sess, err := c.QR.Start(ctx, eid.QRStartRequest{
 	QR:    scanned,
-	Nonce: orderID, // сонголттой: 16–128 хэвлэгдэх ASCII; "" = 22 тэмдэгт санамсаргүй
+	Nonce: orderID, // optional: 16–128 printable ASCII; "" = 22 random characters
 })
-if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404: хугацаа дууссан / ашиглагдсан → шинэ QR гаргуул */ }
+if errors.Is(err, eid.ErrQRTokenInvalid) { /* 404: expired / already used → ask for a new QR */ }
 
-// sess-ийг (JSON) хадгалж болно — Result-д sid, nonce-ийг тулгана. Polling UI: c.QR.Check(ctx, sess, 0).
+// sess can be stored (as JSON) — Result verifies sid and nonce. Polling UI: c.QR.Check(ctx, sess, 0).
 p, err := c.QR.Result(ctx, sess, nil)
 var sf *eid.SessionFailedError // USER_REFUSED, TIMEOUT …
 var qe *eid.QRError
 switch {
 case errors.As(err, &sf):
-case errors.Is(err, eid.ErrQRPending): // хүлээх хугацаа дууссан, session идэвхтэй — дахин Result / Check
-case errors.Is(err, eid.ErrQRPresentationGone): // 410: аль хэдийн уншигдсан → шинэ QR
-case errors.As(err, &qe): // QR_CHAIN_INVALID, QR_SIGNATURE_INVALID … — ИТГЭХГҮЙ
+case errors.Is(err, eid.ErrQRPending): // the wait ran out but the session is still active — call Result / Check again
+case errors.Is(err, eid.ErrQRPresentationGone): // 410: already read → a new QR
+case errors.As(err, &qe): // QR_CHAIN_INVALID, QR_SIGNATURE_INVALID … — DO NOT TRUST
 }
-for _, k := range p.Keys { fmt.Println(k, p.Data[k]) } // payload-ийн дараалал
-_ = p.Photo                     // JPEG байт (эсвэл nil)
-_ = p.Signer.ETSI               // = sub, гэрчилгээний serialNumber (PNOMN-…)
-_ = p.SHA256                    // = CA-ийн аудитын qrsha (маргаан тулгах)
+for _, k := range p.Keys { fmt.Println(k, p.Data[k]) } // payload order
+_ = p.Photo                     // JPEG bytes (or nil)
+_ = p.Signer.ETSI               // = sub, the certificate's serialNumber (PNOMN-…)
+_ = p.SHA256                    // = the CA's audit qrsha (to match in a dispute)
 ```
 
 Verification (`eid.VerifyQRPresentation(ctx, jws, eid.QRExpect{…}, trust)` — the same across the three SDKs, using the CA's
@@ -619,9 +619,9 @@ the permission is **granted by the organization itself** (below, "Seal permissio
 For a citizen signing on behalf of an organization, see §3.4 (not a seal).
 
 ```go
-sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — одоогийн олгогдсон тамганы cert
+sc, err := c.Seal.Certificate(ctx, "NTRMN-6235972")            // GET /seal/certificate/{orgEtsi} — the current issued seal cert
 r, err := c.Seal.Seal(ctx, "NTRMN-6235972", digest, eid.SHA256) // POST /seal/{orgEtsi} — {digest, hashType}
-// r.Signature — ECDSA (DER) digest дээр, r.Certificate — тамганы cert (DER), r.SealedAt
+// r.Signature — ECDSA (DER) over the digest, r.Certificate — the seal cert (DER), r.SealedAt
 ```
 
 - `Seal` validates the response: the signature must match the digest under the response's certificate, and the certificate must be an e-Seal profile
@@ -675,9 +675,9 @@ All are `*eid.APIError` (`Status`, `Code`, `Body` unchanged; `Retryable()` false
 _, err := pades.SealPDF(ctx, c.Seal, org, pdf, pades.SealOptions{})
 switch {
 case errors.Is(err, eid.ErrSealNotIssued), errors.Is(err, eid.ErrSealCertRevoked), errors.Is(err, eid.ErrSealCertExpired):
-	// идэвхтэй тамганы гэрчилгээ алга → c.Seal.RequestCertificate (байгууллагын ADMIN PIN2-оор батална)
+	// no active seal certificate → c.Seal.RequestCertificate (the organization's ADMIN confirms with PIN2)
 case errors.Is(err, eid.ErrOrgNotActive):
-	// байгууллага түр зогссон / цуцлагдсан — давтахгүй
+	// the organization is suspended / revoked — do not retry
 }
 ```
 
@@ -690,12 +690,12 @@ if they decline, `REJECTED`; if the approval period (the signing session TTL + 2
 ```go
 req, err := c.Seal.RequestCertificate(ctx, "NTRMN-6235972") // 202: req.RequestID, req.Status == eid.SealRequestPending
 if errors.Is(err, eid.ErrSealApproverUnavailable) {
-	// байгууллагад идэвхтэй eID-тэй ADMIN алга
+	// the organization has no ADMIN with an active eID
 }
 sc, err := c.Seal.WaitForCertificate(ctx, "NTRMN-6235972", req.RequestID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
 var se *eid.SealRequestError
 if errors.As(err, &se) {
-	// se.Outcome: REJECTED | EXPIRED | FAILED → шинэ хүсэлт; eid.SealRequestTimeout → ижил RequestID-аар дахин хүлээж болно
+	// se.Outcome: REJECTED | EXPIRED | FAILED → a new request; eid.SealRequestTimeout → you may wait again with the same RequestID
 }
 ```
 
@@ -720,19 +720,19 @@ but by **an authentication session started by your RP and completed with OK with
 session → one request (calling again with the same session returns the same PENDING, with no new push). The SEAL permission is not required.
 
 ```go
-// 1) захирлыг танай RP-ээр шинээр нэвтрүүлнэ (Auth.*), session OK болсны дараа 5 минутын дотор:
+// 1) log the CEO in anew through your RP (Auth.*); within 5 minutes after the session turns OK:
 g, err := c.Seal.RequestGrant(ctx, "NTRMN-6235972", authSessionID) // 202: g.GrantID, g.Status == eid.SealGrantPending
 switch {
-case errors.Is(err, eid.ErrNotOrgCEO): // 403 — нэвтэрсэн хүн Гүйцэтгэх захирал биш
-case errors.Is(err, eid.ErrAuthSessionTooOld), errors.Is(err, eid.ErrAuthSessionAlreadyUsed): // 409 — дахин нэвтрүүлнэ
-case errors.Is(err, eid.ErrSealGrantAlreadyApproved): // 409 — эрх аль хэдийн бий
+case errors.Is(err, eid.ErrNotOrgCEO): // 403 — the person who logged in is not the CEO
+case errors.Is(err, eid.ErrAuthSessionTooOld), errors.Is(err, eid.ErrAuthSessionAlreadyUsed): // 409 — log in again
+case errors.Is(err, eid.ErrSealGrantAlreadyApproved): // 409 — the permission already exists
 }
-// 2) захирал PIN2-оор зөвшөөртөл:
+// 2) until the CEO approves with PIN2:
 g, err = c.Seal.WaitForGrant(ctx, g.GrantID, &eid.SealWaitOptions{Timeout: 10 * time.Minute})
 var ge *eid.SealGrantError
 if errors.As(err, &ge) {
-	// ge.Outcome: REJECTED | EXPIRED | FAILED | REVOKED (ge.Failure) → дахин нэвтрүүлж шинэ хүсэлт;
-	// eid.SealGrantTimeout → ижил GrantID-аар дахин хүлээж болно
+	// ge.Outcome: REJECTED | EXPIRED | FAILED | REVOKED (ge.Failure) → log in again and make a new request;
+	// eid.SealGrantTimeout → you may wait again with the same GrantID
 }
 ```
 
@@ -783,7 +783,7 @@ if errors.Is(err, eid.ErrSealServiceDisabled) {
 	if errors.As(err, &ae) {
 		// ae.Status == 503, ae.Service == eid.SealServiceSealing | eid.SealServiceIssuance, ae.Retryable() == false
 	}
-	// автоматаар давтахгүй — хэрэглэгчид «үйлчилгээ түр унтраалттай» гэж харуулж, дараалалд үлдээнэ
+	// do not retry automatically — show the user "the service is temporarily disabled" and leave it in the queue
 }
 ```
 
@@ -889,36 +889,36 @@ without runtime compression); the same input → the same bytes.
 ```go
 import "github.com/gerege-systems/eid-mongolia-sdk-go/pades"
 
-// 1. Гэрчилгээ (certificate-choice) — signedAttrs-ийн signingCertificateV2-д hash-аас ӨМНӨ хэрэгтэй.
+// 1. The certificate (certificate-choice) — needed BEFORE hashing, for signingCertificateV2 in signedAttrs.
 cc, err := c.Sign.CertificateChoiceByEtsi(ctx, "PNOMN-12345678", nil)
 r, err := c.Session.WaitForResult(ctx, cc.SessionID, nil)
 signer, err := c.Validator.ValidateCertificateChoice(r, cc.SessionID)
-// 2. (байгууллагын нэрийн өмнөөс бол) CA-ийн тооцоолсон мэдүүлсэн үүрэг — өөрчлөхгүй дамжуулна.
+// 2. (when signing on behalf of an organization) the claimed role computed by the CA — pass it through unchanged.
 reps, err := c.Organization.GetRepresentations(ctx, "PNOMN-12345678")
-claimedRole := reps.Representations[0].ClaimedRole // OrgEtsi == onBehalfOf-той мөр
-// 3. Prepare — PDF таны серверт үлдэнэ; эхний eID гарын үсэгт QR хуудас (mn, Lang: "en").
+claimedRole := reps.Representations[0].ClaimedRole // the row whose OrgEtsi == onBehalfOf
+// 3. Prepare — the PDF stays on your server; a QR page for the first eID signature (mn, Lang: "en").
 p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: signer.Certificate.Raw, VerifyPage: true,
-	FileName: "Гэрээ №12.pdf", ClaimedRole: claimedRole, Reason: "Тест ХХК-ийг төлөөлж"})
-// 4. DTBS-ийг ЯГ ТЭР төхөөрөмжөөр зуруулна. DigestForSigner / DeviceLinkForSigner-ийн анхдагч алгоритм =
-//    sha256WithRSAEncryption (PKCS#1 v1.5) — CMS-д заавал (DigestByEtsi-ийн анхдагч rsassa-pss-ийг Complete
-//    REQUEST_INVALID-аар татгалзана).
+	FileName: "Contract No. 12.pdf", ClaimedRole: claimedRole, Reason: "On behalf of Test LLC"})
+// 4. Have the DTBS signed by EXACTLY THAT device. The default algorithm of DigestForSigner / DeviceLinkForSigner =
+//    sha256WithRSAEncryption (PKCS#1 v1.5) — required for the CMS (Complete rejects DigestByEtsi's default rsassa-pss
+//    with REQUEST_INVALID).
 s, err := c.Sign.DigestForSigner(ctx, signer, base64.StdEncoding.EncodeToString(p.DTBS), interactions,
 	&eid.SignOptions{OnBehalfOf: "NTRMN-6235972"})
 res, err := c.Session.WaitForResult(ctx, s.SessionID, nil)
 _, err = c.Validator.ValidateSign(res, s.Sign.Digest, s.Sign.HashAlgorithm, eid.ValidateSignOptions{
 	ExpectedAlgorithm: s.Sign.SignatureAlgorithm, ExpectedCertificate: signer.Certificate, ExpectedFlowType: eid.FlowNotification})
 sig, _ := base64.StdEncoding.DecodeString(res.SignatureValueB64)
-// 5. Complete — TSA https://tsa.timeserver.mn/, OCSP/CRL (AIA/CDP), DSS, өөрийн шалгалт.
+// 5. Complete — TSA https://tsa.timeserver.mn/, OCSP/CRL (AIA/CDP), DSS, its own validation.
 done, err := pades.Complete(ctx, p.State, sig, pades.CompleteOptions{})
-// OCSP/CRL түр унавал SDK өөрөө 2 удаа дахин оролдоно (~1с, ~3с + jitter; PIN дахин асуухгүй) — CompleteOptions.LTVRetries.
-if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State хэвээр — дахин оролдоно */ }
-// 6. CA-ийн бүртгэл (docID, /verify) — заавал. Medium "" бол SessionID-аас (phone ⇔ sessionID); ClaimedRole-той
-// гарын үсэгт OnBehalfOf-гүй бол REQUEST_INVALID (CA-д очихоос өмнө).
+// if OCSP/CRL fails transiently the SDK retries itself twice (~1 s, ~3 s + jitter; no new PIN) — CompleteOptions.LTVRetries.
+if pades.ErrorCode(err) == pades.CodeTSAUnavailable { /* p.State is unchanged — try again */ }
+// 6. Registration at the CA (docID, /verify) — required. If Medium is "", it is derived from SessionID (phone ⇔ sessionID); for a signature with a ClaimedRole
+// signature without OnBehalfOf gives REQUEST_INVALID (before it reaches the CA).
 reg, err := pades.Registration(done, pades.RegistrationOptions{Medium: eid.PDFMediumPhone, SessionID: s.SessionID,
 	OnBehalfOf: "NTRMN-6235972"})
 _, err = c.PDF.RegisterSignature(ctx, reg) // POST /pdf/signatures
 // done.PDF — PAdES-BASELINE-LT
-rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // CA-ийн /v3/validate/pdf-тэй ижил тайлан (§7.2)
+rep, err := pades.ValidatePDF(ctx, done.PDF, pades.ValidateOptions{}) // the same report as the CA's /v3/validate/pdf (§7.2)
 ```
 
 The full version, checked by the compiler: `pades/example_test.go` (`Example`).
@@ -961,8 +961,8 @@ The default is invisible (byte-identical to before). If the RP gives a rectangle
 (`https://ca.eidmongolia.mn/verify/<docID>/<revIndex>`):
 
 ```go
-p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "Гэрээ.pdf",
-	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = оролтын eID verify хуудас БИШ сүүлийн хуудас
+p, err := pades.Prepare(pdfBytes, pades.PrepareOptions{SignerCert: cert, VerifyPage: true, FileName: "Contract.pdf",
+	Appearance: &pades.Appearance{Page: 0, X: 36, Y: 36, Width: 220, Height: 64}}) // Page 0 = the last page, NOT the input's eID verify page
 ```
 
 - Coordinates — pt, from the **screen-visible** (after `/Rotate`) bottom-left corner of the page's CropBox (or MediaBox if absent);
@@ -991,16 +991,16 @@ The RP verifies on its own backend (without sending the file anywhere) with the 
 the report is identical to the CA's JSON (snake_case). The same rules in the browser: the TS SDK's `validatePdf` (`@gerege-systems/eid-mongolia-sdk/validate`).
 
 ```go
-rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // анхдагч: шигтгэсэн үндэсний Root CA, онлайн цуцлалт
+rep, err := pades.ValidatePDF(ctx, pdfBytes, pades.ValidateOptions{}) // default: the embedded national Root CA, online revocation
 switch pades.ErrorCode(err) {
 case pades.CodePDFNoSignature, pades.CodePDFInvalid, pades.CodePDFTooLarge, pades.CodePDFTooManySignatures: // 4xx
-case pades.CodePDFEncrypted: // v0.7.1: шифрлэгдсэн (/Encrypt) — нууцлалыг арилгаад дахин илгээхийг хэрэглэгчид хэл
-case pades.CodeRequestInvalid: // ValidateOptions.Roots/Intermediates/Issuers задрахгүй
+case pades.CodePDFEncrypted: // v0.7.1: encrypted (/Encrypt) — tell the user to remove the protection and resubmit
+case pades.CodeRequestInvalid: // ValidateOptions.Roots/Intermediates/Issuers cannot be parsed
 }
-if rep.Indication == pades.Valid { /* бүх гарын үсэг хүчинтэй */ }
+if rep.Indication == pades.Valid { /* all signatures are valid */ }
 for _, s := range rep.Signatures {
-	_ = s.SignerName           // гэрчилгээнээс (claimed_name — PDF-д бичигдсэн, баталгаагүй)
-	_ = s.SigningTime          // итгэмжлэгдсэн RFC 3161 цаг
+	_ = s.SignerName           // from the certificate (claimed_name — written in the PDF, unverified)
+	_ = s.SigningTime          // the trusted RFC 3161 time
 	_ = s.SignatureLevel       // PAdES-BASELINE-B | -T | -LT
 	_ = s.CertificateLevel     // QUALIFIED | QSCD | ADVANCED (qcStatements)
 	_ = s.Problems             // integrity_failed, untrusted_chain, revoked, modified_after_signing …
@@ -1046,8 +1046,8 @@ independently checks every output with qpdf (`--check`) and pyHanko (INTACT/VALI
 ### 7.3. Sealing a PDF with an organizational seal — `pades.SealPDF` (v0.24.0)
 
 ```go
-done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOptions{Reason: "Нэхэмжлэх"})
-// done.PDF — PAdES-BASELINE-LT, байгууллагын тамгатай
+done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOptions{Reason: "Invoice"})
+// done.PDF — PAdES-BASELINE-LT, with the organization's seal
 ```
 
 The flow: the seal certificate → `Prepare` (SignerCert = the seal cert) → the 32-byte DTBS is sealed via `POST /seal/{orgEtsi}` (SHA-256)
@@ -1087,7 +1087,7 @@ remain — if sealing is disabled, 503 `eid.ErrSealServiceDisabled` (§3.10; `Se
 
 ```bash
 go vet ./... && go test -race ./...
-go test ./pades -run Golden -update                                              # golden-ийг дахин бичих (профайл өөрчлөгдөхөд л)
+go test ./pades -run Golden -update                                              # rewrite the golden files (only when the profile changes)
 ```
 
 Tests: the CA server's device link golden vectors (`testdata/devicelink_golden.json`, the same file as the TS SDK's), the Smart-ID
