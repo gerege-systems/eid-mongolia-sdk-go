@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.31.0 — 2026-11-25
+
+> **Upgrade notice (integrators should upgrade before QR seal stamps are issued):**
+> - This release teaches the VALIDATOR the organisation seal stamp with a QR (APPEARANCE_SPEC §6.5); `SealPDF` still draws the QR-less stamp — no writer emits the QR variant yet.
+> - `Prepare` on an already-signed document now takes the docId from a verified e-Seal stamp's QR marker when there is no verify page (§6.6); citizen-only documents behave exactly as in v0.30.0.
+> - Validators in Go SDK <= v0.30.0 and TS SDK <= 0.48.x will report earlier signatures as modified on a PDF that later receives a QR seal stamp — upgrade before QR seal stamps start to be issued.
+
+### Fixed — §6.6 step 2.2 (`docIDFromStamps`) no longer depends on xref order for malformed objects
+
+- What: Go now matches the TypeScript port. The lookup first counts widgets per verified e-Seal signature (raw `/V`
+  reference compared with the verified set, never resolved; count + first widget, O(xref objects)), then reads only
+  the stamps of single-widget signatures. Only a single-widget candidate's own `/AP`, `/N`, `/Length` and stream reads
+  (including an indirect `/DecodeParms`) → `PDF_INVALID`; unreadable objects elsewhere in the walk (indirect `/FT`, a
+  non-seal `/V`, the first widget of a signature with 2+ widgets) are skipped. Before, Go returned `PDF_INVALID` for
+  these depending on where they sat in the xref.
+- Why: two conforming ports must never disagree, and the result must not depend on xref order. Counting without
+  resolving `/V` also keeps the work linear when an appended update adds many widgets pointing at a large signature.
+- Where: `pades/verify.go` (`docIDFromStamps`, `readStamp`); APPEARANCE_SPEC §6.6 step 2.2 (failure rule, order,
+  note that the marker is read from the latest xref and is not tied to the e-Seal's signed revision).
+- Tests: `TestDocIDFromStampsMalformed` (each case with the malformed objects before and after the valid candidate),
+  `TestDocIDFromStampsManyWidgets` (200 000 appended widgets). No golden/testdata change; validator and `SealPDF`
+  untouched. Verified in CI.
+### Added — validators learn the e-Seal stamp with QR (APPEARANCE_SPEC §6.5, golden v13)
+
+- This release only teaches
+  validators the new variant; `pades.SealPDF` still emits the QR-less seal stamp of v0.30.0 (byte-identical, checked
+  against the v12 golden DTBS), and there is no public option for the QR (it arrives with seal registration). Writers must not emit the QR seal stamp yet; this remains the rule for the next release.
+- APPEARANCE_SPEC §6.5: the QR seal stamp is the citizen stamp (§3) with the seal label, no role line (even with a CMS
+  claimedRole) and `trim(/Name)`; it starts with the `/EIDVerify` marker like the citizen stamp (≥ 45 pt high).
+- §6.3 (validator): for an e-Seal certificate the `/EIDVerify` marker at the start of the form stream's `/Length` bytes
+  selects the QR variant (step-6 checks: rev = position, docId = verify-page docId when present); no marker → the
+  QR-less v12 stamp; no fallback between them. Every cross-combination fails closed. Stamps of different signers
+  carrying different docIds are not tampering.
+- §6.6 (Prepare docId) on a signed document: verify-page link → else the earliest-signed `/EIDVerify` stamp of a
+  verified **e-Seal** signature (citizen stamps are never a source; indirect `/V`, one widget per signature, marker rev =
+  the signature's position, `/Filter` absent or direct null; a failure reading that stamp → `PDF_INVALID`) → else the
+  caller's `docId` (explicit opt-in) → else empty. A found docId and a different caller `docId` → `REQUEST_INVALID`.
+  **No random docId on a signed document** (the CA rejects rev > 1 registrations for unknown docIds): a visible
+  signature with no docId stays `REQUEST_INVALID`, as in v0.30.0. Unsigned documents are unchanged.
+- **Behaviour change for invisible signatures:** on a signed document with a marked (QR) e-Seal stamp and no verify page,
+  `Prepared.DocID` is now the stamp's docId (before: the caller's `docId` or ""), and a different caller `docId` is
+  `REQUEST_INVALID`. Visible citizen signatures after a QR seal reuse its docId (before: `REQUEST_INVALID`). Documents signed only by
+  citizens resolve exactly as in v0.30.0.
+- Golden v13: 7 prepare/complete cases (`seal-qr-*`, `citizen-then-seal-qr`, `seal-qr-then-citizen`,
+  `seal-qr-then-seal-qr`, `sealv12-then-citizen`; manifest flag `sealQr`) and 20 validate cases (9 positive incl. two
+  controls, 11 negative); all earlier goldens byte-identical. Generated on the CI runner.
+
 ## v0.30.0 — 2026-11-24
 
 > **Upgrade notice (integrators must upgrade):**
