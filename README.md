@@ -1054,8 +1054,7 @@ done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOpt
 Урсгал: тамганы гэрчилгээ → `Prepare` (SignerCert = тамганы cert) → 32 байт DTBS-ийг `POST /seal/{orgEtsi}`-ээр (SHA-256)
 тамгалуулна → `Complete`. PDF eID руу очихгүй. **RFC 3161 timestamp заавал** (eID TSA, `SealOptions.Complete.TSAURL`):
 TSA хүрэхгүй бол `TSA_UNAVAILABLE`, тамгагүй/цагийн тэмдэггүй файл буцаахгүй; OCSP/CRL + DSS → B-LT, дараа нь
-self-validation. Баталгаажуулалтын (QR) хуудасгүй — тамга иргэний гарын үсгийн бүртгэлд (`POST /pdf/signatures`)
-ордоггүй тул `/verify/{docID}` холбоос өгөхгүй.
+self-validation. Баталгаажуулалтын хуудас нэмэхгүй. `/verify/{docID}`-д тамганы бүртгэл — доорх «Бүртгэл».
 
 **Харагдах дардас (анхдагч, Unreleased).** Тамга баримтын сүүлийн (eID verify биш) хуудсанд байгууллагын тамганы дардас
 үлдээнэ: байгууллагын нэр, «eID Mongolia-аар тамгалсан» / «Sealed with eID Mongolia», тамгалсан цаг — QR, холбоос, үүрэг
@@ -1070,9 +1069,8 @@ self-validation. Баталгаажуулалтын (QR) хуудасгүй — 
 **QR-тэй тамганы дардас (Unreleased — зөвхөн шалгагчид).** `pades/APPEARANCE_SPEC.md` §6.5: иргэний дардастай ижил бүтэц
 (QR + `/verify/<docId>/<rev>`), тамганы label-тай, үүргийн мөргүй — verify хуудасгүй тамгатай баримтыг (нэхэмжлэх,
 тодорхойлолт) уншуулж шалгах боломжтой болгоно. **Энэ хувилбар зөвхөн шалгагчдад (`pades.ValidatePDF`, `Complete`-ийн
-self-validation) QR-тэй тамгыг таниулна; бичигч (`SealPDF`) QR-гүй дардас гаргасаар** (v0.30.0-тэй байт-ижил), QR-ийн нийтийн
-сонголт алга — тамганы бүртгэлтэй хамт дараагийн хувилбарт. CA ба TS шалгагч §6.5-ыг гаргахаас өмнө QR-тэй тамга бүү
-гарга. QR-гүй дардас үүрд хүчинтэй. Мөн `Prepare`-ийн docId (§6.6): verify хуудасгүй баримтад QR-тэй (маркертай) **тамганы** дардас
+self-validation) QR-тэй тамгыг таниулна; бичигч (`SealPDF`) анхдагчаар QR-гүй дардас гаргасаар** (v0.30.0-тэй байт-ижил);
+QR-тэй дардас — `SealOptions.QR` (тамганы бүртгэлтэй хамт, доорх «Тамгыг CA-д бүртгэх»). QR-гүй дардас үүрд хүчинтэй. Мөн `Prepare`-ийн docId (§6.6): verify хуудасгүй баримтад QR-тэй (маркертай) **тамганы** дардас
 байвал түүний docId-г авна — харагдах ба **үл харагдах** гарын үсэгт ч (өмнө нь үл харагдах нь `opts.docId` эсвэл хоосон
 авдаг байв), өөр `opts.docId` өгвөл `REQUEST_INVALID`. Гарын үсэгтэй баримтад санамсаргүй docId үүсгэхгүй: QR-гүй
 тамгын дараа иргэн харагдах гарын үсэг зурахад `opts.docId` (дуудагч өөрөө бүртгэнэ) заавал, эс бөгөөс `REQUEST_INVALID`
@@ -1084,6 +1082,38 @@ self-validation) QR-тэй тамгыг таниулна; бичигч (`SealPDF
 Алдаа: `CodeSignerInvalid` (cert e-Seal биш, эсвэл тамгалах хооронд cert солигдсон — дахин оролд),
 `CodeSignatureInvalid`, `CodeTSAUnavailable`/`CodeLTVUnavailable` (түр), RP-API-ийн алдаа (`*ForbiddenError`, `*APIError`)
 хэвээр — тамгалалт унтраалттай бол 503 `eid.ErrSealServiceDisabled` (§3.10; `SealPDF` давтахгүй, тамгагүй файл буцаахгүй). `pades.Sealer` интерфейс (`*eid.SealService` хангана) — тестэд орлуулж болно.
+
+#### Тамгыг CA-д бүртгэх — `c.Seal.RegisterSealedPDF`, QR-тэй дардас (Unreleased, CA V158)
+
+```go
+done, err := pades.SealPDF(ctx, c.Seal, org, pdfBytes, pades.SealOptions{QR: true, FileName: "Нэхэмжлэх.pdf"})
+// done.PDF — QR-тэй дардас (/verify/<docId>/<revIndex>); done.SealRegistration — бүртгэлийн бэлэн бие
+reg, err := c.Seal.RegisterSealedPDF(ctx, org, *done.SealRegistration)
+// reg.VerifyURL — https://ca.eidmongolia.mn/verify/<docID>; reg.Created: 201 true, ижил биеийн давталт 200 false
+```
+
+- `POST /seal/{orgEtsi}/registrations` (`SEAL:<orgEtsi>`): тамгыг `/verify/{docID}`-д байгууллагын мөрөөр (хүний нэр үгүй)
+  харуулна — иргэний `PDF.RegisterSignature`-ийн тамганы хувилбар. Бие (`eid.SealRegistration`): `docID, revIndex, cms,
+  fileName?, inSha256, sigRevSha256, outSha256, priorCmsSha256?, priorRevisionSha256?` — `medium`, `sessionID`,
+  `onBehalfOf`, `signerEtsi`, `pageSha256` **үгүй**. `SealRegistration.Validate()` CA-ийн хэлбэрийн дүрмийг сүлжээгүй
+  шалгана. Нөхцөл: тамгыг **ЭНЭ RP** хүссэн, тамгалснаас **7 хоногийн дотор**, RP-д 10 минутад 600.
+- `SealOptions.QR` — QR-тэй дардас (APPEARANCE_SPEC §6.5); тамгалахдаа `SealForDocument`-оор `{docId, revIndex}`-ийг
+  нөөцөлнө (`pades.DocumentSealer` — `*eid.SealService` хангана). QR бүртгэлийг амладаг — заавал бүртгэ. Анхдагч (QR
+  false) — QR-гүй дардас, өмнөхтэй байт-ижил; түүнийг ч бүртгэж болно. `SealOptions.DocID` — гарын үсэгтэй, verify хуудас
+  / QR-тэй тамгагүй баримтад заавал (эс бөгөөс `done.SealRegistration` nil; QR бол `REQUEST_INVALID`).
+- 409 `PRIOR_MISMATCH` бол `PriorSignatures`-ээр иргэний бүртгэлтэй ижил хослолоор өөрөө дахин оролдоно.
+
+| Код (`eid.SealRegisterErrorCodes`) | HTTP | Утга |
+|---|---|---|
+| `REQUEST_INVALID` / `CMS_INVALID` / `SIGNATURE_INVALID` / `TIMESTAMP_INVALID` | 400 | хэлбэр / CMS профайл / гарын үсэг / TST (тамгалсан цагаас −5 мин…+1 цаг) |
+| `REQUEST_TOO_LARGE` | 413 | бие > 64 KiB |
+| `SEAL_NOT_FOUND` (`eid.CodeSealNotFound`) | 409 | энэ RP-ийн тамгалалт олдсонгүй эсвэл 7 хоног өнгөрсөн |
+| `SEAL_DOC_MISMATCH` (`eid.CodeSealDocMismatch`) | 409 | нөөцөлсөн docId/revIndex бүртгэлийнхээс өөр |
+| `DOC_ID_RESERVED` (`eid.CodeDocIDReserved`) | 409 | өөр бүртгэгдээгүй QR тамга docID-г бага байрлалд нөөцөлсөн |
+| `SIGNER_MISMATCH` / `SIGNER_CERT_INVALID` | 409 | гэрчилгээний байгууллага URL-тэй таарахгүй / гэрчилгээ хүчингүй |
+| `DOC_ID_CONFLICT` / `PRIOR_MISMATCH` / `REGISTRY_CONFLICT` | 409 | иргэний бүртгэлтэй ижил гинжийн дүрэм |
+| `RATE_LIMITED` / `STATE_UNAVAILABLE` | 429 / 503 | `Retryable()`, `RetryAfter` |
+| — | 403 | `*ForbiddenError` — `SEAL:<orgEtsi>` эрхгүй |
 
 ## Хөгжүүлэлт
 
