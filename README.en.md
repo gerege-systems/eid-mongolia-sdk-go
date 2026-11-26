@@ -1053,8 +1053,7 @@ done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOpt
 The flow: the seal certificate → `Prepare` (SignerCert = the seal cert) → the 32-byte DTBS is sealed via `POST /seal/{orgEtsi}` (SHA-256)
 → `Complete`. The PDF does not go to eID. **An RFC 3161 timestamp is required** (the eID TSA, `SealOptions.Complete.TSAURL`):
 if the TSA is unreachable, `TSA_UNAVAILABLE`, and a file without a seal/timestamp is never returned; OCSP/CRL + DSS → B-LT, then
-self-validation. There is no verification (QR) page — a seal does not enter the citizen signature registry (`POST /pdf/signatures`),
-so no `/verify/{docID}` link is provided.
+self-validation. No verification page is added. Registering the seal on `/verify/{docID}` — see «Registering» below.
 
 **The visible stamp (default, Unreleased).** The seal leaves an organization seal stamp on the document's last (not the eID verify) page:
 the organization's name, "eID Mongolia-аар тамгалсан" / "Sealed with eID Mongolia", and the sealing time — no QR, link or role
@@ -1069,8 +1068,8 @@ so they report an earlier signature as modified — use `Invisible: true` until 
 **A seal stamp with a QR (Unreleased — verifier only).** `pades/APPEARANCE_SPEC.md` §6.5: the same structure as the citizen stamp
 (QR + `/verify/<docId>/<rev>`), with the seal's label and no role line — it makes a document sealed without a verify page (an invoice,
 a certificate) scannable and verifiable. **This release teaches only the verifiers (`pades.ValidatePDF`, `Complete`'s
-self-validation) the QR seal; the writer (`SealPDF`) still emits the QR-less stamp** (byte-identical to v0.30.0), there is no public
-option for the QR — it comes in a following release together with seal registration. Do not emit a seal with a QR until the CA and TS verifiers ship §6.5.
+self-validation) the QR seal; the writer (`SealPDF`) still emits the QR-less stamp by default** (byte-identical to v0.30.0); the QR stamp is
+`SealOptions.QR` (together with seal registration — «Registering» below).
 A stamp without a QR stays valid forever. Also `Prepare`'s docId (§6.6): if a document without a verify page has a QR (marker) **seal** stamp,
 it takes its docId — for both visible and **invisible** signatures (previously an invisible one took `opts.docId` or empty),
 and giving a different `opts.docId` is `REQUEST_INVALID`. A random docId is not generated for a signed document: after a QR-less
@@ -1082,6 +1081,38 @@ The verifier (`pades.ValidatePDF`, the CA's
 Errors: `CodeSignerInvalid` (the cert is not an e-Seal, or it changed between sealing — try again),
 `CodeSignatureInvalid`, `CodeTSAUnavailable`/`CodeLTVUnavailable` (transient), and the RP-API errors (`*ForbiddenError`, `*APIError`)
 remain — if sealing is disabled, 503 `eid.ErrSealServiceDisabled` (§3.10; `SealPDF` does not retry and never returns an unsealed file). The `pades.Sealer` interface (satisfied by `*eid.SealService`) — can be substituted in tests.
+
+#### Registering the seal with the CA — `c.Seal.RegisterSealedPDF`, the QR stamp (Unreleased, CA V158)
+
+```go
+done, err := pades.SealPDF(ctx, c.Seal, org, pdfBytes, pades.SealOptions{QR: true, FileName: "Invoice.pdf"})
+// done.PDF — stamp with QR (/verify/<docId>/<revIndex>); done.SealRegistration — the ready registration body
+reg, err := c.Seal.RegisterSealedPDF(ctx, org, *done.SealRegistration)
+// reg.VerifyURL — https://ca.eidmongolia.mn/verify/<docID>; reg.Created: 201 true, replay of the same body 200 false
+```
+
+- `POST /seal/{orgEtsi}/registrations` (`SEAL:<orgEtsi>`): shows the seal on `/verify/{docID}` as an organisation row (no
+  person's name) — the seal counterpart of the citizen `PDF.RegisterSignature`. Body (`eid.SealRegistration`): `docID,
+  revIndex, cms, fileName?, inSha256, sigRevSha256, outSha256, priorCmsSha256?, priorRevisionSha256?` — **no** `medium`,
+  `sessionID`, `onBehalfOf`, `signerEtsi`, `pageSha256`. `SealRegistration.Validate()` checks the CA's format rules
+  offline. Conditions: **this RP** requested the seal, **within 7 days** of sealing, 600 per RP per 10 minutes.
+- `SealOptions.QR` — the QR seal stamp (APPEARANCE_SPEC §6.5); sealing reserves `{docId, revIndex}` via `SealForDocument`
+  (`pades.DocumentSealer` — satisfied by `*eid.SealService`). A QR promises a registration — always register it. Default
+  (QR false) — the QR-less stamp, byte-identical to before; it can be registered too. `SealOptions.DocID` — required for a
+  signed document without a verify page / QR seal stamp (else `done.SealRegistration` is nil; with QR, `REQUEST_INVALID`).
+- On 409 `PRIOR_MISMATCH` it retries with `PriorSignatures` using the same combinations as the citizen registration.
+
+| Code (`eid.SealRegisterErrorCodes`) | HTTP | Meaning |
+|---|---|---|
+| `REQUEST_INVALID` / `CMS_INVALID` / `SIGNATURE_INVALID` / `TIMESTAMP_INVALID` | 400 | format / CMS profile / signature / TST (−5 min…+1 h of the sealing time) |
+| `REQUEST_TOO_LARGE` | 413 | body > 64 KiB |
+| `SEAL_NOT_FOUND` (`eid.CodeSealNotFound`) | 409 | no seal by this RP for this digest, or older than 7 days |
+| `SEAL_DOC_MISMATCH` (`eid.CodeSealDocMismatch`) | 409 | the reserved docId/revIndex differs from the registration |
+| `DOC_ID_RESERVED` (`eid.CodeDocIDReserved`) | 409 | another, unregistered QR seal reserved the docID at a lower position |
+| `SIGNER_MISMATCH` / `SIGNER_CERT_INVALID` | 409 | the certificate's organisation ≠ URL / invalid certificate |
+| `DOC_ID_CONFLICT` / `PRIOR_MISMATCH` / `REGISTRY_CONFLICT` | 409 | the same chain rule as the citizen registration |
+| `RATE_LIMITED` / `STATE_UNAVAILABLE` | 429 / 503 | `Retryable()`, `RetryAfter` |
+| — | 403 | `*ForbiddenError` — no `SEAL:<orgEtsi>` permission |
 
 ## Development
 

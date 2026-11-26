@@ -16,6 +16,7 @@ import (
 
 	"crypto"
 
+	eid "github.com/gerege-systems/eid-mongolia-sdk-go"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/validate"
 )
@@ -73,6 +74,9 @@ type Completed struct {
 	// Placement — харагдах тамганы дардасны байршил (зөвхөн SealPDF бөглөнө; үл харагдах бол nil). Иргэний урсгалд
 	// Prepared.Placement.
 	Placement *Placement
+	// SealRegistration — CA-ийн тамганы бүртгэлийн (POST /seal/{orgEtsi}/registrations) бэлэн бие: зөвхөн SealPDF бөглөнө,
+	// DocID хоосон бол nil (гарын үсэгтэй, docId олдохгүй баримт — SealOptions.DocID). eid.Client.Seal.RegisterSealedPDF.
+	SealRegistration *eid.SealRegistration
 }
 
 // Complete — иргэний гарын үсгийг DTBS дээр шалгаад TSA → CMS → embed → OCSP/CRL (genTime-ийн дараа) → DSS →

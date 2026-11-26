@@ -80,8 +80,8 @@ type PrepareOptions struct {
 	Lang string `json:"lang,omitempty"`
 	// Appearance — харагдах гарын үсэг (APPEARANCE_SPEC.md); nil бол үл харагдах (анхдагч, өмнөхтэй байт-ижил).
 	Appearance *Appearance `json:"appearance,omitempty"`
-	// sealQR — e-Seal гэрчилгээний дардсыг QR-тэй зурна (APPEARANCE_SPEC.md §6.5). Нийтийн сонголт БИШ: QR-ийг бүртгэхгүй
-	// дуудагч хэзээ ч гаргахгүй — бүртгэлийн ажилтай хамт нийтэд гарна; одоохондоо зөвхөн golden/тест тавина.
+	// sealQR — e-Seal гэрчилгээний дардсыг QR-тэй зурна (APPEARANCE_SPEC.md §6.5). Нийтийн Prepare-ийн сонголт БИШ: QR нь
+	// бүртгэлийг амладаг тул зөвхөн SealPDF (SealOptions.QR — docId/revIndex нөөц + SealRegistration) ба golden/тест тавина.
 	sealQR bool
 }
 

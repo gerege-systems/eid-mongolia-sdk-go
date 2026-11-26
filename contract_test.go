@@ -346,9 +346,10 @@ func TestContractCertChoiceDTO(t *testing.T) {
 }
 
 // TestContractSealDTO — CA dto.SealRequest-ийн талбарууд (POST /seal/{orgEtsi}; CA DisallowUnknownFields):
-// SDK digest + hashType л илгээнэ (relyingPartyUUID/Name нь CA-д заавал биш).
+// SDK digest + hashType (+ V158-ийн заавал биш docId, revIndex нөөц — SealForDocument) илгээнэ (relyingPartyUUID/Name нь
+// CA-д заавал биш).
 func TestContractSealDTO(t *testing.T) {
-	want := []string{"digest", "hashType"}
+	want := []string{"digest", "docId", "hashType", "revIndex"}
 	var got []string
 	rt := reflect.TypeOf(sealRequest{})
 	for i := 0; i < rt.NumField(); i++ {
@@ -357,5 +358,67 @@ func TestContractSealDTO(t *testing.T) {
 	sort.Strings(got)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sealRequest талбар %v, CA %v", got, want)
+	}
+}
+
+// TestContractSealRegistration — CA V158 (PR #78): endpoints.seal.registration = "POST <base>/seal/{orgEtsi}/registrations
+// — … {талбарууд}" нь routeSealRegistrations ба SealRegistration-ийн JSON түлхүүрүүдтэй ЯГ тэнцүү (CA
+// DisallowUnknownFields), seal.registerErrorCodes == SealRegisterErrorCodes (олонлогоор), endpoints.seal.seal нь
+// заавал биш {docId, revIndex} нөөцийг зарласан (SealForDocument). TS SDK-ийн contract тесттэй ижил.
+func TestContractSealRegistration(t *testing.T) {
+	var d struct {
+		RPAPIBase string `json:"rp_api_base"`
+		Endpoints struct {
+			Seal map[string]string `json:"seal"`
+		} `json:"endpoints"`
+		Seal *struct {
+			RegisterErrorCodes *[]string `json:"registerErrorCodes"`
+		} `json:"seal"`
+	}
+	fetchJSON(t, eidDiscoveryURL, &d)
+	desc := d.Endpoints.Seal["registration"]
+	if !strings.HasPrefix(desc, "POST "+d.RPAPIBase+routeSealRegistrations.path+" ") {
+		t.Fatalf("endpoints.seal.registration: %q", desc)
+	}
+	i, j := strings.IndexByte(desc, '{'), strings.IndexByte(desc, '}')
+	if i < 0 || j < i {
+		t.Fatalf("endpoints.seal.registration-д бие алга: %q", desc)
+	}
+	var want []string
+	for _, f := range strings.Split(desc[i+1:j], ",") {
+		want = append(want, strings.TrimSuffix(strings.TrimSpace(f), "?"))
+	}
+	var got []string
+	rt := reflect.TypeOf(SealRegistration{})
+	for k := range rt.NumField() {
+		if name := strings.Split(rt.Field(k).Tag.Get("json"), ",")[0]; name != "-" { // SDK-ийн дотоод (PriorSignatures)
+			got = append(got, name)
+		}
+	}
+	sort.Strings(want)
+	sort.Strings(got)
+	if strings.Join(want, ",") != strings.Join(got, ",") {
+		t.Fatalf("POST /seal/{orgEtsi}/registrations бие зөрөв:\ndiscovery %v\nSDK       %v", want, got)
+	}
+	if !strings.Contains(d.Endpoints.Seal["seal"], "{docId, revIndex}") {
+		t.Fatalf("endpoints.seal.seal-д {docId, revIndex} нөөц алга: %q", d.Endpoints.Seal["seal"])
+	}
+	if d.Seal == nil || d.Seal.RegisterErrorCodes == nil {
+		t.Fatal("seal.registerErrorCodes discovery-д алга")
+	}
+	set := func(xs []string) string {
+		m := map[string]bool{}
+		for _, x := range xs {
+			m[x] = true
+		}
+		var out []string
+		for x := range m {
+			out = append(out, x)
+		}
+		sort.Strings(out)
+		return strings.Join(out, ",")
+	}
+	if got, want := set(*d.Seal.RegisterErrorCodes), set(SealRegisterErrorCodes); got != want {
+		t.Fatalf("CA ↔ SDK тамганы бүртгэлийн кодын олонлог зөрсөн:\nCA  %s\nSDK %s", got, want)
 	}
 }

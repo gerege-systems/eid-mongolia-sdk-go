@@ -43,6 +43,8 @@ var (
 	// routeSealCertificateRequestStatus — CA !483 (ORG_ONBOARDING §4.3); discovery: endpoints.seal.certificate_request.
 	routeSealCertificateRequestStatus = rpRoute{"GET", "/seal/certificate/{orgEtsi}/requests/{requestId}"}
 	routeSeal                         = rpRoute{"POST", "/seal/{orgEtsi}"}
+	// routeSealRegistrations — тамганы PAdES бүртгэл (CA V158); discovery: endpoints.seal.registration.
+	routeSealRegistrations = rpRoute{"POST", "/seal/{orgEtsi}/registrations"}
 	// RP-ийн санаачилсан тамганы эрхийн хүсэлт (CA V156); discovery: endpoints.seal.grants, organization.seal_grants.
 	routeSealGrants      = rpRoute{"POST", "/seal/grants"}
 	routeSealGrantStatus = rpRoute{"GET", "/seal/grants/{grantId}"}
@@ -63,7 +65,7 @@ var rpRoutes = []rpRoute{
 	routeTokenCertificate, routeTokenCertificateResult,
 	routeTokenAuthChallenge, routeTokenAuthVerify,
 	routeShare,
-	routeSealCertificate, routeSealCertificateRequest, routeSealCertificateRequestStatus, routeSeal,
+	routeSealCertificate, routeSealCertificateRequest, routeSealCertificateRequestStatus, routeSeal, routeSealRegistrations,
 	routeSealGrants, routeSealGrantStatus, routeOrgSealGrants,
 }
 
