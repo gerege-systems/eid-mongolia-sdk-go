@@ -19,6 +19,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,6 +101,31 @@ func TestPathParametersRejectedBeforeRequest(t *testing.T) {
 	}
 	if sent != 0 {
 		t.Fatalf("%d хүсэлт илгээгдэв", sent)
+	}
+	// Бүх RP-API маршрут (seal registration-ийн orgEtsi зэрэг): параметр бүрийг "", ".", ".." болгоход татгалзана.
+	for _, r := range rpRoutes {
+		n := strings.Count(r.path, "{")
+		for _, bad := range []string{"", ".", ".."} {
+			for i := 0; i < n; i++ {
+				args := make([]string, n)
+				for j := range args {
+					args[j] = "PNOMN-1"
+				}
+				args[i] = bad
+				if err := checkPathParams(r.expand(args...)); !errors.Is(err, ErrInvalidPathParameter) {
+					t.Errorf("%s %s param %d=%q: %v", r.method, r.path, i, bad, err)
+				}
+			}
+		}
+		if n > 0 {
+			ok := make([]string, n)
+			for j := range ok {
+				ok[j] = "PNOMN-1"
+			}
+			if err := checkPathParams(r.expand(ok...)); err != nil {
+				t.Errorf("%s: %v", r.path, err)
+			}
+		}
 	}
 	for _, p := range []string{"/session/abc?timeoutMs=1", "/.well-known/eid", "/authentication/notification/etsi/PNOMN-1", "/session/%2E%2E"} {
 		if err := checkPathParams(p); err != nil {
