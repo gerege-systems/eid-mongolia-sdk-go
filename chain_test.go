@@ -388,6 +388,26 @@ func TestChain_Rejects(t *testing.T) {
 		_, err := chainValidator(t, p.root, p.mddc, p.gerege, ca).ValidateAuth(r, a, ValidateAuthOptions{})
 		wantInvalid(t, err, "name constraints")
 	})
+	// v0.32.0-аас fail-closed (TS-тэй ижил): нэр нь хангасан ч name constraints-тэй CA, Go-ийн задалдаг боловч
+	// SDK-ийн жагсаалтад байхгүй critical extension (inhibitAnyPolicy)-тэй CA → татгалзана.
+	t.Run("satisfied name constraints", func(t *testing.T) {
+		k := newKey(t)
+		tmpl := profileCA("Constrained CA", x509.KeyUsageCertSign|x509.KeyUsageCRLSign, 0)
+		tmpl.PermittedDNSDomains = []string{"example.test"}
+		ca := mkCert(t, tmpl, p.gerege, &k.PublicKey, k)
+		r, a := authResult(citizenLeaf(t, ca, false, newKey(t)))
+		_, err := chainValidator(t, p.root, p.mddc, p.gerege, ca).ValidateAuth(r, a, ValidateAuthOptions{})
+		wantInvalid(t, err, "name constraints байна")
+	})
+	t.Run("critical inhibitAnyPolicy on intermediate", func(t *testing.T) {
+		k := newKey(t)
+		tmpl := profileCA("Inhibit CA", x509.KeyUsageCertSign|x509.KeyUsageCRLSign, 0)
+		tmpl.ExtraExtensions = []pkix.Extension{{Id: asn1.ObjectIdentifier{2, 5, 29, 54}, Critical: true, Value: []byte{0x02, 0x01, 0x00}}}
+		ca := mkCert(t, tmpl, p.gerege, &k.PublicKey, k)
+		r, a := authResult(citizenLeaf(t, ca, false, newKey(t)))
+		_, err := chainValidator(t, p.root, p.mddc, p.gerege, ca).ValidateAuth(r, a, ValidateAuthOptions{})
+		wantInvalid(t, err, "critical")
+	})
 	t.Run("unknown critical extension", func(t *testing.T) {
 		lt := leafTmpl()
 		lt.ExtraExtensions = []pkix.Extension{{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}, Critical: true, Value: []byte{0x05, 0x00}}}

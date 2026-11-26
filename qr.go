@@ -558,7 +558,30 @@ func (v *Validator) qrChain(leaf, extra *x509.Certificate, now time.Time) (*x509
 	if err != nil {
 		return nil, &QRError{Code: CodeQRChainInvalid, Reason: chainError(err).(*ValidationError).Reason, Cause: err}
 	}
+	// Fail-closed (verifyChain-тай ижил, TS verifyQrSigner): leaf/CA-ийн үл таних critical extension, name constraints-тэй
+	// CA-тай замыг хасна; issuer allowlist-ийг үлдсэн замаар.
+	if criticalUnhandled(leaf) {
+		return nil, bad("гэрчилгээний гинж хүчингүй: үл таних critical extension")
+	}
+	var valid [][]*x509.Certificate
+	reason := ""
 	for _, ch := range chains {
+		badCA := ""
+		for _, ca := range ch[1:] {
+			if badCA = caFailClosed(ca); badCA != "" {
+				break
+			}
+		}
+		if badCA == "" {
+			valid = append(valid, ch)
+		} else if reason == "" {
+			reason = badCA
+		}
+	}
+	if len(valid) == 0 {
+		return nil, bad("гэрчилгээний гинж хүчингүй: %s", reason)
+	}
+	for _, ch := range valid {
 		if len(ch) < 2 {
 			continue
 		}

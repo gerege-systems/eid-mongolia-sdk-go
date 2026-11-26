@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "name": "smart-id-doc",
+      "interactions": [
+        {
+          "type": "confirmationMessage",
+          "displayText200": "Longer description of the transaction context"
+        },
+        {
+          "type": "displayTextAndPIN",
+          "displayText60": "Short description of the transaction context"
+        }
+      ],
+      "json": "[{\"type\":\"confirmationMessage\",\"displayText200\":\"Longer description of the transaction context\"},{\"type\":\"displayTextAndPIN\",\"displayText60\":\"Short description of the transaction context\"}]",
+      "base64": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d"
+    },
+    {
+      "name": "cyrillic",
+      "interactions": [
+        {
+          "type": "displayTextAndPIN",
+          "displayText60": "Тест банкинд нэвтрэх — Өө Үү"
+        }
+      ],
+      "json": "[{\"type\":\"displayTextAndPIN\",\"displayText60\":\"Тест банкинд нэвтрэх — Өө Үү\"}]",
+      "base64": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIOKAlCDTqNOpINKu0q8ifV0="
+    },
+    {
+      "name": "html-chars",
+      "interactions": [
+        {
+          "type": "displayTextAndPIN",
+          "displayText60": "Банк <А&Б> 'x' \"y\""
+        }
+      ],
+      "json": "[{\"type\":\"displayTextAndPIN\",\"displayText60\":\"Банк <А&Б> 'x' \\\"y\\\"\"}]",
+      "base64": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCR0LDQvdC6IDzQkCbQkT4gJ3gnIFwieVwiIn1d"
+    },
+    {
+      "name": "backslash-and-controls",
+      "interactions": [
+        {
+          "type": "displayTextAndPIN",
+          "displayText60": "a\\b\\\\c \t\n\r\u0001 /"
+        }
+      ],
+      "json": "[{\"type\":\"displayTextAndPIN\",\"displayText60\":\"a\\\\b\\\\\\\\c \\t\\n\\r\\u0001 /\"}]",
+      "base64": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ImFcXGJcXFxcYyBcdFxuXHJcdTAwMDEgLyJ9XQ=="
+    },
+    {
+      "name": "line-separators",
+      "interactions": [
+        {
+          "type": "x",
+          "displayText60": "a\u2028b\u2029c \\u2028 \\\u2028"
+        }
+      ],
+      "json": "[{\"type\":\"x\",\"displayText60\":\"a\u2028b\u2029c \\\\u2028 \\\\\u2028\"}]",
+      "base64": "W3sidHlwZSI6IngiLCJkaXNwbGF5VGV4dDYwIjoiYeKAqGLigKljIFxcdTIwMjggXFzigKgifV0="
+    },
+    {
+      "name": "both-texts-field-order",
+      "interactions": [
+        {
+          "type": "confirmationMessageAndVerificationCodeChoice",
+          "displayText60": "60",
+          "displayText200": "200"
+        }
+      ],
+      "json": "[{\"type\":\"confirmationMessageAndVerificationCodeChoice\",\"displayText60\":\"60\",\"displayText200\":\"200\"}]",
+      "base64": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2VBbmRWZXJpZmljYXRpb25Db2RlQ2hvaWNlIiwiZGlzcGxheVRleHQ2MCI6IjYwIiwiZGlzcGxheVRleHQyMDAiOiIyMDAifV0="
+    },
+    {
+      "name": "non-bmp-emoji",
+      "interactions": [
+        {
+          "type": "displayTextAndPIN",
+          "displayText60": "ok 😀 𝄞"
+        }
+      ],
+      "json": "[{\"type\":\"displayTextAndPIN\",\"displayText60\":\"ok 😀 𝄞\"}]",
+      "base64": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6Im9rIPCfmIAg8J2EniJ9XQ=="
+    },
+    {
+      "name": "empty-list",
+      "interactions": [],
+      "json": "[]",
+      "base64": "W10="
+    }
+  ],
+  "comment": "JS JSON.stringify(interactions)-тэй байт-ижил UTF-8 (талбарын дараалал type, displayText60, displayText200; хоосон талбар орохгүй; <>& escape хийхгүй; U+2028/2029 түүхийгээр; зөвхөн \" \\ ба < U+0020 escape) → base64.",
+  "version": "interactions/1"
+}
