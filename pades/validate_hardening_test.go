@@ -37,8 +37,9 @@ func hardeningVCases() []vCase {
 		// later DSS-only revision. Control: the same pipeline with a complete object.
 		{Name: "shadow-stream-dss", Input: "validate/input/shadow-stream-dss.pdf", Offline: true},
 		{Name: "shadow-control", Input: "validate/input/shadow-control.pdf", Offline: true},
-		// B. Later-signature trust: a later revision whose signature fails integrity; a later visible stamp whose /Name is
-		// not the signing certificate's display name; control with the matching name.
+		// B. Later-signature trust: a later revision whose signature fails integrity. A later visible stamp whose /Name is
+		// not the signing certificate's display name is accepted since v15 (the name is not compared); control with the
+		// matching name.
 		{Name: "later-sig-integrity-failed", Input: "validate/input/later-sig-integrity-failed.pdf", Offline: true},
 		{Name: "later-stamp-name-mismatch", Input: "validate/input/later-stamp-name-mismatch.pdf", Offline: true},
 		{Name: "later-stamp-name-control", Input: "validate/input/later-stamp-name-control.pdf", Offline: true},
@@ -486,4 +487,37 @@ func TestExtractDSSDedupe(t *testing.T) {
 func vPtrID(v pdf.Value) uint32 {
 	p := v.GetPtr()
 	return p.GetID()
+}
+
+// TestValidatePDFLaterStampNameNotCompared — corpus v15: own-signer дардасны /Name-ийг гэрчилгээний нэртэй харьцуулахгүй.
+// Бүрэн бүтэн хожмын гарын үсгийн /Name (латин өөр нэр, eID desktop-ийн бичдэг кирилл порталын нэр) гэрчилгээнийхээс
+// зөрсөн ч өмнөх гарын үсэг valid, extended_by_signatures_only, visible_later_signature хэвээр; signer_name гэрчилгээнээс.
+func TestValidatePDFLaterStampNameNotCompared(t *testing.T) {
+	p := loadOrCreatePKI(t)
+	base, err := os.ReadFile(filepath.Join(goldenDir, "output", "quartz-pdf13.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	qc := vQualifiedCert(t, p)
+	qcName := core.SignerDisplayName(qc.cert)
+	o := ValidateOptions{Offline: true, Time: goldenNow.UTC(), Roots: vPEMs(t, []string{"golden/pki/root.pem"}),
+		Issuers: vPEMs(t, []string{"golden/pki/04.pem", "validate/pki/05.pem"})}
+	for _, name := range []string{"GOLDEN TESTOV", "Тестов Голден"} {
+		rep, err := ValidatePDF(context.Background(), vSignWith(t, p, base, qc, name, vSigOpts{visible: true}), o)
+		if err != nil || len(rep.Signatures) != 2 {
+			t.Fatalf("%s: %v", name, err)
+		}
+		first, later := rep.Signatures[0], rep.Signatures[1]
+		if first.CoversWholeDocument {
+			first, later = later, first
+		}
+		if first.Indication != validate.Valid || len(first.Problems) != 0 || !first.ExtendedBySignaturesOnly ||
+			!first.VisibleLaterSignature || first.LaterSignatures != 1 {
+			t.Errorf("%s: эхний гарын үсэг %s %v ext=%v visible=%v later=%d", name, first.Indication, first.Problems,
+				first.ExtendedBySignaturesOnly, first.VisibleLaterSignature, first.LaterSignatures)
+		}
+		if later.SignerName != qcName || later.ClaimedName != name || !later.Visible {
+			t.Errorf("%s: хожмын гарын үсэг signer_name=%q claimed=%q visible=%v", name, later.SignerName, later.ClaimedName, later.Visible)
+		}
+	}
 }

@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/core"
-	eidcrypto "github.com/gerege-systems/eid-mongolia-sdk-go/pades/internal/eidcrypto"
 )
 
 // Харагдах гарын үсгийн own-signer хэлбэр (pades/APPEARANCE_SPEC.md §5 Validator). PAdES бичигчийн харагдах widget,
@@ -23,19 +22,9 @@ type sigMeta struct {
 	role     string // signer-attributes-v2-ийн ганц claimedRole ("" — байхгүй)
 	roleOK   bool   // claimedRole 0 эсвэл яг 1 (хүчинтэй) — эс бөгөөс харагдах дүрслэл үүсгэх боломжгүй
 	seal     bool   // гарын үсэг зурагчийн гэрчилгээ e-Seal (sealCertificate) — тамганы дардас л хүлээн авна (§6)
-	// name — гарын үсэг зурагчийн гэрчилгээний харуулах нэр (eidcrypto.SubjectDisplayName; задрахгүй бол ""). Дардасны
-	// /Name яг үүнтэй тэнцүү байх ёстой: эс бөгөөс хожмын (жишээ нь хуурамч, итгэмжлэгдээгүй) гарын үсэг өөр хүний нэрээр
-	// харагдах дардас нэмж, өмнөх гарын үсгүүд «зөвхөн гарын үсгээр өргөтгөгдсөн» хэвээр үлдэнэ.
-	name string
-}
-
-// certDisplayName — DER гэрчилгээний харуулах нэр (validate.go signer_name-тэй ижил); задрахгүй бол "".
-func certDisplayName(der []byte) string {
-	c, err := x509.ParseCertificate(der)
-	if err != nil {
-		return ""
-	}
-	return eidcrypto.SubjectDisplayName(c)
+	// Дардасны /Name-ийг гэрчилгээний нэртэй ХАРЬЦУУЛАХГҮЙ (corpus v15): гаргасан eID desktop клиент /Name-д порталын
+	// кирилл нэр бичдэг (гэрчилгээнийх латин), интегратор PrepareOptions.SignerName өгч болно; итгэмжлэгдээгүй зурагч
+	// гэрчилгээнийхээ нэрийг өөрөө сонгодог тул хамгаалалт нэмэхгүй. Тайлангийн signer_name гэрчилгээнээс хэвээр.
 }
 
 // sealCertificate — APPEARANCE_SPEC.md §6.1 (eid.IsSealCertificate-тэй ижил): CA биш, keyUsage-д nonRepudiation
@@ -116,7 +105,7 @@ func (c *classifier) ownVisible(d pdfDict, widget int) error {
 	ms, ok2 := sd["M"].(pdfStr)
 	// sigValue нь ownTextLimit-ээс урт /Name-ийг ямар ч байсан татгалзана; энд эрт татгалзаж олон мегабайт нэрийг
 	// дардасны (квадрат) мөр таслалтаас хол байлгана.
-	if !ok || !ok2 || len(ns) > ownTextLimit || meta.name == "" || pdfTextString(ns) != meta.name {
+	if !ok || !ok2 || len(ns) > ownTextLimit {
 		return fail
 	}
 	m := string(ms)
