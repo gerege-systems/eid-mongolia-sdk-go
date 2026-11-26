@@ -20,7 +20,7 @@ Full documentation: <https://developer.eidmongolia.mn/#overview>.
 ## Installation
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.31.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.32.0
 ```
 
 `pades` imports the patched PDF parser (`github.com/gerege-systems/pdf`) directly, so no `replace` is needed.

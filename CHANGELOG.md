@@ -1,5 +1,183 @@
 # Changelog
 
+## v0.32.0 — 2026-11-27
+
+### Security
+
+- **ValidatePDF shadow attack fixed:** an object of the signed revision whose stream ran past the signed bytes and was
+  completed by a later revision kept the signature `valid`; it is now `modified_after_signing`.
+- **Later-signature trust:** only later signatures that pass integrity count as signature-only extensions, and an
+  own-signer visible stamp's `/Name` must equal the certificate's display name — a forged later revision with a visible
+  stamp no longer keeps earlier signatures `valid`. `platform_attested` is never reported together with
+  `modified_after_signing`; SHA-1/MD5 SignerInfo signature algorithms are `weak_algorithm`.
+- **Reader DoS limits** in ValidatePDF, Prepare and SealPDF (no signature needed to trigger them) — see «New limits».
+- **Validator / My QR / OCSP hardening** (corpus `rp-conformance/2`): weak RSA citizen keys rejected; duplicate
+  SERIALNUMBER/CN rejected; the issuer allowlist is bound to the issuer actually found in the trust pool (a leaf under
+  an SKI-less CA could name the allowed CA in its own AKI); fail-closed chains (CA nameConstraints, unknown critical
+  extensions); the OCSP issuer must have issued the leaf and the response CertID must match it; empty, `.` or `..`
+  RP-API path parameters are refused before any request.
+- **eidlogin:** `__Host-` login cookie, rate-limit keys no longer contain the citizen's id (`push:<hmac>`), an empty
+  client IP is rate-limited, IPv6 clients are keyed by /64, the in-memory limiter table cannot be exhausted.
+
+### Upgrade notes
+
+- **Login cookie name:** with a Secure, host-only, `Path=/` cookie the default name is now `__Host-eid_login` (was
+  `eid_login`; an explicit `CookieName` is kept). **Logins in progress during the upgrade restart once.**
+- **Custom rate-limit hooks** (`Config.RateLimit`, `RateRule.Func`) now receive `push:<hmac>` instead of
+  `push:<idCode>` — update any hook that parsed the citizen id from the key.
+- **PDF limits:** documents with more than 128 incremental updates (xref sections) or object streams with very many
+  members are `PDF_INVALID` in ValidatePDF and are also refused by `Prepare` / `SealPDF`.
+- **Visible stamp name:** an own-signer visible stamp whose `/Name` differs from the certificate display name (e.g. a
+  custom `PrepareOptions.SignerName`) now makes the earlier signatures `modified_after_signing`.
+- **Validator behaviour changes:** chains with a CA carrying nameConstraints or an unknown critical extension, weak RSA
+  citizen keys, duplicate SERIALNUMBER/CN and an unknown `TrustConfig.RequiredLevel` are now errors (the production eID
+  chain is unaffected).
+- **New limits:** > 128 xref sections; xref stream `/W` entries outside 0…8 or rows of width 0; > 2^21 xref stream rows
+  in total; multi-filter xref streams; > 32 MiB inflated xref + object streams; object-stream member lookup work
+  > 1 GiB (all `PDF_INVALID`); per signature > 32 CMS certificates, RSA modulus > 8192 bits or exponent > 2^32−1,
+  certificate/TSTInfo serial > 160 bits (`malformed_signature` / `timestamp_invalid`); DSS ≤ 8 MiB decoded in total;
+  in-memory rate limiter `RateRule.MaxKeys` default 10 000.
+- **New API:** seal registration `SealService.RegisterSealedPDF` (`POST /seal/{orgEtsi}/registrations`),
+  `SealService.SealForDocument`, `pades.SealOptions.QR` (QR seal stamp, APPEARANCE_SPEC §6.5). Default `SealPDF`
+  output is unchanged (golden v12 byte-identical).
+
+### README: кодын жишээний коммент орчуулсан
+
+- Юу: `README.en.md`, `README.zh-CN.md` дахь кодын жишээнүүдийн монгол коммент ба дэлгэцэнд харагдах жишээ мөр (reason, fileName, displayText г.м.)-ийг тус тусын хэл рүү орчуулсан. Танигч, API нэр, протоколын утга (`"mn"`, URL, хувилбар), бүтэц хэвээр; `README.md` өөрчлөгдөөгүй.
+- Яагаад: орчуулсан хуудсуудын код нь монгол коммент үлдээсэн тул хагас орчуулагдсан байсан.
+- Шалгасан: кодын мөр бүрийн комментоос өмнөх хэсэг (мөр утгаас бусад) `README.md`-тэй ижил эсэхийг скриптээр тулгасан; CI-ийн PR pipeline-аар батална.
+### Docs
+
+- README гурван хэлтэй боллоо: `README.en.md` (English), `README.zh-CN.md` (简体中文) — `README.md`-ийн бүрэн орчуулга (код блок, тушаал, нэр, URL, хувилбар хэвээр). Гурван файлын дээр хэлний сонголтын мөр нэмсэн; `README.md`-ийн «English summary» хэсгийг `README.en.md` руу заасан нэг мөрөөр сольсон (бүрэн орчуулга орлосон). Зөвхөн баримт — код өөрчлөгдөөгүй. Шалгалт: код блокуудыг эх README-тэй `diff`-ээр харьцуулсан; CI-ийн PR pipeline-аар батална.
+### Security — cross-SDK hardening (behaviour changes; conformance corpus `rp-conformance/2`)
+
+Independent reviews of the .NET (0.17.0) and Java (0.2.0) ports found gaps that were identical in every SDK. This
+release closes them in Go (reference) together with the TypeScript SDK and publishes corpus version 2 so the .NET/Java
+ports adopt the same rules mechanically (`testdata/conformance/README.md` §Changes).
+
+- **Validator** (`ValidateAuth`, `ValidateSign`, `ValidateCertificateChoice`, `TokenService.AuthVerify`, My QR):
+  - a citizen certificate with a weak RSA key — modulus < 2048 bits, or public exponent even or < 3 — is rejected
+    (`*ValidationError` «гэрчилгээний RSA түлхүүр сул…», corpus key `cert.weak_key`); `NewValidator` returns an error
+    when a trust anchor or intermediate has such a key;
+  - a subject with more than one SERIALNUMBER or more than one CN is rejected (`subject.duplicate_identity`; My QR:
+    `QR_CHAIN_INVALID`) — SDKs could otherwise read different citizens from the same certificate;
+  - issuer allowlist (`AllowedIssuerSKIs`, default `CitizenIssuingCASKI`): when the issuer is found in the trust pool
+    only ITS key identifier counts — the SKI, or the RFC 5280 method-1 identifier when the CA has no SKI extension. A
+    leaf under an SKI-less CA could previously name the allowed CA in its own AKI and pass the allowlist. The leaf AKI
+    is used only when no issuer is found (`AllowUntrusted`). Same fix in the My QR chain (`qrChain`);
+  - an unknown `TrustConfig.RequiredLevel` is a `NewValidator` error (it was treated as QUALIFIED);
+  - new `ValidateAuthOptions.VerifyUserChallenge`: compares `UserChallengeVerifier` even when it is empty (TS rule
+    for a present-but-empty verifier); `eidlogin` sets it on the Web2App callback.
+- **OCSP checker** (`NewOCSPChecker`): the given issuer must have issued the leaf (name, AKI/SKI, signature, CA, RSA
+  ≥ 2048) before any cache lookup or network call — else `OCSPError{Kind: no_issuer}`; the response's CertID
+  (issuerNameHash/issuerKeyHash, SHA-1/256/384/512) must match the issuer — else `invalid`; a delegated responder
+  with a weak RSA key is `signature`.
+- **RP-API paths**: an empty, `.` or `..` path parameter (ETSI id, document number, session id, …) is rejected with
+  `ErrInvalidPathParameter` before any request, for every service (check in the shared HTTP layer, `routes.go`).
+- **eidlogin**:
+  - the default login cookie name is `__Host-eid_login` when the cookie is Secure, has no Domain and Path is `/`
+    (otherwise `eid_login`; an explicit `CookieName` is kept). **Logins in flight during the upgrade restart once.**
+    A request with more than one cookie of that name is treated as unbound (status `EXPIRED`, callback
+    `eid_error=expired`);
+  - rate-limit keys never contain the citizen's id: `push:<pushKey>` (the audit HMAC) in the built-in limiter and in
+    `Config.RateLimit` / `RateRule.Func` hooks — **a custom hook that parsed `push:<idCode>` must be updated**;
+  - with `ClientIP` configured, an empty client IP is the shared `start:unknown` bucket instead of no limit; IPv6
+    clients are keyed by their /64 prefix;
+  - the in-memory limiter, when its table is full, counts new keys in one shared overflow bucket instead of refusing
+    them (existing counters are never evicted); new `RateRule.MaxKeys` (default 10 000).
+- **Corpus `rp-conformance/2`**: 2 new reason keys, 11 new rp-validate cases, 7 new OCSP cases, 10 new eidlogin
+  scenarios, one changed scenario (`rate-limit-keys`), 12 new PKI files; v1 PEMs unchanged. Generator
+  `conformance_gen_test.go` (`go test -run TestConformanceCorpus -update-conformance`).
+- Where: `validator.go`, `qr.go`, `ocsp.go`, `routes.go`, `client.go`, `eidlogin/eidlogin.go`; tests `hardening_test.go`,
+  `eidlogin/hardening_test.go`, `conformance_test.go`, `eidlogin/conformance_test.go`.
+### Changed (behaviour — validator, fail-closed chain rule shared with the TS SDK)
+
+- `Validator` (ValidateAuth, ValidateSign, ValidateCertificateChoice, TokenService.AuthVerify — every path through
+  `verifyChain`) and the «Миний QR» signer chain (`qrChain`, error `*QRError` `QR_CHAIN_INVALID`) now reject, after a successful `crypto/x509` Verify, a certificate
+  path that
+  1. contains a CA (trust anchor included) carrying a nameConstraints extension (2.5.29.30), critical or not,
+     **even when the leaf satisfies the constraints** — previously accepted when satisfied. Error:
+     `*ValidationError` «гэрчилгээний гинж хүчингүй: CA-д name constraints байна (SDK үнэлдэггүй — fail-closed)».
+  2. contains, in the leaf or any CA, a critical extension outside {subjectKeyIdentifier, keyUsage, subjectAltName,
+     basicConstraints, nameConstraints, cRLDistributionPoints, certificatePolicies, authorityKeyIdentifier,
+     extKeyUsage, authorityInfoAccess} — previously critical extensions that Go's x509 parser understands
+     (policyConstraints 2.5.29.36, policyMappings 2.5.29.33, inhibitAnyPolicy 2.5.29.54, …) were accepted. Error:
+     «гэрчилгээний гинж хүчингүй: үл таних critical extension».
+  If several valid paths exist, any path without such a CA still succeeds. The real eID chain (01 → 02 → 03 → 04)
+  has neither, so production citizen certificates are unaffected. Why: owner decision 2026-11-26 — one rule in every
+  SDK (TS `validator.ts` already behaved this way; .NET/Java ports follow the corpus). Where: `qr.go` `qrChain`, `validator.go`
+  `verifyChain`, `criticalUnhandled`, `caFailClosed`; tests `chain_test.go` (satisfied name constraints, critical
+  inhibitAnyPolicy) and `rp-validate` corpus cases `auth-chain-name-constraints`, `auth-chain-critical-inhibit-any-policy`.
+
+### Added (tests)
+
+- `testdata/conformance/` (`rp-conformance/1`): language-neutral corpus for all RP SDKs — `rp-validate/cases.json`
+  (fixed test PKI, auth/sign/certificate-choice cases with raw session JSON, stored ACSP context, digest, options, fixed
+  `now`, expected identity/level or error class + stable reason key), `wire/cases.json` (request method/path/headers/body
+  and canned response → parsed result for auth/sign/certificate-choice start and session poll), `interactions_golden.json`,
+  `acsp_v2.json`, `ocsp/cases.json` (OCSP checker scenarios with HTTP replay), `eidlogin/scenarios.json` (login backend
+  protocol: start/status/callback JSON, cookie attributes, decoy indistinguishability, rate-limit keys, audit events),
+  `manifest.json` (SHA-256 of every file, pins of the frozen CA `devicelink_golden.json` and `myqr_vectors.json`) and a
+  README describing the format for the .NET/Java ports. Generator `conformance_gen_test.go`
+  (`go test -run TestConformanceCorpus -update-conformance`), deterministic (committed test keys, fixed clock);
+  `TestConformanceCorpus` fails when the committed corpus is stale. The Go SDK runs the whole corpus
+  (`conformance_test.go`, `eidlogin/conformance_test.go`). Verified: `go test ./...` and `go vet ./...` on the macmini;
+  CI on the PR.
+### Added — organisation e-Seal registration (CA V158, PR #78) and the QR seal stamp writer
+
+- **What:** `(*eid.SealService).RegisterSealedPDF(ctx, orgEtsi, eid.SealRegistration)` → `POST /seal/{orgEtsi}/registrations`
+  (201 `Created` / 200 replay, `eid.SealRegistered` = `PDFSignatureRegistered`); body `eid.SealRegistration` = CA
+  `dto.SealRegisterRequest` (`docID, revIndex, cms, fileName?, inSha256, sigRevSha256, outSha256, priorCmsSha256?,
+  priorRevisionSha256?`), `SealRegistration.Validate()` = the CA's `normalizeSealRegister` format rules (offline);
+  409 `PRIOR_MISMATCH` retry via `PriorSignatures` (same combinations as `RegisterSignature`). New codes
+  `CodeSealNotFound`, `CodeSealDocMismatch`, `CodeDocIDReserved`; `eid.SealRegisterErrorCodes` = discovery
+  `seal.registerErrorCodes`. `(*eid.SealService).SealForDocument(ctx, orgEtsi, digest, docID, revIndex)` — `POST
+  /seal/{orgEtsi}` with the V158 `{docId, revIndex}` reservation (SHA-256 only); `Seal` sends the old body unchanged.
+- **pades:** `SealOptions.QR` (QR seal stamp, APPEARANCE_SPEC §6.5 — needs a `pades.DocumentSealer`, reserves docId/revIndex
+  at seal time; QR + `Invisible` or a signed input without a resolvable docId → `REQUEST_INVALID`), `SealOptions.DocID`,
+  `SealOptions.FileName`; `Completed.SealRegistration` (set by `SealPDF` when a docId exists) and
+  `pades.SealRegistration(*Completed)`. Default `SealPDF` output is unchanged (QR-less, golden v12 byte-identical).
+- **Why:** the CA registers seals since 2026-11-25 (CA changelog «SDK writer-ууд (QR тамга + бүртгэл, багц 3)»); the CA
+  and TS validators and the `/verify` bundle (TS 0.49.0) already implement §6.5, which was the gate for a QR writer.
+- **Golden:** no new bytes — `SealPDF{QR}` reproduces golden v13 `seal-qr-visible(-en)` DTBS (`TestSealPDFQRMatchesGolden`);
+  tag stays `pades-golden-v13`.
+- **Where:** `sealregister.go`, `seal.go`, `routes.go`, `client.go`, `pades/seal.go`, `pades/complete.go`; tests
+  `sealregister_test.go`, `pades/seal_register_test.go`, `contract_test.go` (`TestContractSealRegistration`, `TestContractSealDTO`);
+  `pades/APPEARANCE_SPEC.md` §6.4/§6.5, README (mn/en/zh-CN) §7.3.
+- **Verified:** `go vet ./...`, `go test ./...` on the macmini; PR CI.
+### Security — ValidatePDF hardening (validate corpus v14)
+
+Two independent reviews of the .NET and Java ports of `ValidatePDF` found weaknesses that were already in this
+reference implementation (and in the TypeScript SDK). Fixed here together with the TS SDK; 13 new conformance cases in
+`pades/testdata/validate` (`manifest.version` 14, README «v14») let the ports prove the same behaviour. All 67 earlier
+cases keep their exact reports.
+
+- **Shadow attack** (`pades/internal/validate/revisions.go` `diff`): an object of the signed revision whose stream
+  `/Length` ran past the signed bytes, completed by a later (e.g. DSS-only) revision, was never re-parsed because its
+  xref entry was unchanged — the signature stayed `valid`. Every unchanged in-use object (and its object stream) must now
+  parse completely inside the signed revision, else `modified_after_signing`.
+- **Later-signature trust** (`extract.go`, `appearance.go`): only later signatures that pass integrity count as
+  signature-only extensions, and an own-signer visible stamp's `/Name` must equal the display name of that signature's
+  certificate. A forged later revision with a visible stamp no longer keeps earlier signatures `valid`.
+- **`platform_attested`** (`validate.go`): reported only when the document is covered or extended only by signatures —
+  never together with `modified_after_signing`.
+- **Weak signature algorithm** (`extract.go`): a SHA-1/MD5 SignerInfo signature algorithm (`sha1WithRSAEncryption`,
+  `ecdsa-with-SHA1`, …) is `weak_algorithm` even with a SHA-256 digest.
+- **DoS** (no signature needed): the structure pre-check (`nesting.go`) now rejects (`PDF_INVALID`) > 128 xref sections,
+  xref stream rows of width 0 or `/W` entries outside 0…8, > 2^21 xref stream rows in total, multi-filter xref streams,
+  more than 32 MiB of inflated xref + object streams, and object-stream member lookups whose work (header pairs ×
+  inflated length) exceeds 1 GiB — the external reader (`github.com/gerege-systems/pdf`) re-inflates an object stream
+  for every member (a 1.2 MB file took hours). Per signature: > 32 CMS certificates, an RSA modulus > 8192 bits or
+  exponent > 2^32−1, or a certificate/TSTInfo serial > 160 bits → `malformed_signature` (timestamp: `timestamp_invalid`).
+  DSS: ≤ 8 MiB decoded in total, duplicate references read once, each OCSP/CRL parsed and verified once per validation.
+- Behaviour visible to integrators: documents with more than 128 incremental updates, object streams with very many
+  members, or an own-signer stamp whose `/Name` differs from the certificate name (a custom `PrepareOptions.SignerName`)
+  now get `PDF_INVALID` resp. `modified_after_signing` for the earlier signatures.
+- Checked: `go vet ./...`, `go test ./...` (new `TestValidatePDFReaderDoS` with time bounds, `TestBoundedCert`,
+  `TestExtractDSSDedupe`, `TestValidateGolden` v14; the new corpus inputs run against the previous code: shadow,
+  later-signature, doc-signer, weak-algorithm cases were `valid`/`platform_attested`, `objstm-many-members` did not
+  finish in 20 s).
+
 ## v0.31.0 — 2026-11-25
 
 > **Upgrade notice (integrators should upgrade before QR seal stamps are issued):**
