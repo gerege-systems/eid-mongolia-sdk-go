@@ -3523,6 +3523,513 @@
           "endResult": "USER_REFUSED_CERT_CHOICE"
         }
       }
+    },
+    {
+      "name": "auth-leaf-forged-signature",
+      "comment": "issuer нэр ба AKI нь 04-тэй таарна, гарын үсэг өөр (05-ийн) түлхүүрээр → зам алга",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID5DCCAsygAwIBAgICECIwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEA1rsV4Ye9waaGyO9zc46TuU4rsPrbh8P9J2RXxWNAAE985J+IHUeFwV5/sGHbpY8sVcqtx0iOzk21V96Is55cBYiTbyKrIzC3TXLcKnzqAtgvKoi/VO2/e4F31uJBcm3P/sv183ivZlU6SrrP2k6JJWpxgZpqvAfJ9E9rZ+QemO6/OeSMm1vBQgbDi/HhpynrkXj+kNETVzIjhWZk3mgZFfiJadULwQ7g481xwZ6bxCXadTNddk1Rd1ZxbtJ0J/LkzapZECW9p5u6RrWkV9hvU2SXhRgR4qI1RJo4yviVQ3W/NuMtOhMEcjiZhfJbwSockSOV/nFnaOTajBMVYbCiUw=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "chain.untrusted"
+        }
+      }
+    },
+    {
+      "name": "auth-leaf-tampered-tbs",
+      "comment": "leaf-auth-ийн TBS-ийн нэг байт (subject CN) солигдсон, гарын үсэг хуучнаараа",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID5DCCAsygAwIBAgICEAswDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNYMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAakTlkcfnq0/Upt8Ds89MIJ6iGI4NgdwdRINV4ZyroJqRoSAvoZu/XNEa9Ted/yUQ1LTQ0GXNZKIJARnr2ocrDUgD5f5yiJMCsn+5pc/BPWlfl7kxGca9U+9JiweM4OYIWZyztUuKJ1q90svic6V7WOmRBPAlsOQWM5XmpXbbPpyGCFdoISngVJSJ5d1J+AwwUX6L+0GQSQvdKDDOkgzbchOU4hm63pDprBcfXU26OqGCWmpHzQEz4WH92dPMV4t8vvSl+g5bDtaNzQq8jU2LiKGS4CRHW5NZ7weTMJN6AtF7HMVPMrG1micReRb3eU14Y69dRp5HNHES6840deYXdA=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "chain.untrusted"
+        }
+      }
+    },
+    {
+      "name": "auth-leaf-sha1-signature",
+      "comment": "04 leaf-ийг sha1WithRSAEncryption-оор зурсан — SHA-1/MD5 гинжийн гарын үсэг хүлээн авахгүй",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID5DCCAsygAwIBAgICECcwDQYJKoZIhvcNAQEFBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQUFAAOCAQEAcfwWY2gW5KGj69PhOqtygpNg0SqKISBLD/SH2gHcMItPG0P0nrT+prn0VOqVpu1vdfBWahkftofxHrxFYu75xCvvzGDLuOGYVaNTmxKYEGzY3s0SqJYpI9UlhMtgQjPBApvScCR+zpo4JKTbpDTVC2qnnoxpOsTsyhUEKiRZ9NK0iTbI3NMI49jq5UxwHJPSyRkjyRtYdMxRgZlfspuc+HX64lF9lNjjYo4z222wyg4I94XYEJ3n+DNBU40yLU3zBHDYTpGUFvlHzDWuxbQaH1KfRBCLHa+WovRjB2F0c5r3qgZI3GGOAKnx+vT/uDhscszdGsE73nnmUZqyvbGuEA=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "chain.untrusted"
+        }
+      }
+    },
+    {
+      "name": "auth-duplicate-serialnumber",
+      "comment": "subject-д SERIALNUMBER хоёр (SDK-ууд өөр утга авч болно)",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIIEATCCAumgAwIBAgICECMwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowfTELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDEbMBkGA1UEBRMSUE5PTU4tOTk5OTk5OTkwMDAyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwxwAR0wyDFlUH8qqu7hC2hsjDw24VKARrbYt8QGykz7ToJ5+sp61Am4N2y+63iFngJsirh7sOOBi0VQYwnXY2uHvp8DLrpbRs/eA9+GAV7EF8Jj/zbGhtmRFwa/K2Hvs5C9HHhtnmnpXhRPCXYeBdT++4N0Bd8JU1wrKSmHsNzfORIJARmzMQfR8Cp4/EXgj61Td24fKrLwRe7I7XewRj2a26WG/LKGa6RhO5y+952HiD3q7hl9ODdaA9vfXfncvtDNLEEIk2aPGXc+vjLMwA3ASGYop7qn2N4aexusX04E7KkYCyafXKRFvOsk//Dpc6hYj4tOGsEHNaVfaaBS2OQIDAQABo4G3MIG0MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwQwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRojXQCgeQMZroPJvqtVPg/TWVJ1zA9BggrBgEFBQcBAQQxMC8wLQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLmNvbmZvcm1hbmNlLnRlc3Qvb2NzcDAVBgNVHSAEDjAMMAoGCGCDcAFlAQIIMA0GCSqGSIb3DQEBCwUAA4IBAQBXe9QipIuwp2hBuzK2kwYvIXT032PGJTMNLboPfe2eoaqwdJx9gpfGC6QDMLNInKlXRzTfQasD89g0DFgK8YP6XJBqG0NHwuvePGH1HCgvAW01iUqZEyNDdw1Og1m5LHvQqx3S7Ht1rNudG6tXEOQaHyJ7hg0XSzQxvBKWI2ZmXIg3Cq+wvobSFwPIrQbE8NNDs2k1ovdJAFpk5EGWUKFLE6uONY3AAi57ErZM56EDUg6U2+OEK6IdCJTW8trk9t+/9foY59zodWlsEV2X4ak7E4IOX66AyRAitIV+K25nxByz5pqqQdHJLjnwP7eOMlLTZA5rXZIiNqlW64jcrMUI"
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "subject.duplicate_identity"
+        }
+      }
+    },
+    {
+      "name": "sign-duplicate-cn",
+      "comment": "subject-д CN хоёр",
+      "kind": "sign",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIIECzCCAvOgAwIBAgICECQwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowdzELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDEVMBMGA1UEAxMMVEVTVE9WIE9USEVSMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwxwAR0wyDFlUH8qqu7hC2hsjDw24VKARrbYt8QGykz7ToJ5+sp61Am4N2y+63iFngJsirh7sOOBi0VQYwnXY2uHvp8DLrpbRs/eA9+GAV7EF8Jj/zbGhtmRFwa/K2Hvs5C9HHhtnmnpXhRPCXYeBdT++4N0Bd8JU1wrKSmHsNzfORIJARmzMQfR8Cp4/EXgj61Td24fKrLwRe7I7XewRj2a26WG/LKGa6RhO5y+952HiD3q7hl9ODdaA9vfXfncvtDNLEEIk2aPGXc+vjLMwA3ASGYop7qn2N4aexusX04E7KkYCyafXKRFvOsk//Dpc6hYj4tOGsEHNaVfaaBS2OQIDAQABo4HHMIHEMA4GA1UdDwEB/wQEAwIGwDATBgNVHSUEDDAKBggrBgEFBQcDBDAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFGiNdAKB5Axmug8m+q1U+D9NZUnXMD0GCCsGAQUFBwEBBDEwLzAtBggrBgEFBQcwAYYhaHR0cDovL29jc3AuY29uZm9ybWFuY2UudGVzdC9vY3NwMBUGA1UdIAQOMAwwCgYIYINwAWUBAggwGAYIKwYBBQUHAQMEDDAKMAgGBgQAjkYBATANBgkqhkiG9w0BAQsFAAOCAQEAm+k7MMcqS4XG/wlaGARXAkyGPviH4goOIkWfJ0t1FgxhKEfOZOlhxD885sjT6bp0vmic/E7PvZyJrnaUlH7dDGb0jeuHvYYBgS48Wkk/2yeanvvTEpfytjFRtRkkOD23BIXs1LjTIRKbEDGKQ0B1PABhJLW35ZkjSnuy+Rjq1+2Hdb0uqFN0v7AYJekf1kCRJ3ptST4rOX8xi7Nl9LsRTIaO/3dyIGvqAcQT0TOs7gx4zz7OpyCvIdxfW1qxcUlchp322VDB5dIgwojJO8GiJmOPtonErDoBJ4MYcL/wVClL0xe6nYNvQqK4pkkgbUGhAqqBGqCiJpL6Mx+P3wpe6Q=="
+        },
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "Notification",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-256"
+          },
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "value": "r+S/cjLtkcgkH6jLnBs1xqMCt+6mJ65DK3Gy0R6QN8+Cb7C9NbSP5O6JhkID4Yhxf+BknYvhT7gVo9Plj2hxpvmrRjHCMalT5NQZPD2L+kIZSkSWy9mXvvZWb9bR5BtTm+wGA+74xmqLylQ1snCJScqIPgm0N+2LMbiX8gvMn0F+wQT8KZ2v6ba8tXoiY1LVWve0HvxdtIFQwVNznsQdr36wapLCh/DsKnUQse6IieozOB9SJCEDftQYsJDK2Vb7KUbT0SE/itLUTpnmkavhUMpeDeTLfogBo1Amm55H0S4oiXtQt/rtFF6LJeFGjWRdVkP7QtT0t5PgtyXKWlrG2A=="
+        },
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "state": "COMPLETE"
+      },
+      "digest": "lI3Jg0gYL9Pi4y0VLb5jgcFN2ru5ZFvRR/sHLYe1z9s=",
+      "hashAlgorithm": "SHA-256",
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "subject.duplicate_identity"
+        }
+      }
+    },
+    {
+      "name": "certchoice-duplicate-cn",
+      "kind": "certificateChoice",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIIECzCCAvOgAwIBAgICECQwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowdzELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDEVMBMGA1UEAxMMVEVTVE9WIE9USEVSMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwxwAR0wyDFlUH8qqu7hC2hsjDw24VKARrbYt8QGykz7ToJ5+sp61Am4N2y+63iFngJsirh7sOOBi0VQYwnXY2uHvp8DLrpbRs/eA9+GAV7EF8Jj/zbGhtmRFwa/K2Hvs5C9HHhtnmnpXhRPCXYeBdT++4N0Bd8JU1wrKSmHsNzfORIJARmzMQfR8Cp4/EXgj61Td24fKrLwRe7I7XewRj2a26WG/LKGa6RhO5y+952HiD3q7hl9ODdaA9vfXfncvtDNLEEIk2aPGXc+vjLMwA3ASGYop7qn2N4aexusX04E7KkYCyafXKRFvOsk//Dpc6hYj4tOGsEHNaVfaaBS2OQIDAQABo4HHMIHEMA4GA1UdDwEB/wQEAwIGwDATBgNVHSUEDDAKBggrBgEFBQcDBDAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFGiNdAKB5Axmug8m+q1U+D9NZUnXMD0GCCsGAQUFBwEBBDEwLzAtBggrBgEFBQcwAYYhaHR0cDovL29jc3AuY29uZm9ybWFuY2UudGVzdC9vY3NwMBUGA1UdIAQOMAwwCgYIYINwAWUBAggwGAYIKwYBBQUHAQMEDDAKMAgGBgQAjkYBATANBgkqhkiG9w0BAQsFAAOCAQEAm+k7MMcqS4XG/wlaGARXAkyGPviH4goOIkWfJ0t1FgxhKEfOZOlhxD885sjT6bp0vmic/E7PvZyJrnaUlH7dDGb0jeuHvYYBgS48Wkk/2yeanvvTEpfytjFRtRkkOD23BIXs1LjTIRKbEDGKQ0B1PABhJLW35ZkjSnuy+Rjq1+2Hdb0uqFN0v7AYJekf1kCRJ3ptST4rOX8xi7Nl9LsRTIaO/3dyIGvqAcQT0TOs7gx4zz7OpyCvIdxfW1qxcUlchp322VDB5dIgwojJO8GiJmOPtonErDoBJ4MYcL/wVClL0xe6nYNvQqK4pkkgbUGhAqqBGqCiJpL6Mx+P3wpe6Q=="
+        },
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "state": "COMPLETE"
+      },
+      "certChoiceSessionId": "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5",
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "subject.duplicate_identity"
+        }
+      }
+    },
+    {
+      "name": "auth-rsa-1024",
+      "comment": "RSA 1024 бит (< 2048)",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIIDYDCCAkigAwIBAgICECUwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAupc9h7d2D3tVh4hva/2VFfnv9ywbAd7zy1ozvjSzkLg8IRl0kFN5W1fiTuMb3NmlcXN4/wBpHHtV7SZXrOQfsy9MPbtPXu4hnatn38fJFKOt8UfejocdXAO2UlWcqmKXTkXUNObhssfiypyqiYHglK4wqtYirfR/Zv1O47OoIx0CAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAL2Ivw7V7jyM8mtwgI1AOQnrsrFMCsLHa4aoiOdF/1v5Y5J/cWT8XlH8YW9F08+m0ShSd4tQ8Dbn8K2XISkrHvqc+cFN/5S+Yg1O6VpzCEihNxCZXccHypxPIjdWrUIiQGfkUv/jYrpg0gui6x6jMtt69t/VJKq171WMYV3UD2WlhHRoNef3+6i+DFy1B7vdpfNlo3GXybZaQtxUDwAf8ZJvRrVURoXwlirrgdG07VJBtqKqzUsS9CDcr2qFR6A/4VjBSRpPujGysShhzyq8E5SlVg+25kwW5fFiRjRk+IAUn14A3nvgbnB2A0YJwWhtB09JZNvAHoe0z758rGFX3tg=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-256"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "hpjAxSX8c7+kIixaU3hGD1ege3T1Y1DuG8vTwZwlpySiayaI/j+xMGYPmFwApjLiEf2k2p3afaDTlNmK4TYED/atJr5jFYFrVq6zEOW+hVGCq8+4iKIjRi/TLEtzsyFZBhNwIKeJJMfXWIIIwKT5UhqlyAK+Ap3xJBupIpu02ug="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-256"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "cert.weak_key"
+        }
+      }
+    },
+    {
+      "name": "sign-rsa-even-exponent",
+      "comment": "RSA public exponent 65536 (тэгш)",
+      "kind": "sign",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID9DCCAtygAwIBAgICECYwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAKOBxzCBxDAOBgNVHQ8BAf8EBAMCBsAwEwYDVR0lBAwwCgYIKwYBBQUHAwQwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRojXQCgeQMZroPJvqtVPg/TWVJ1zA9BggrBgEFBQcBAQQxMC8wLQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLmNvbmZvcm1hbmNlLnRlc3Qvb2NzcDAVBgNVHSAEDjAMMAoGCGCDcAFlAQIIMBgGCCsGAQUFBwEDBAwwCjAIBgYEAI5GAQEwDQYJKoZIhvcNAQELBQADggEBAGCAJWSQztGInPwjVhKHrA3bLC3/T6TN6raaDAcN6QBmTxozHf2UDtNrDRo4RhvS2cSpFRHTNSNh8lsvwqtxL+jTAW24KHPNhv/m72KNQIfmq/M7aYJ2tAZH0vK3gbv1pXxhAjpkI5znNCEKtGAhK01rr0C3f166IvJzgH69xwp852s9SQqEMk7Vm5S695RenRy0agvYNceluYcugU/vVv27V0MJVc2rIZe1dM0RKVPoegU0kL8K3h01orhYno6+k7ZJcGBa96oB5P1Jc7BNPFN1Kn5hKmrAoT8kixheFQoZS8r/Pm/eFnKKmElfKldv7sR9Px/gZpPA9SqsXFyDKRU="
+        },
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "Notification",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-256"
+          },
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "value": "AA=="
+        },
+        "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+        "state": "COMPLETE"
+      },
+      "digest": "0IHH+wdBOinMx6gjYpddG6/YPlz7STnMG0l8puuegLg=",
+      "hashAlgorithm": "SHA-256",
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "cert.weak_key"
+        }
+      }
+    },
+    {
+      "name": "auth-issuer-no-ski-forged-aki",
+      "comment": "issuer (ca-no-ski) pool-д олдсон ч SKI extension-гүй; leaf-ийн AKI = 04-ийн SKI (худал). Issuer олдвол зөвхөн түүний SKI (алга бол арга 1-ээр тооцсон) — leaf-ийн AKI-д итгэхгүй",
+      "kind": "auth",
+      "trust": "with-no-ski-ca",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID2DCCAsCgAwIBAgICECkwDQYJKoZIhvcNAQELBQAwRDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEhMB8GA1UEAxMYVEVTVCBPTkxZIENBIFdpdGhvdXQgU0tJMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAhPaIFOOQcx/aexQs/ELHxOiH6xq6vpQci7F63/Yt8O6AJT/yb7MhDGcT3rk6FPFkEcXvZ65CKYeIVFJa3DPSCaG+PA6klKyz3w8/NT606QHd2PfYZzdKkCXnxlMpsN4g2Q7C1C5jzlWjrDKhCU+BoXo4K5uXaeij1TMbj0nHWCo5rQUZdqrRnDjcq+Uiv/b9XH7KfJNLctt44x4wI1bI1GyaWanNdJ4arCK2L9EX1XX3VrNdzG/471i5iMXCujMMpl4gDVoFXuoDou2dFpam64kVkpyv83lcsSaUPjZrDdyjdWe92Gg0L93TTrVsjZ3lC5isgJ+p6KtoHKfLwa28Og=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "issuer.not_allowed"
+        }
+      }
+    },
+    {
+      "name": "auth-issuer-no-ski-computed-ski-allowed",
+      "comment": "allowlist-д ca-no-ski-ийн RFC 5280 §4.2.1.2 арга 1 (SHA-1(subjectPublicKey)) танигч → зөвшөөрнө",
+      "kind": "auth",
+      "trust": "no-ski-ca-allowed",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID2DCCAsCgAwIBAgICECkwDQYJKoZIhvcNAQELBQAwRDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEhMB8GA1UEAxMYVEVTVCBPTkxZIENBIFdpdGhvdXQgU0tJMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAhPaIFOOQcx/aexQs/ELHxOiH6xq6vpQci7F63/Yt8O6AJT/yb7MhDGcT3rk6FPFkEcXvZ65CKYeIVFJa3DPSCaG+PA6klKyz3w8/NT606QHd2PfYZzdKkCXnxlMpsN4g2Q7C1C5jzlWjrDKhCU+BoXo4K5uXaeij1TMbj0nHWCo5rQUZdqrRnDjcq+Uiv/b9XH7KfJNLctt44x4wI1bI1GyaWanNdJ4arCK2L9EX1XX3VrNdzG/471i5iMXCujMMpl4gDVoFXuoDou2dFpam64kVkpyv83lcsSaUPjZrDdyjdWe92Gg0L93TTrVsjZ3lC5isgJ+p6KtoHKfLwa28Og=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "expect": {
+        "ok": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "certificateLevel": "QUALIFIED",
+          "certificateSha256": "e8dd512f00274dfdb01705734e1718dadca8bab1a69dadd89db6966a4a25b5c9",
+          "subject": {
+            "commonName": "TESTOV TEST",
+            "country": "MN",
+            "givenName": "TEST",
+            "serialNumber": "PNOMN-999999990001",
+            "surname": "TESTOV"
+          }
+        }
+      }
+    },
+    {
+      "name": "auth-empty-verifier-compared",
+      "comment": "options.userChallengeVerifier байгаа ч хоосон (QR) → тулгана, таарахгүй",
+      "kind": "auth",
+      "trust": "default",
+      "now": "2026-10-14T04:00:00Z",
+      "session": {
+        "cert": {
+          "certificateLevel": "QUALIFIED",
+          "value": "MIID5DCCAsygAwIBAgICEAswDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAakTlkcfnq0/Upt8Ds89MIJ6iGI4NgdwdRINV4ZyroJqRoSAvoZu/XNEa9Ted/yUQ1LTQ0GXNZKIJARnr2ocrDUgD5f5yiJMCsn+5pc/BPWlfl7kxGca9U+9JiweM4OYIWZyztUuKJ1q90svic6V7WOmRBPAlsOQWM5XmpXbbPpyGCFdoISngVJSJ5d1J+AwwUX6L+0GQSQvdKDDOkgzbchOU4hm63pDprBcfXU26OqGCWmpHzQEz4WH92dPMV4t8vvSl+g5bDtaNzQq8jU2LiKGS4CRHW5NZ7weTMJN6AtF7HMVPMrG1micReRb3eU14Y69dRp5HNHES6840deYXdA=="
+        },
+        "interactionTypeUsed": "displayTextAndPIN",
+        "result": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK"
+        },
+        "signature": {
+          "flowType": "QR",
+          "initialCallbackUrl": "",
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "userChallenge": "WAUbOQxgBgwgioUj3sJRHY_u_gq4TcBvFFVn83tdPew",
+          "value": "pfaq9xFTlhpjkdfbcFf03eplS626KOSzatyknLPb+doggwEXgDmo/nhD0UP0YoFSxR5gep/XMm61cAqMkTXW6IqoYF3xCXinx4W7t9npp1tqTuErMxLuHq5cquh55QkcA//XTYvruf6PhCL4nhVXeGSlef2i2iy2O7II5Yv4Beir1xUUxffOjmTP/G9e1gX2nJt9dDwUcXmoAd2JnXcSLXp+BymHEYJACQoZwPK+qgpRWovyPynS837zlqJpow4Hr/gxFNYrREMhQbgvY7G6es3NQJNHmdUioIo2Z5km39F6lotfa+vDVk90mVwCpY2cRlmIpuxQ0Ij1uiuNbku8lA=="
+        },
+        "signatureProtocol": "ACSP_V2",
+        "state": "COMPLETE"
+      },
+      "acsp": {
+        "rpChallenge": "TgREv1B91uJIJpbpawPKA97QXpZyvOdxfkZHTRVNd/Fz9sMx/pM/ULEKK6dtzV4SEJu+ZxRuCSV0Absog9zljw==",
+        "relyingPartyName": "Тест банк",
+        "brokeredRpName": "",
+        "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+        "initialCallbackUrl": "",
+        "flowTypes": [
+          "QR"
+        ],
+        "signatureAlgorithm": "rsassa-pss",
+        "hashAlgorithm": "SHA-512"
+      },
+      "options": {
+        "userChallengeVerifier": ""
+      },
+      "expect": {
+        "error": {
+          "class": "ValidationError",
+          "reason": "auth.verifier_mismatch"
+        }
+      }
     }
   ],
   "comment": "ЗӨВХӨН ТЕСТИЙН PKI (pki/). README.md §rp-validate.",
@@ -3601,6 +4108,26 @@
         "688d740281e40c66ba0f26faad54f83f4d6549d7"
       ]
     },
+    "no-ski-ca-allowed": {
+      "anchors": [
+        "pki/01-root.pem"
+      ],
+      "intermediates": [
+        "pki/02-national.pem",
+        "pki/04-eid.pem",
+        "pki/05-other.pem",
+        "pki/ca-name-constraints.pem",
+        "pki/ca-unknown-critical.pem",
+        "pki/ca-critical-inhibit-any-policy.pem",
+        "pki/ca-eku-server-auth.pem",
+        "pki/ca-expired.pem",
+        "pki/ca-below-pathlen-zero.pem",
+        "pki/ca-no-ski.pem"
+      ],
+      "allowedIssuerSkis": [
+        "067c10f5716382a045b2de1ff10437f768947058"
+      ]
+    },
     "skew-60s": {
       "anchors": [
         "pki/01-root.pem"
@@ -3620,7 +4147,27 @@
         "688d740281e40c66ba0f26faad54f83f4d6549d7"
       ],
       "clockSkewSeconds": 60
+    },
+    "with-no-ski-ca": {
+      "anchors": [
+        "pki/01-root.pem"
+      ],
+      "intermediates": [
+        "pki/02-national.pem",
+        "pki/04-eid.pem",
+        "pki/05-other.pem",
+        "pki/ca-name-constraints.pem",
+        "pki/ca-unknown-critical.pem",
+        "pki/ca-critical-inhibit-any-policy.pem",
+        "pki/ca-eku-server-auth.pem",
+        "pki/ca-expired.pem",
+        "pki/ca-below-pathlen-zero.pem",
+        "pki/ca-no-ski.pem"
+      ],
+      "allowedIssuerSkis": [
+        "688d740281e40c66ba0f26faad54f83f4d6549d7"
+      ]
     }
   },
-  "version": "rp-validate/1"
+  "version": "rp-validate/2"
 }

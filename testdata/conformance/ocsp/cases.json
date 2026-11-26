@@ -287,8 +287,132 @@
         "errorKind": "responder_status",
         "status": "unknown"
       }
+    },
+    {
+      "name": "delegated-by-other-ca",
+      "comment": "id-kp-OCSPSigning responder-ийг 05 (өөр CA) олгосон, шигтгэсэн",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIFNQoBAKCCBS4wggUqBgkrBgEFBQcwAQEEggUbMIIFFzCBkKIWBBTDPbT/ODRGJz7oollrT8ZxSOWn/RgPMjAyNjEwMTQwMzAwMDBaMGUwYzA7MAkGBSsOAwIaBQAEFN0HhL+T/Nm+syJt+isqbYx7svT4BBRChLzLK6UxhzZ6gPSAhpjElMwj5gICEAuAABgPMjAyNjEwMTQwMzAwMDBaoBEYDzIwMjYxMDE1MDMwMDAwWjANBgkqhkiG9w0BAQsFAAOCAQEAKSIBcUd7esfUYuNyf6HCrd/s9TWF/4M4+68DRJD8I4j0vanwW0q9/TRpq0YyakQDjfR1dB5oBhkORIE/L4KAak+UfNfLlD1KygUm2sIo7BWn3qm0VBN2rqc5Vw1cTF3nj2+RO+yCyqLxWvQeZ+tho1HGB6XlKd00ZV5aJRcYQzDX5pvQl6oYycWc0rOEvJmPiOn8D2MJSuAeskESezxLWdH3N8LGSPNT/84jdKxMdjcgEOUpiHisrKwa3NZXxHBvHwZ2mYFat6Ad4kDCPbGNVtQEK3TiCED2/vTkCh6ntaQBoN+fHCKNz2vHSCPK8noh9NuGszPPoNHJE7S610QtFaCCA2wwggNoMIIDZDCCAkygAwIBAgICECowDQYJKoZIhvcNAQELBQAwWTELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTE2MDQGA1UEAxMtVEVTVCBPTkxZIENvbmZvcm1hbmNlIE9yZ2FuaXNhdGlvbiBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowOTELMAkGA1UEBhMCTU4xKjAoBgNVBAMTIVRFU1QgT05MWSBSZXNwb25kZXIgT2YgQW5vdGhlciBDQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMWTq5FAKWWLyTl7zmvSbP+RjxO4+2hMRmDMg3leDgu1Ro020TEnzjO1atDzdwwjeiDrup3/OYl1pWfT7ejuJcJxTiRpQhiZm34z20McaXUuMoWKkgp1l8Sw4hWXjmSl+dbpoKc772sF75Ypn2waWz43GuRk3660DEgpgH1WL/wZ0k9RJ6ibcuo+JOxXaDbN1jytSNTt6WrEWpdRRIlL0/TNrtuD0sj5v9hTXe6EEsxS/9T52hfT+326Pt2HpraixmbEUoh+5nezoYYp/ns3oU3DBxahChhx4xDul/lqEjuN2WApCVkaGMzqW4Kuyq/FsAXk0bUn6ptga8RwxAzpA6sCAwEAAaNWMFQwDgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMJMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUeMK0sTItjTgntmcZ19f77k5JLewwDQYJKoZIhvcNAQELBQADggEBAH75wh5XO9NnrxxvQgyimdrHpA9X2xgaD4dYaqMYymsDJJsKYZouMgDZKBnSpMjo1NWVRJaobxvL0YdN9qZG/CXqa9Ye/J2e/QkhiIx6GV4gdRoKer3Zp4K3ZxoDymlpqbdG79xPhbJm45uG8pCapo8Gk8X8EPQZ09wKsQ3qp3sUoInvB6g/CgHHoykzE7yDkNi3HISwPAoZfaE1MjNsS5QaCIQcwvzjI30ZuN/KcE4yqAdTf73Okek2iV+Lo+kwzsT+9yHxf0ar2clE33VrmWCk3nR2SW9b4tS8Uf4JUjAqLMAxUB2tLyKeoZVJbuFwCtUn+eT191KDVFM0Fp9GxfQ="
+        }
+      },
+      "expect": {
+        "errorKind": "signature",
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "delegated-expired",
+      "comment": "04-ийн олгосон responder-ийн хугацаа (2025–2026-01-01) дууссан",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIFKwoBAKCCBSQwggUgBgkrBgEFBQcwAQEEggURMIIFDTCBkKIWBBTDPbT/ODRGJz7oollrT8ZxSOWn/RgPMjAyNjEwMTQwMzAwMDBaMGUwYzA7MAkGBSsOAwIaBQAEFN0HhL+T/Nm+syJt+isqbYx7svT4BBRChLzLK6UxhzZ6gPSAhpjElMwj5gICEAuAABgPMjAyNjEwMTQwMzAwMDBaoBEYDzIwMjYxMDE1MDMwMDAwWjANBgkqhkiG9w0BAQsFAAOCAQEAKSIBcUd7esfUYuNyf6HCrd/s9TWF/4M4+68DRJD8I4j0vanwW0q9/TRpq0YyakQDjfR1dB5oBhkORIE/L4KAak+UfNfLlD1KygUm2sIo7BWn3qm0VBN2rqc5Vw1cTF3nj2+RO+yCyqLxWvQeZ+tho1HGB6XlKd00ZV5aJRcYQzDX5pvQl6oYycWc0rOEvJmPiOn8D2MJSuAeskESezxLWdH3N8LGSPNT/84jdKxMdjcgEOUpiHisrKwa3NZXxHBvHwZ2mYFat6Ad4kDCPbGNVtQEK3TiCED2/vTkCh6ntaQBoN+fHCKNz2vHSCPK8noh9NuGszPPoNHJE7S610QtFaCCA2IwggNeMIIDWjCCAkKgAwIBAgICECswDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI1MDEwMTAwMDAwMFoXDTI2MDEwMTAwMDAwMFowODELMAkGA1UEBhMCTU4xKTAnBgNVBAMTIFRFU1QgT05MWSBFeHBpcmVkIE9DU1AgUmVzcG9uZGVyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxZOrkUApZYvJOXvOa9Js/5GPE7j7aExGYMyDeV4OC7VGjTbRMSfOM7Vq0PN3DCN6IOu6nf85iXWlZ9Pt6O4lwnFOJGlCGJmbfjPbQxxpdS4yhYqSCnWXxLDiFZeOZKX51umgpzvvawXvlimfbBpbPjca5GTfrrQMSCmAfVYv/BnST1EnqJty6j4k7FdoNs3WPK1I1O3pasRal1FEiUvT9M2u24PSyPm/2FNd7oQSzFL/1PnaF9P7fbo+3YemtqLGZsRSiH7md7Ohhin+ezehTcMHFqEKGHHjEO6X+WoSO43ZYCkJWRoYzOpbgq7Kr8WwBeTRtSfqm2BrxHDEDOkDqwIDAQABo1YwVDAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwkwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRojXQCgeQMZroPJvqtVPg/TWVJ1zANBgkqhkiG9w0BAQsFAAOCAQEAZPR+HiIUZeuvpJ0M9Mhnd/l+W6b9lVBuLckTbmBI0vYE62O9khL67ys9EwKxfNR1PEm2Mr2xgZwyi70xelwvchrSaezuEPKiriaRQoeMg+xdhuasNnIS1GAEkkL65kkXYe2I84G9T1qof4DqfI2leB+Beweq3vWZmPIl4yeQ2EvDcV9CL/zGlhfLV9s64ZI3iC8lOZl9E2j1W85EbzwSG67L0W5Gd33R1l+unfYat4n2aEW1ok7qdLXqi2ljM9XBsyua7n32A9Syt67BqgpyArMFL6ApmdoTwxm1McP3JyQvHHylBuXmVa3/qQhCRod6atsw1U5ujwLOBoJvErp+YQ=="
+        }
+      },
+      "expect": {
+        "errorKind": "signature",
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "delegated-weak-key",
+      "comment": "04-ийн олгосон responder RSA 1024 бит",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIEJwoBAKCCBCAwggQcBgkrBgEFBQcwAQEEggQNMIIECTCBkKIWBBTUjTb1uEbif04/w89VCxoGHbrukBgPMjAyNjEwMTQwMzAwMDBaMGUwYzA7MAkGBSsOAwIaBQAEFN0HhL+T/Nm+syJt+isqbYx7svT4BBRChLzLK6UxhzZ6gPSAhpjElMwj5gICEAuAABgPMjAyNjEwMTQwMzAwMDBaoBEYDzIwMjYxMDE1MDMwMDAwWjANBgkqhkiG9w0BAQsFAAOBgQB0zSa+PTV1ozd5sP+Bzi63sr9NgnqxNIYSoi3BmUPF77gNvkwYZEwzc0Y+aeHtZUzg818ifDe87/BJf3Y7ypB24JnFdNsO3fUa4WhEEYcQSH6shU3Ims5MBPDG9A0rTILPHcRnliJfFe3mANmyMZkzs70W+VGpLPLabk6RUQ55n6CCAt8wggLbMIIC1zCCAb+gAwIBAgICECwwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowOTELMAkGA1UEBhMCTU4xKjAoBgNVBAMTIVRFU1QgT05MWSBXZWFrLUtleSBPQ1NQIFJlc3BvbmRlcjCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAupc9h7d2D3tVh4hva/2VFfnv9ywbAd7zy1ozvjSzkLg8IRl0kFN5W1fiTuMb3NmlcXN4/wBpHHtV7SZXrOQfsy9MPbtPXu4hnatn38fJFKOt8UfejocdXAO2UlWcqmKXTkXUNObhssfiypyqiYHglK4wqtYirfR/Zv1O47OoIx0CAwEAAaNWMFQwDgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMJMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwDQYJKoZIhvcNAQELBQADggEBAFnu+d7S5ZjMPh5j2iqUzn2QneE7ud7CilzOFBSmGsCZcVIzRJVOxy8sBqlAhopkhQwH3oazXKCkebdyF/Pusf+/RvpTsmX5Tjya7anxaDxrhd+RM/dDKHM+yfO98ywTs989jmh27lCIvgr+vfUKiy9h8Fr5R0xD8ojr38eSKd+BiYH8TC5oEJqivJgBp2onD5+5hwhcDvbKcDq5c/8lfrg65g5cYIDZt9Ph1mPWkrqKQpNURUF4lZdTGTflQGNMnCcKZLgUyIe25Ueb4oIrHmiU34w6CYRt2RoMnbkMcmqq6o/uz8/FJCalcQDE2FguFP8UxAvTdTr8ghGGLlD0y8Y="
+        }
+      },
+      "expect": {
+        "errorKind": "signature",
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "certid-hash-mismatch",
+      "comment": "04 зурсан, serial таарна, CertID-ийн issuerNameHash/issuerKeyHash нь 05-ийнх",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIBxQoBAKCCAb4wggG6BgkrBgEFBQcwAQEEggGrMIIBpzCBkKIWBBRChLzLK6UxhzZ6gPSAhpjElMwj5hgPMjAyNjEwMTQwMzAwMDBaMGUwYzA7MAkGBSsOAwIaBQAEFDH+VZVabiV9qLZ0oeKCGMzG24jmBBQ+a3uQbRNsmoroA7qZM+zfDqNpNwICEAuAABgPMjAyNjEwMTQwMzAwMDBaoBEYDzIwMjYxMDE1MDMwMDAwWjANBgkqhkiG9w0BAQsFAAOCAQEAl+SSb4FIJdfEvv3h6gtTPjP7s+4YHr7GyYL+Hi/+umIXtgloxf8aShgq2F8NXlEnhfcJ11MJ1zAAR9EZNdCCwd3D0Yo84+VULXmHtyih8h/PPKXRVw9Ur6dUq0ndmaGBXBq7UJ1XqaxlNcxVE1N1Y9RLOFfPtBIv4V7fleQ4PZOKeDEstlvS00lo92kPuKFZaMTrox5iuCLEisfu8uOaxZkmLU/Rlvs+mNmh4Ur+DiEryYRl0gRWNAXV3SPd/xPU2+9I06HNSqDq8KlU6ZPH6UbQnptE2wsej0oXiDAeLXePeHm+9Hg4eduaf4T7Z6DG8FoCOioVGppHIgk4NQLbAQ=="
+        }
+      },
+      "expect": {
+        "errorKind": "invalid",
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "certid-sha256",
+      "comment": "CertID SHA-256 (хүсэлт SHA-1 байсан ч)",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIB4goBAKCCAdswggHXBgkrBgEFBQcwAQEEggHIMIIBxDCBraIWBBRChLzLK6UxhzZ6gPSAhpjElMwj5hgPMjAyNjEwMTQwMzAwMDBaMIGBMH8wVzANBglghkgBZQMEAgEFAAQgkYWonJ7pk7EDSYhBNRggVltpxJ5dwQS+aDEBcjTxhOIEIGiNdAKB5Axmug8m+q1U+D9NZUnXOv9Uha62EBLErbcLAgIQC4AAGA8yMDI2MTAxNDAzMDAwMFqgERgPMjAyNjEwMTUwMzAwMDBaMA0GCSqGSIb3DQEBCwUAA4IBAQCigSXypJ0/9YrPUkNdzGFjM512LSFiwpN9X9dVEIcLXcy7BI6vZyogiepSnFJ1Wc4h3TZ39yqyyqeQUCzZMAZw+WDwbH45P5W0bAFauKKYAkd4pqMe8f93O9xDoVdFzN1wR4H8w8tWU90yGqnn53PtHe/QEIvBAs7lrXoFNTMMN1R8h1xzrtcVcNQgkV2/UZijIF6/2PxF9WqKL7kMnGigdk089bRmDlHOpHiUbTR+bxWxsgaYdsGdwJ27PNdpUoUpWpmO60HCLbk4m8Bz9MwvhwlpXMDOPOY/HMtJ/2v7RK6oyW8Sv9wQoUjPF88GPwqRsluO+uXtqwV5N7HWBHwB"
+        }
+      },
+      "expect": {
+        "status": "good"
+      }
+    },
+    {
+      "name": "certid-sha512",
+      "comment": "CertID SHA-512",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIICJAoBAKCCAh0wggIZBgkrBgEFBQcwAQEEggIKMIICBjCB76IWBBRChLzLK6UxhzZ6gPSAhpjElMwj5hgPMjAyNjEwMTQwMzAwMDBaMIHDMIHAMIGXMA0GCWCGSAFlAwQCAwUABEBq74t8rm0yB6WAMbFfxdJiJ/3TKiP2mRPSpqo6Wk2tqnNTSqo8dIcClDdxZUdihWh2+u/XoAZas5oKNQ35zleBBECLav6jjLULFTUMdS31+EXPjbyMaUyHVjX893VFtVYFiNiEgmvZDNzmY0ueUirp0ND+X1qrlfd99SvQ/TBHa5DDAgIQC4AAGA8yMDI2MTAxNDAzMDAwMFqgERgPMjAyNjEwMTUwMzAwMDBaMA0GCSqGSIb3DQEBCwUAA4IBAQBZFWILQyXgCOYu9S2KZVWEsDsbqcSkVQ6oYC6O0oFVRxU4AbyKQpyTFjHTXtEYLkJnIJ91WvOz0Zn7l0L0poTm9/IvEqi1cw+71cQnp6DkQl6nU8t4bmDxHNs67slXybobDPcGBFmaaKnSyeH7x73osT8n50vWoUnzN2U2NKxr/1QkkDneNsGz7Qj4rbyW1aSRqyk6DBM/LX4SP/E/r3wxEEyVEQAbxbDkGyPpFOcKkLZnLCx+76kdIlPzgdDAy1txSh3/EVe5M8mRm/xEXgpbwMTGJmvvMYYErc52tMp7R8HV91b1sqPXN2/YoO4zmGCdyvt1HIfm6L4gChCPtdC+"
+        }
+      },
+      "expect": {
+        "status": "good"
+      }
+    },
+    {
+      "name": "leaf-not-issued-by-issuer",
+      "comment": "leaf-ийг 05 гаргасан, issuer-ээр 04 өгсөн; replay-д 04-ийн зурсан «good» байгаа ч асуухгүй (кэш/сүлжээнээс өмнө)",
+      "now": "2026-10-14T04:00:00Z",
+      "certificate": "pki/leaf-auth-under-05.pem",
+      "issuer": "pki/04-eid.pem",
+      "http": {
+        "POST http://ocsp.conformance.test/ocsp": {
+          "status": 200,
+          "contentType": "application/ocsp-response",
+          "bodyB64": "MIIBxQoBAKCCAb4wggG6BgkrBgEFBQcwAQEEggGrMIIBpzCBkKIWBBRChLzLK6UxhzZ6gPSAhpjElMwj5hgPMjAyNjEwMTQwMzAwMDBaMGUwYzA7MAkGBSsOAwIaBQAEFN0HhL+T/Nm+syJt+isqbYx7svT4BBRChLzLK6UxhzZ6gPSAhpjElMwj5gICEBiAABgPMjAyNjEwMTQwMzAwMDBaoBEYDzIwMjYxMDE1MDMwMDAwWjANBgkqhkiG9w0BAQsFAAOCAQEAD0Hw75npVaJp+S2RC35cPhJxqF/zToiUQOfIL3NH7SEwfJfWNawxRUUdrXJJgGIOOkmspVqbzdIzpEcEHhQ2Cy7t3CeNxz1ysIyYrQMd4v3hY6A8RYQxcogufN7GXJTuJfkEX+vZOZ1n2qEGwYzXjcgGCSyxK36pz8cZ6N3uwUDq6Jm6/3lZCOvsre2hNJXc0WxiMTTq/QZpnDveQRXntjaSYNI/9FZejia58GXlmWZT5OH1kG4POA1azYbuyrbkUSvMtNLCB3EFt2b/FAWbL2nYxq34hIRZk4SWYPg8WgCzsEjLpzDJWm8zO36GnERpqfRERGzk++SBdbvQmEObnQ=="
+        }
+      },
+      "expect": {
+        "errorKind": "no_issuer",
+        "status": "unknown"
+      }
     }
   ],
   "comment": "README.md §ocsp. HTTP replay: түлхүүр «METHOD URL», жагсаалтад байхгүй → 404.",
-  "version": "ocsp-checker/1"
+  "version": "ocsp-checker/2"
 }

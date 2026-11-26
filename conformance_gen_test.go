@@ -412,12 +412,18 @@ func (g *confGen) pki() *confPKI {
 	fake04 := *p.ca04.cert
 	fake04.PublicKey = p.ca05.key.Public()
 	add("auth-forged-signature", confLeaf(profAuth), &confCert{name: "fake-04", cert: &fake04, key: p.ca05.key}, rsaLeaf)
-	dupSN := confLeaf(profAuth)
-	dupSN.Subject.ExtraNames = append(dupSN.Subject.ExtraNames, pkix.AttributeTypeAndValue{Type: asn1.ObjectIdentifier{2, 5, 4, 5}, Value: "PNOMN-999999990002"})
-	add("auth-duplicate-serialnumber", dupSN, p.ca04, rsaLeaf)
-	dupCN := confLeaf(profSign)
-	dupCN.Subject.ExtraNames = append(dupCN.Subject.ExtraNames, pkix.AttributeTypeAndValue{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "TESTOV OTHER"})
-	add("sign-duplicate-cn", dupCN, p.ca04, rsaLeaf)
+	// Subject-ийн төгсгөлд нэмэлт RDN (pkix.Name.ExtraNames ижил OID-ийг ДАРДАГ тул RawSubject-ээр).
+	extraRDN := func(tmpl *x509.Certificate, oid asn1.ObjectIdentifier, v string) *x509.Certificate {
+		rdn := append(tmpl.Subject.ToRDNSequence(), pkix.RelativeDistinguishedNameSET{{Type: oid, Value: v}})
+		raw, err := asn1.Marshal(rdn)
+		if err != nil {
+			g.t.Fatal(err)
+		}
+		tmpl.RawSubject = raw
+		return tmpl
+	}
+	add("auth-duplicate-serialnumber", extraRDN(confLeaf(profAuth), asn1.ObjectIdentifier{2, 5, 4, 5}, "PNOMN-999999990002"), p.ca04, rsaLeaf)
+	add("sign-duplicate-cn", extraRDN(confLeaf(profSign), asn1.ObjectIdentifier{2, 5, 4, 3}, "TESTOV OTHER"), p.ca04, rsaLeaf)
 	add("auth-rsa-1024", confLeaf(profAuth), p.ca04, weak)
 	evenE := &rsa.PublicKey{N: rsaLeaf.Public().(*rsa.PublicKey).N, E: 65536}
 	add("sign-rsa-even-exponent", confLeaf(profSign), p.ca04, confPubOverride{Signer: rsaLeaf, pub: evenE})
@@ -947,7 +953,7 @@ func (g *confGen) rpValidate(p *confPKI) {
 		comment: "subject-д SERIALNUMBER хоёр (SDK-ууд өөр утга авч болно)", expect: confErr("subject.duplicate_identity")})
 	S(signSpec{name: "sign-duplicate-cn", leaf: "sign-duplicate-cn", comment: "subject-д CN хоёр", expect: confErr("subject.duplicate_identity")})
 	cc("certchoice-duplicate-cn", "sign-duplicate-cn", nil, confErr("subject.duplicate_identity"))
-	A(authSpec{name: "auth-rsa-1024", leaf: "auth-rsa-1024", comment: "RSA 1024 бит (< 2048)", expect: confErr("cert.weak_key")})
+	A(authSpec{name: "auth-rsa-1024", leaf: "auth-rsa-1024", hash: "SHA-256", comment: "RSA 1024 бит (< 2048)", expect: confErr("cert.weak_key")})
 	S(signSpec{name: "sign-rsa-even-exponent", leaf: "sign-rsa-even-exponent", comment: "RSA public exponent 65536 (тэгш)",
 		expect: confErr("cert.weak_key")})
 	A(authSpec{name: "auth-issuer-no-ski-forged-aki", leaf: "auth-under-no-ski-forged-aki", trust: "with-no-ski-ca",

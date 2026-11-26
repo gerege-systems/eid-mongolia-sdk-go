@@ -138,11 +138,12 @@ func TestOCSPChecker(t *testing.T) {
 	if s, err := check(ctx, f.leaf, nil); s != RevocationUnknown || ocspKind(err) != OCSPNoIssuer {
 		t.Fatalf("issuer алга → unknown: %s %v", s, err)
 	}
-	// Өөр CA-ийн зурсан хариу (issuer буруу) → unknown.
+	// Буруу issuer (leaf-ийг гаргаагүй) → сүлжээнээс өмнө unknown/no_issuer (v0.32.0-аас; өмнө нь signature).
 	other, _ := newOCSPFixture(t, false)
 	f.status.Store(int32(ocsp.Good))
-	if s, err := check(ctx, f.leaf, other.ca); s != RevocationUnknown || ocspKind(err) != OCSPSignature {
-		t.Fatalf("буруу issuer → signature: %s %v", s, err)
+	before := f.calls.Load()
+	if s, err := check(ctx, f.leaf, other.ca); s != RevocationUnknown || ocspKind(err) != OCSPNoIssuer || f.calls.Load() != before {
+		t.Fatalf("буруу issuer → no_issuer, хүсэлтгүй: %s %v calls %d→%d", s, err, before, f.calls.Load())
 	}
 	// Validator-ийн дүрэм: soft-fail → unchecked, hard-fail → ValidationError.
 	v := &Validator{}
@@ -172,12 +173,17 @@ func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r)
 
 func TestOCSPErrorKinds(t *testing.T) {
 	ctx := context.Background()
-	leafWith := func(u string) *x509.Certificate {
-		return &x509.Certificate{SerialNumber: big.NewInt(9), OCSPServer: []string{u}}
-	}
 	f, _ := newOCSPFixture(t, false)
+	// f.ca-ийн гаргасан leaf (v0.32.0-аас issuer-ийн гаргасан эсэхийг сүлжээнээс өмнө шалгадаг).
+	issued := func(serial int64, urls ...string) *x509.Certificate {
+		lk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		now := time.Now()
+		return ocspCert(t, &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "BAT"},
+			NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour), OCSPServer: urls}, f.ca, &lk.PublicKey, f.caKey)
+	}
+	leafWith := func(u string) *x509.Certificate { return issued(9, u) }
 	// AIA алга.
-	if s, err := NewOCSPChecker(OCSPOptions{})(ctx, &x509.Certificate{SerialNumber: big.NewInt(1)}, f.ca); s != RevocationUnknown ||
+	if s, err := NewOCSPChecker(OCSPOptions{})(ctx, issued(1), f.ca); s != RevocationUnknown ||
 		ocspKind(err) != OCSPNoResponder {
 		t.Fatalf("AIA алга: %s %v", s, err)
 	}
@@ -278,13 +284,16 @@ func TestOCSPRealDelegatedResponder(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(der))), Header: http.Header{}, Request: r}, nil
 	})}
 	at := time.Date(2026, 10, 16, 14, 30, 0, 0, time.UTC)
-	var got OCSPObservation
-	check := NewOCSPChecker(OCSPOptions{HTTPClient: hc, Now: func() time.Time { return at }, Observe: func(o OCSPObservation) { got = o }})
-	if s, err := check(context.Background(), leaf, issuer); s != RevocationRevoked || err != nil {
-		t.Fatalf("бодит delegated хариу: %s %v", s, err)
+	// leaf нь зөвхөн serial (бодит иргэний гэрчилгээ биш) — v0.32.0-аас check() issuer-ийн гаргасан эсэхийг эхэлж шалгадаг
+	// тул хариуны шалгалтыг (ask: гарын үсэг, delegated responder, serial, CertID, хугацаа) шууд дуудна.
+	o := &ocspChecker{http: hc, now: func() time.Time { return at }, cache: map[string]ocspEntry{}}
+	if s, _, responder, err := o.ask(context.Background(), leaf, issuer); s != RevocationRevoked || err != nil ||
+		responder != "http://ocsp.eidmongolia.mn/ocsp" {
+		t.Fatalf("бодит delegated хариу: %s %s %v", s, responder, err)
 	}
-	if got.Responder != "http://ocsp.eidmongolia.mn/ocsp" || got.Err != nil {
-		t.Fatalf("observe %+v", got)
+	if s, err := NewOCSPChecker(OCSPOptions{HTTPClient: hc, Now: func() time.Time { return at }})(context.Background(), leaf, issuer); s != RevocationUnknown ||
+		ocspKind(err) != OCSPNoIssuer {
+		t.Fatalf("issuer-ийн гаргаагүй leaf → no_issuer: %s %v", s, err)
 	}
 	resp, err := ocsp.ParseResponseForCert(der, leaf, issuer)
 	if err != nil || resp.Certificate == nil || bytes.Equal(resp.Certificate.Raw, issuer.Raw) {
@@ -294,8 +303,7 @@ func TestOCSPRealDelegatedResponder(t *testing.T) {
 	gb, _ := os.ReadFile("testdata/gerege-issuing-ca.pem")
 	gp, _ := pem.Decode(gb)
 	other, _ := x509.ParseCertificate(gp.Bytes)
-	if s, err := NewOCSPChecker(OCSPOptions{HTTPClient: hc, Now: func() time.Time { return at }})(context.Background(), leaf, other); s != RevocationUnknown ||
-		ocspKind(err) != OCSPSignature {
+	if s, _, _, err := o.ask(context.Background(), leaf, other); s != "" || ocspKind(err) != OCSPSignature {
 		t.Fatalf("өөр олгогч: %s %v", s, err)
 	}
 }

@@ -49,7 +49,7 @@ func TestPushDecoyIndistinguishable(t *testing.T) {
 		t.Fatalf("floor: %v", e.sleeps)
 	}
 	rc, dc := loginCookie(t, real.header), loginCookie(t, decoy.header)
-	if !uuidRe.MatchString(dc[len("eid_login=") : 36+len("eid_login=")]) {
+	if !uuidRe.MatchString(dc[len("__Host-eid_login=") : 36+len("__Host-eid_login=")]) {
 		t.Fatalf("decoy sessionId UUID биш: %s", dc)
 	}
 	// Status: хоёулаа PENDING, ижил талбарууд; decoy eID-ээс асуухгүй, Poll-ын хугацаанд барина.
@@ -64,7 +64,7 @@ func TestPushDecoyIndistinguishable(t *testing.T) {
 		t.Fatalf("decoy poll: sleeps %v, eID асуусан %v", e.sleeps, e.fake.otherPolled())
 	}
 	// TTL-ийн дараа EXPIRED (бодиттой ижил зам — store-ийн хугацаа).
-	tx, _ := e.h.cfg.Store.Get(context.Background(), dc[len("eid_login="):36+len("eid_login=")])
+	tx, _ := e.h.cfg.Store.Get(context.Background(), dc[len("__Host-eid_login="):36+len("__Host-eid_login=")])
 	if tx == nil || !tx.Decoy {
 		t.Fatalf("decoy tx: %+v", tx)
 	}
@@ -249,7 +249,7 @@ func (f *fakeEID) setTTL(auth int, exp time.Duration) {
 func maxAge(t *testing.T, h map[string][]string) string {
 	t.Helper()
 	for _, c := range h["Set-Cookie"] {
-		if strings.HasPrefix(c, "eid_login=") {
+		if strings.HasPrefix(c, "__Host-eid_login=") {
 			if i := strings.Index(c, "Max-Age="); i >= 0 {
 				return strings.SplitN(c[i+len("Max-Age="):], ";", 2)[0]
 			}

@@ -695,10 +695,10 @@ func ipKey(ip string) string {
 		uint16(b[4])<<8|uint16(b[5]), uint16(b[6])<<8|uint16(b[7]))
 }
 
-// loginCookie — Cookie header(үүд)-ийг ";"-ээр хувааж (хэсэг бүрийг trim, нэр = эхний "="-ийн өмнөх) name-тэй cookie
+// singleCookie — Cookie header(үүд)-ийг ";"-ээр хувааж (хэсэг бүрийг trim, нэр = эхний "="-ийн өмнөх) name-тэй cookie
 // ЯГ НЭГ байвал түүний утга. net/http-ийн задлагч буруу утгатай cookie-г алгасдаг тул тоолохдоо ашиглахгүй — тарьсан
 // cookie-ийн утга ямар ч байсан тоологдоно (TS readCookie-тэй ижил дүрэм).
-func loginCookie(r *http.Request, name string) (string, bool) {
+func singleCookie(r *http.Request, name string) (string, bool) {
 	value, n := "", 0
 	for _, line := range r.Header.Values("Cookie") {
 		for _, part := range strings.Split(line, ";") {
@@ -715,7 +715,7 @@ func loginCookie(r *http.Request, name string) (string, bool) {
 // loadTx — cookie → tx (binding таарсан, хугацаа дотор). Олдохгүй бол (nil, nil). Нэртэй cookie нэгээс олон бол
 // (дэд домэйн / өөр замаас тарьсан cookie жинхэнийг сүүдэрлэх) олдоогүй гэж үзнэ.
 func (h *Handler) loadTx(r *http.Request) (*Tx, error) {
-	value, ok := loginCookie(r, h.cfg.CookieName)
+	value, ok := singleCookie(r, h.cfg.CookieName)
 	if !ok {
 		return nil, nil
 	}

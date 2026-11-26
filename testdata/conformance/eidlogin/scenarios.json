@@ -356,10 +356,10 @@
         { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "PNOMN-999999990001" } }, "expect": { "status": 200 } }
       ],
       "events": [
-        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "@@PK1@@" } },
-        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "@@PK2@@" } }
+        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "14267e39674e08c56c248ca5212f43e2" } },
+        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "a9ebffca1760f1fd15062b171536ebe8" } }
       ],
-      "rateLimitKeys": ["start:203.0.113.7", "start:203.0.113.7", "push:@@PK1@@", "start:unknown", "push:@@PK2@@"]
+      "rateLimitKeys": ["start:203.0.113.7", "start:203.0.113.7", "push:14267e39674e08c56c248ca5212f43e2", "start:unknown", "push:a9ebffca1760f1fd15062b171536ebe8"]
     },
     {
       "name": "qr-user-refused",

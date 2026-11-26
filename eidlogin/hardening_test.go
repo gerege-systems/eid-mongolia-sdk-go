@@ -76,14 +76,14 @@ func TestDefaultCookieNameAndDuplicates(t *testing.T) {
 	} {
 		r := httptest.NewRequest("GET", "/auth/eid/status", nil)
 		r.Header.Set("Cookie", header)
-		if v, got := loginCookie(r, "__Host-eid_login"); got != ok || (ok && v != "x.y") {
+		if v, got := singleCookie(r, "__Host-eid_login"); got != ok || (ok && v != "x.y") {
 			t.Errorf("%q: %q %v ≠ %v", header, v, got, ok)
 		}
 	}
 	r := httptest.NewRequest("GET", "/auth/eid/status", nil)
 	r.Header.Add("Cookie", "__Host-eid_login=x.y")
 	r.Header.Add("Cookie", "__Host-eid_login=z")
-	if _, ok := loginCookie(r, "__Host-eid_login"); ok {
+	if _, ok := singleCookie(r, "__Host-eid_login"); ok {
 		t.Error("хоёр Cookie header-т тарьсан cookie тоологдсонгүй")
 	}
 }
