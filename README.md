@@ -1027,6 +1027,17 @@ for _, s := range rep.Signatures {
   `fatal error: stack overflow`-оор процессыг бүхэлд нь унагадаг байв). Энэ нь хамгаалалтын нэг давхарга л — гаднаас ирсэн
   PDF-ийг итгэлгүй оролт гэж үзэж хэмжээг хязгаарла (≤ 10 MiB), хүсэлт бүрд timeout тавь, боломжтой бол тусдаа
   процесс/контейнерт (CPU/санах ойн хязгаартай) задал.
+- **Хатууруулалтын хязгаар (validate корпус v14).** Задлахын өмнө: xref хэсэг ≤ 128 (trailer + xref stream), xref stream-ийн
+  `/W` элемент бүр 0…8 байт, нийлбэр > 0, `/Index`-ийн start + count ≤ 2^21, бүх xref stream-ийн мөр ≤ 2^21, xref/object
+  stream ганц шүүлтүүртэй, задалсан xref + object stream нийт ≤ 32 MiB, object stream-ийн гишүүн хайлтын ажил (толгойн хос ×
+  задалсан урт, нийлбэр) ≤ 1 GiB → эс бөгөөс `PDF_INVALID`. Гарын үсэг бүрд: CMS-д (ба цагийн тэмдгийн токенд) ≤ 32
+  гэрчилгээ, RSA модуль ≤ 8192 бит, илтгэгч ≤ 2^32−1, гэрчилгээ/TSTInfo-ийн serial ≤ 160 бит → эс бөгөөс
+  `malformed_signature` (цагийн тэмдэг → `timestamp_invalid`). DSS: массив бүрд ≤ 64 мөр, тус бүр ≤ 1 MiB, нийт тайлсан
+  ≤ 8 MiB, нэг массивт хоёр удаа заасан stream-ийг нэг удаа; OCSP/CRL бүрийг нэг шалгалтад нэг удаа задалж шалгана.
+  SignerInfo-ийн SHA-1/MD5 гарын үсгийн алгоритм (жишээ нь `sha1WithRSAEncryption`) → digest SHA-256 байсан ч
+  `weak_algorithm`. Гарын үсэг зурсан revision-ий объект хожмын revision-оор л гүйцдэг бол (shadow attack) →
+  `modified_after_signing`; хожмын гарын үсэг өөрөө бүрэн бүтэн бол л «зөвхөн гарын үсгийн өргөтгөл», харагдах дардасны нэр
+  нь гэрчилгээний харуулах нэртэй яг тэнцүү байх ёстой; гарын үсгийн дараа өөрчлөгдсөн баримтад `platform_attested` хэзээ ч үгүй.
 - `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown`. CA (`POST
   /v3/validate/pdf`) бүртгэлээсээ `token`, мөн eID-ийн олгосон байгууллагын тамганд `server_software` / `server_hsm`-ийг
   (түлхүүр сервер талд; QSCD гэсэн мэдэгдэл биш) тогтооно — утгууд `pades.KeyMediumToken` | `KeyMediumPhone` |

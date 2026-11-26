@@ -5,6 +5,8 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -68,11 +70,22 @@ func hardeningVInputs(t *testing.T, p *goldenPKI) map[string][]byte {
 	qcName := core.SignerDisplayName(qc.cert)
 	ds := vDocSigner(t, p)
 	attested := vSignWith(t, p, input, ds, "GOLDEN TESTOV", vSigOpts{})
-	var chain33 []*x509.Certificate
-	for range 31 {
-		chain33 = append(chain33, p.ca04.cert)
+	// signer + 04, 03, 02 + 29 жижиг (P-256, өөрөө зурсан) гэрчилгээ = 33 > maxCMSCerts (placeholder-т багтана).
+	chain33 := p.chain()
+	ek, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
-	chain33 = append(chain33, p.ca03.cert, p.ca02.cert)
+	for i := range 29 {
+		tmpl := &x509.Certificate{SerialNumber: big.NewInt(int64(3000 + i)), Subject: pkix.Name{CommonName: "TEST ONLY filler"},
+			NotBefore: p.citizen.cert.NotBefore, NotAfter: p.citizen.cert.NotAfter}
+		der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &ek.PublicKey, ek)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _ := x509.ParseCertificate(der)
+		chain33 = append(chain33, c)
+	}
 	return map[string][]byte{
 		"shadow-stream-dss":          vShadow(t, p, false),
 		"shadow-control":             vShadow(t, p, true),
@@ -425,7 +438,7 @@ func TestExtractDSSDedupe(t *testing.T) {
 	if ocsps.Len() == 0 {
 		t.Fatal("golden DSS: OCSP алга")
 	}
-	first := ocsps.Index(0).GetPtr().GetID()
+	first := vPtrID(ocsps.Index(0))
 	want, err := validate.Extract(base)
 	if err != nil {
 		t.Fatal(err)
@@ -439,7 +452,7 @@ func TestExtractDSSDedupe(t *testing.T) {
 		a := root.Key("DSS").Key(key)
 		var s strings.Builder
 		for i := range a.Len() {
-			fmt.Fprintf(&s, "%d 0 R ", a.Index(i).GetPtr().GetID())
+			fmt.Fprintf(&s, "%d 0 R ", vPtrID(a.Index(i)))
 		}
 		return s.String()
 	}
@@ -454,7 +467,7 @@ func TestExtractDSSDedupe(t *testing.T) {
 	dssOff := b.Len()
 	fmt.Fprintf(&b, "%d 0 obj\n<< /Certs [%s] /OCSPs [%s] /CRLs [%s] >>\nendobj\n", size, refs("Certs"), arr.String(), refs("CRLs"))
 	catOff := b.Len()
-	fmt.Fprintf(&b, "%d 0 obj\n<< /Type /Catalog /Pages %d 0 R /DSS %d 0 R >>\nendobj\n", size+1, root.Key("Pages").GetPtr().GetID(), size)
+	fmt.Fprintf(&b, "%d 0 obj\n<< /Type /Catalog /Pages %d 0 R /DSS %d 0 R >>\nendobj\n", size+1, vPtrID(root.Key("Pages")), size)
 	x := b.Len()
 	fmt.Fprintf(&b, "xref\n%d 2\n%010d 00000 n \n%010d 00000 n \ntrailer\n<< /Size %d /Root %d 0 R /Prev %d >>\nstartxref\n%d\n%%%%EOF\n",
 		size, dssOff, catOff, size+2, size+1, prevOff, x)
@@ -468,4 +481,9 @@ func TestExtractDSSDedupe(t *testing.T) {
 	if len(raws[0].DSS.Certs) != len(want[0].DSS.Certs) || len(raws[0].DSS.CRLs) != len(want[0].DSS.CRLs) {
 		t.Errorf("Certs/CRLs өөрчлөгдсөн")
 	}
+}
+
+func vPtrID(v pdf.Value) uint32 {
+	p := v.GetPtr()
+	return p.GetID()
 }

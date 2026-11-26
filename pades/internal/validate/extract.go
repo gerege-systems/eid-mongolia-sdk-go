@@ -690,7 +690,8 @@ func extractDSS(dss pdf.Value) *RawDSS {
 			if e.Kind() != pdf.Stream {
 				continue
 			}
-			if id := e.GetPtr().GetID(); id != 0 {
+			ptr := e.GetPtr()
+			if id := ptr.GetID(); id != 0 {
 				if seen[id] {
 					continue
 				}
