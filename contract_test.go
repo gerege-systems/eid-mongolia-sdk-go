@@ -380,12 +380,14 @@ func TestContractSealRegistration(t *testing.T) {
 	if !strings.HasPrefix(desc, "POST "+d.RPAPIBase+routeSealRegistrations.path+" ") {
 		t.Fatalf("endpoints.seal.registration: %q", desc)
 	}
-	i, j := strings.IndexByte(desc, '{'), strings.IndexByte(desc, '}')
+	// Замын {orgEtsi}-ийн дараах эхний {…} — биеийн талбарууд.
+	rest := desc[len("POST "+d.RPAPIBase+routeSealRegistrations.path):]
+	i, j := strings.IndexByte(rest, '{'), strings.IndexByte(rest, '}')
 	if i < 0 || j < i {
 		t.Fatalf("endpoints.seal.registration-д бие алга: %q", desc)
 	}
 	var want []string
-	for _, f := range strings.Split(desc[i+1:j], ",") {
+	for _, f := range strings.Split(rest[i+1:j], ",") {
 		want = append(want, strings.TrimSuffix(strings.TrimSpace(f), "?"))
 	}
 	var got []string
