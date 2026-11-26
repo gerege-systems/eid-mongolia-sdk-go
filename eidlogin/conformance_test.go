@@ -7,6 +7,7 @@ package eidlogin
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,13 +45,14 @@ type confStep struct {
 }
 
 type confReq struct {
-	Method     string            `json:"method"`
-	Path       string            `json:"path"`
-	Headers    map[string]string `json:"headers"`
-	JSON       any               `json:"json"`
-	Text       *string           `json:"text"`
-	CookieFrom *int              `json:"cookieFrom"`
-	IP         string            `json:"ip"`
+	Method       string            `json:"method"`
+	Path         string            `json:"path"`
+	Headers      map[string]string `json:"headers"`
+	JSON         any               `json:"json"`
+	Text         *string           `json:"text"`
+	CookieFrom   *int              `json:"cookieFrom"`
+	CookieHeader string            `json:"cookieHeader"`
+	IP           string            `json:"ip"`
 }
 
 type confScenario struct {
@@ -164,6 +166,8 @@ func runConfScenario(t *testing.T, base map[string]any, baseUp []confRule, sc co
 		PushFloor:         time.Duration(cn("pushFloorMs")) * time.Millisecond,
 		DisablePushFloor:  cn("pushFloorMs") == 0,
 		CookieName:        cs("cookieName"),
+		CookieDomain:      cs("cookieDomain"),
+		CookiePath:        cs("cookiePath"),
 		DisableRevocation: cs("revocation") == "disabled",
 		DisableDecoy:      cfg["decoy"] == false,
 		ClientIP:          func(r *http.Request) string { return r.Header.Get(confClientIPHeader) },
@@ -172,8 +176,30 @@ func runConfScenario(t *testing.T, base map[string]any, baseUp []confRule, sc co
 			events = append(events, ev{kind, sid, meta})
 		},
 	}
+	if cs("clientIp") == "none" {
+		c.ClientIP = nil
+	}
+	if k := cs("auditKeyHex"); k != "" {
+		var err error
+		if c.AuditKey, err = hex.DecodeString(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rl, ok := cfg["rateLimits"].(map[string]any); ok {
+		c.RateLimits = map[string]RateRule{}
+		for kind, v := range rl {
+			m := v.(map[string]any)
+			num := func(k string) int { n, _ := m[k].(float64); return int(n) }
+			c.RateLimits[kind] = RateRule{Max: num("max"), Window: time.Duration(num("windowSeconds")) * time.Second, MaxKeys: num("maxKeys")}
+		}
+	}
 	if cfg["recordRateLimitKeys"] == true {
 		c.RateLimit = func(_ context.Context, key string) bool { keys = append(keys, key); return true }
+	}
+	// wireCookieName — хөтчийн харах нэр (cookieName "" = SDK-ийн анхдагч, README §eidlogin).
+	wire := cs("wireCookieName")
+	if wire == "" {
+		wire = cs("cookieName")
 	}
 	h, err := New(c)
 	if err != nil {
@@ -210,7 +236,11 @@ func runConfScenario(t *testing.T, base map[string]any, baseUp []confRule, sc co
 			}
 			if st.Request.CookieFrom != nil {
 				if v, ok := results[*st.Request.CookieFrom].cookies[""]; ok {
-					r.Header.Set("Cookie", cs("cookieName")+"="+v)
+					ck := wire + "=" + v
+					if st.Request.CookieHeader != "" {
+						ck = strings.ReplaceAll(st.Request.CookieHeader, "$cookieFrom", ck)
+					}
+					r.Header.Set("Cookie", ck)
 				}
 			}
 			w := httptest.NewRecorder()
@@ -220,7 +250,7 @@ func runConfScenario(t *testing.T, base map[string]any, baseUp []confRule, sc co
 				_ = json.Unmarshal(w.Body.Bytes(), &res.json)
 			}
 			for _, setc := range w.Header().Values("Set-Cookie") {
-				if strings.HasPrefix(setc, cs("cookieName")+"=") {
+				if strings.HasPrefix(setc, wire+"=") {
 					res.cookies = parseConfCookie(setc)
 				}
 			}
@@ -340,6 +370,13 @@ func confCheckStep(e map[string]any, res confResult, all []confResult) error {
 		if v, ok := sc["value"]; ok {
 			if err := confMatch(v, res.cookies[""], all); err != nil {
 				return fmt.Errorf("cookie value: %w", err)
+			}
+		}
+		if absent, ok := sc["absentAttributes"].([]any); ok {
+			for _, k := range absent {
+				if _, has := res.cookies[strings.ToLower(k.(string))]; has {
+					return fmt.Errorf("cookie %s байх ёсгүй", k)
+				}
 			}
 		}
 		if attrs, ok := sc["attributes"].(map[string]any); ok {

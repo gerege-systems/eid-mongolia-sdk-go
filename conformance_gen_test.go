@@ -1,6 +1,6 @@
 package eid
 
-// testdata/conformance (rp-conformance/1) — RP SDK-уудын (TS, .NET, Java) нийтлэг conformance корпусын генератор.
+// testdata/conformance (rp-conformance/2) — RP SDK-уудын (TS, .NET, Java) нийтлэг conformance корпусын генератор.
 // Go нь reference: `go test -run TestConformanceCorpus -update-conformance` бүх файлыг дахин бичнэ; энгийн
 // `go test` нь санах ойд дахин үүсгээд диск дээрхтэй байт-ижил эсэхийг шалгана (хуучирсан корпус → улаан).
 //
@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -46,7 +47,7 @@ import (
 
 const (
 	confDir     = "testdata/conformance"
-	confVersion = "rp-conformance/1"
+	confVersion = "rp-conformance/2"
 	confRPName  = "Тест банк"
 	confRPUUID  = "00000000-0000-4000-8000-000000000001"
 	confSecret  = "rp_sk_conformance_test"
@@ -103,7 +104,10 @@ func generateConformance(t *testing.T, update bool) map[string][]byte {
 
 // ── түлхүүр, гэрчилгээ ──
 
-func (g *confGen) key(name string, ec bool) crypto.Signer {
+func (g *confGen) key(name string, ec bool) crypto.Signer { return g.keyBits(name, ec, 2048) }
+
+// keyBits — key, RSA-д modulus-ийн бит (сул түлхүүрийн тохиолдолд 1024).
+func (g *confGen) keyBits(name string, ec bool, bits int) crypto.Signer {
 	if k, ok := g.keys[name]; ok {
 		return k
 	}
@@ -117,7 +121,7 @@ func (g *confGen) key(name string, ec bool) crypto.Signer {
 		if ec {
 			k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		} else {
-			k, err = rsa.GenerateKey(rand.Reader, 2048)
+			k, err = rsa.GenerateKey(rand.Reader, bits)
 		}
 		if err != nil {
 			g.t.Fatal(err)
@@ -252,6 +256,80 @@ type confPKI struct {
 	root, ca02, ca04, ca05, caNC, caCrit, caInhibit, caEKU, caExpired, subCA *confCert
 	leaves                                                                   map[string]*confCert
 	responder, responderNoEKU                                                *confCert
+	// rp-conformance/2
+	caNoSKI, responder05, responderExpired, responderWeak *confCert
+}
+
+// confPubOverride — Public() нь өөр түлхүүр буцаана (гэрчилгээнд сул exponent-тэй түлхүүр бичихэд; гарын үсэг үгүй).
+type confPubOverride struct {
+	crypto.Signer
+	pub crypto.PublicKey
+}
+
+func (o confPubOverride) Public() crypto.PublicKey { return o.pub }
+
+type confTBS struct {
+	Version    int `asn1:"optional,explicit,default:0,tag:0"`
+	Serial     *big.Int
+	SigAlg     pkix.AlgorithmIdentifier
+	Issuer     asn1.RawValue
+	Validity   asn1.RawValue
+	Subject    asn1.RawValue
+	SPKI       asn1.RawValue
+	Extensions []pkix.Extension `asn1:"optional,explicit,tag:3"`
+}
+
+type confCertASN1 struct {
+	TBS    asn1.RawValue
+	SigAlg pkix.AlgorithmIdentifier
+	Sig    asn1.BitString
+}
+
+var (
+	confOIDSHA1WithRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 5}
+	confOIDSHA256WithRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 11}
+	confOIDSKI           = asn1.ObjectIdentifier{2, 5, 29, 14}
+)
+
+// confResign — c-ийн TBS-ийг (dropExt extension-гүй болгож) signer-ээр h / sigOID-оор дахин зурна (PKCS#1 v1.5,
+// детерминист). Serial өөрчлөгдөхгүй. x509.CreateCertificate-аар үүсгэж чадахгүй гэрчилгээнд (SKI-гүй CA, SHA-1).
+func (g *confGen) confResign(c *confCert, signer crypto.Signer, h crypto.Hash, sigOID asn1.ObjectIdentifier, dropExt asn1.ObjectIdentifier) *confCert {
+	var outer confCertASN1
+	if _, err := asn1.Unmarshal(c.cert.Raw, &outer); err != nil {
+		g.t.Fatal(err)
+	}
+	var tbs confTBS
+	if _, err := asn1.Unmarshal(outer.TBS.FullBytes, &tbs); err != nil {
+		g.t.Fatal(err)
+	}
+	alg := pkix.AlgorithmIdentifier{Algorithm: sigOID, Parameters: asn1.NullRawValue}
+	tbs.SigAlg = alg
+	if dropExt != nil {
+		var keep []pkix.Extension
+		for _, e := range tbs.Extensions {
+			if !e.Id.Equal(dropExt) {
+				keep = append(keep, e)
+			}
+		}
+		tbs.Extensions = keep
+	}
+	tbsDER, err := asn1.Marshal(tbs)
+	if err != nil {
+		g.t.Fatal(err)
+	}
+	sig, err := rsa.SignPKCS1v15(nil, signer.(*rsa.PrivateKey), h, confDigest(h, tbsDER))
+	if err != nil {
+		g.t.Fatal(err)
+	}
+	der, err := asn1.Marshal(confCertASN1{TBS: asn1.RawValue{FullBytes: tbsDER}, SigAlg: alg, Sig: asn1.BitString{Bytes: sig, BitLength: 8 * len(sig)}})
+	if err != nil {
+		g.t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		g.t.Fatalf("%s: %v", c.name, err)
+	}
+	return &confCert{name: c.name, cert: cert, key: c.key}
 }
 
 func (g *confGen) pki() *confPKI {
@@ -328,7 +406,54 @@ func (g *confGen) pki() *confPKI {
 		KeyUsage: x509.KeyUsageDigitalSignature, BasicConstraintsValid: true}
 	p.responderNoEKU = g.mk("ocsp-responder-no-eku", respNo, p.ca04, g.key("ocsp-responder", false))
 
-	for _, c := range []*confCert{p.root, p.ca02, p.ca04, p.ca05, p.caNC, p.caCrit, p.caInhibit, p.caEKU, p.caExpired, p.subCA, p.responder, p.responderNoEKU} {
+	// ── rp-conformance/2 (дараалал чухал: v1-ийн гэрчилгээний serial өөрчлөгдөхгүйн тулд зөвхөн ТӨГСГӨЛД нэмнэ) ──
+	weak := g.keyBits("rsa-1024", false, 1024)
+	// 04-ийн нэр + SKI (leaf-ийн issuer, AKI 04-тэй таарна), гэхдээ гарын үсэг 05-ийн түлхүүрээр.
+	fake04 := *p.ca04.cert
+	fake04.PublicKey = p.ca05.key.Public()
+	add("auth-forged-signature", confLeaf(profAuth), &confCert{name: "fake-04", cert: &fake04, key: p.ca05.key}, rsaLeaf)
+	dupSN := confLeaf(profAuth)
+	dupSN.Subject.ExtraNames = append(dupSN.Subject.ExtraNames, pkix.AttributeTypeAndValue{Type: asn1.ObjectIdentifier{2, 5, 4, 5}, Value: "PNOMN-999999990002"})
+	add("auth-duplicate-serialnumber", dupSN, p.ca04, rsaLeaf)
+	dupCN := confLeaf(profSign)
+	dupCN.Subject.ExtraNames = append(dupCN.Subject.ExtraNames, pkix.AttributeTypeAndValue{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: "TESTOV OTHER"})
+	add("sign-duplicate-cn", dupCN, p.ca04, rsaLeaf)
+	add("auth-rsa-1024", confLeaf(profAuth), p.ca04, weak)
+	evenE := &rsa.PublicKey{N: rsaLeaf.Public().(*rsa.PublicKey).N, E: 65536}
+	add("sign-rsa-even-exponent", confLeaf(profSign), p.ca04, confPubOverride{Signer: rsaLeaf, pub: evenE})
+	sha1Leaf := g.mk("auth-sha1-signature", confLeaf(profAuth), p.ca04, rsaLeaf)
+	p.leaves["auth-sha1-signature"] = g.confResign(sha1Leaf, p.ca04.key, crypto.SHA1, confOIDSHA1WithRSA, nil)
+	// SKI extension-гүй CA (02-ийн доор); leaf-ийн AKI = 04-ийн SKI (худал) — allowlist-ийг AKI-аар тойрох оролдлого.
+	noSKI := g.mk("ca-no-ski", confCA("TEST ONLY CA Without SKI", 0), p.ca02, g.key("ca-no-ski", false))
+	p.caNoSKI = g.confResign(noSKI, p.ca02.key, crypto.SHA256, confOIDSHA256WithRSA, confOIDSKI)
+	forgedAKI := confLeaf(profAuth)
+	forgedAKI.AuthorityKeyId = p.ca04.cert.SubjectKeyId
+	add("auth-under-no-ski-forged-aki", forgedAKI, p.caNoSKI, rsaLeaf)
+	resp05 := &x509.Certificate{Subject: pkix.Name{Country: []string{"MN"}, CommonName: "TEST ONLY Responder Of Another CA"},
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}, BasicConstraintsValid: true}
+	p.responder05 = g.mk("ocsp-responder-05", resp05, p.ca05, g.key("ocsp-responder", false))
+	respExp := &x509.Certificate{Subject: pkix.Name{Country: []string{"MN"}, CommonName: "TEST ONLY Expired OCSP Responder"},
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}, BasicConstraintsValid: true,
+		NotBefore: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), NotAfter: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	p.responderExpired = g.mk("ocsp-responder-expired", respExp, p.ca04, g.key("ocsp-responder", false))
+	respWeak := &x509.Certificate{Subject: pkix.Name{Country: []string{"MN"}, CommonName: "TEST ONLY Weak-Key OCSP Responder"},
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}, BasicConstraintsValid: true}
+	p.responderWeak = g.mk("ocsp-responder-rsa-1024", respWeak, p.ca04, weak)
+	// leaf-auth-ийн TBS-ийн нэг байт (subject CN «TESTOV TEST» → «TESTOV TESX») — гарын үсэг хуучнаараа.
+	tampered := bytes.Clone(p.leaves["auth"].cert.Raw)
+	i := bytes.Index(tampered, []byte("TESTOV TEST"))
+	if i < 0 {
+		g.t.Fatal("leaf-auth: CN олдсонгүй")
+	}
+	tampered[i+len("TESTOV TEST")-1] = 'X'
+	tc, err := x509.ParseCertificate(tampered)
+	if err != nil {
+		g.t.Fatal(err)
+	}
+	p.leaves["auth-tampered-tbs"] = &confCert{name: "auth-tampered-tbs", cert: tc, key: rsaLeaf}
+
+	for _, c := range []*confCert{p.root, p.ca02, p.ca04, p.ca05, p.caNC, p.caCrit, p.caInhibit, p.caEKU, p.caExpired, p.subCA, p.responder, p.responderNoEKU,
+		p.caNoSKI, p.responder05, p.responderExpired, p.responderWeak} {
 		g.out["pki/"+c.name+".pem"] = []byte(c.pem())
 	}
 	for name, c := range p.leaves {
@@ -634,7 +759,13 @@ func (g *confGen) rpValidate(p *confPKI) {
 	no02.Intermediates = inter[1:]
 	noAnchor := def
 	noAnchor.Anchors = []string{}
-	trust := map[string]confTrust{"default": def, "skew-60s": skew, "advanced": adv, "missing-02": no02, "no-anchor": noAnchor}
+	// rp-conformance/2: SKI-гүй CA-тай pool; түүний тооцсон (RFC 5280 арга 1) танигчийг зөвшөөрсөн хувилбар.
+	noSKIPool := def
+	noSKIPool.Intermediates = append(slices.Clone(inter), "pki/"+p.caNoSKI.name+".pem")
+	noSKIAllowed := noSKIPool
+	noSKIAllowed.AllowedIssuerSKIs = []string{hex.EncodeToString(issuerKeyID(p.caNoSKI.cert))}
+	trust := map[string]confTrust{"default": def, "skew-60s": skew, "advanced": adv, "missing-02": no02, "no-anchor": noAnchor,
+		"with-no-ski-ca": noSKIPool, "no-ski-ca-allowed": noSKIAllowed}
 
 	str := func(s string) *string { return &s }
 	evil := "https://evil.example/cb"
@@ -804,8 +935,32 @@ func (g *confGen) rpValidate(p *confPKI) {
 		s["result"] = map[string]any{"endResult": "USER_REFUSED_CERT_CHOICE"}
 	}, confFailed("USER_REFUSED_CERT_CHOICE"))
 
+	// ── rp-conformance/2 ──
+	A(authSpec{name: "auth-leaf-forged-signature", leaf: "auth-forged-signature",
+		comment: "issuer нэр ба AKI нь 04-тэй таарна, гарын үсэг өөр (05-ийн) түлхүүрээр → зам алга",
+		expect:  confErr("chain.untrusted")})
+	A(authSpec{name: "auth-leaf-tampered-tbs", leaf: "auth-tampered-tbs",
+		comment: "leaf-auth-ийн TBS-ийн нэг байт (subject CN) солигдсон, гарын үсэг хуучнаараа", expect: confErr("chain.untrusted")})
+	A(authSpec{name: "auth-leaf-sha1-signature", leaf: "auth-sha1-signature",
+		comment: "04 leaf-ийг sha1WithRSAEncryption-оор зурсан — SHA-1/MD5 гинжийн гарын үсэг хүлээн авахгүй", expect: confErr("chain.untrusted")})
+	A(authSpec{name: "auth-duplicate-serialnumber", leaf: "auth-duplicate-serialnumber",
+		comment: "subject-д SERIALNUMBER хоёр (SDK-ууд өөр утга авч болно)", expect: confErr("subject.duplicate_identity")})
+	S(signSpec{name: "sign-duplicate-cn", leaf: "sign-duplicate-cn", comment: "subject-д CN хоёр", expect: confErr("subject.duplicate_identity")})
+	cc("certchoice-duplicate-cn", "sign-duplicate-cn", nil, confErr("subject.duplicate_identity"))
+	A(authSpec{name: "auth-rsa-1024", leaf: "auth-rsa-1024", comment: "RSA 1024 бит (< 2048)", expect: confErr("cert.weak_key")})
+	S(signSpec{name: "sign-rsa-even-exponent", leaf: "sign-rsa-even-exponent", comment: "RSA public exponent 65536 (тэгш)",
+		expect: confErr("cert.weak_key")})
+	A(authSpec{name: "auth-issuer-no-ski-forged-aki", leaf: "auth-under-no-ski-forged-aki", trust: "with-no-ski-ca",
+		comment: "issuer (ca-no-ski) pool-д олдсон ч SKI extension-гүй; leaf-ийн AKI = 04-ийн SKI (худал). Issuer олдвол зөвхөн түүний SKI (алга бол арга 1-ээр тооцсон) — leaf-ийн AKI-д итгэхгүй",
+		expect:  confErr("issuer.not_allowed")})
+	A(authSpec{name: "auth-issuer-no-ski-computed-ski-allowed", leaf: "auth-under-no-ski-forged-aki", trust: "no-ski-ca-allowed",
+		comment: "allowlist-д ca-no-ski-ийн RFC 5280 §4.2.1.2 арга 1 (SHA-1(subjectPublicKey)) танигч → зөвшөөрнө",
+		expect:  confOK(p.leaves["auth-under-no-ski-forged-aki"], "QUALIFIED", "")})
+	A(authSpec{name: "auth-empty-verifier-compared", opts: map[string]any{"userChallengeVerifier": ""},
+		comment: "options.userChallengeVerifier байгаа ч хоосон (QR) → тулгана, таарахгүй", expect: confErr("auth.verifier_mismatch")})
+
 	g.putJSON("rp-validate/cases.json", map[string]any{
-		"version": "rp-validate/1",
+		"version": "rp-validate/2",
 		"comment": "ЗӨВХӨН ТЕСТИЙН PKI (pki/). README.md §rp-validate.",
 		"trust":   trust,
 		"cases":   cases,
@@ -822,6 +977,9 @@ type ocspSpec struct {
 	signer     *confCert // nil = 04 өөрөө
 	embed      []*confCert
 	corruptSig bool
+	// rp-conformance/2: CertID-ийн issuer (nil = issuer) ба hash (0 = SHA-1).
+	certIDIssuer *confCert
+	certIDHash   crypto.Hash
 }
 
 // confOCSPResponse — RFC 6960 OCSPResponse (successful, BasicOCSPResponse, byKey responderID, SHA-1 CertID). x/crypto
@@ -839,11 +997,20 @@ func confOCSPResponse(issuer *confCert, leaf *confCert, s ocspSpec) []byte {
 		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
 	}
-	if _, err := asn1.Unmarshal(issuer.cert.RawSubjectPublicKeyInfo, &spki); err != nil {
+	cidIssuer, cidHash := issuer, crypto.SHA1
+	if s.certIDIssuer != nil {
+		cidIssuer = s.certIDIssuer
+	}
+	if s.certIDHash != 0 {
+		cidHash = s.certIDHash
+	}
+	if _, err := asn1.Unmarshal(cidIssuer.cert.RawSubjectPublicKeyInfo, &spki); err != nil {
 		panic(err)
 	}
-	nameHash := sha1.Sum(issuer.cert.RawSubject)
-	keyHash := sha1.Sum(spki.PublicKey.RightAlign())
+	nameHash := confDigest(cidHash, cidIssuer.cert.RawSubject)
+	keyHash := confDigest(cidHash, spki.PublicKey.RightAlign())
+	cidOID := map[crypto.Hash]asn1.ObjectIdentifier{crypto.SHA1: {1, 3, 14, 3, 2, 26}, crypto.SHA256: {2, 16, 840, 1, 101, 3, 4, 2, 1},
+		crypto.SHA384: {2, 16, 840, 1, 101, 3, 4, 2, 2}, crypto.SHA512: {2, 16, 840, 1, 101, 3, 4, 2, 3}}[cidHash]
 	var signerSPKI struct {
 		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
@@ -862,11 +1029,11 @@ func confOCSPResponse(issuer *confCert, leaf *confCert, s ocspSpec) []byte {
 			b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) {
 				b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // CertID
 					b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) {
-						b.AddASN1ObjectIdentifier(asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26})
+						b.AddASN1ObjectIdentifier(cidOID)
 						b.AddASN1NULL()
 					})
-					b.AddASN1OctetString(nameHash[:])
-					b.AddASN1OctetString(keyHash[:])
+					b.AddASN1OctetString(nameHash)
+					b.AddASN1OctetString(keyHash)
 					b.AddASN1BigInt(serial)
 				})
 				switch s.status {
@@ -954,13 +1121,16 @@ func (g *confGen) ocspScenarios(p *confPKI) {
 			BodyB64: base64.StdEncoding.EncodeToString(der)}}
 	}
 	var cases []confOCSPCase
-	add := func(name, comment string, http map[string]confHTTPReply, status, kind string) {
+	addFor := func(name, comment, certificate, issuer string, http map[string]confHTTPReply, status, kind string) {
 		e := map[string]string{"status": status}
 		if kind != "" {
 			e["errorKind"] = kind
 		}
 		cases = append(cases, confOCSPCase{Name: name, Comment: comment, Now: confNow.Format(time.RFC3339),
-			Certificate: "pki/leaf-auth.pem", Issuer: "pki/04-eid.pem", HTTP: http, Expect: e})
+			Certificate: certificate, Issuer: issuer, HTTP: http, Expect: e})
+	}
+	add := func(name, comment string, http map[string]confHTTPReply, status, kind string) {
+		addFor(name, comment, "pki/leaf-auth.pem", "pki/04-eid.pem", http, status, kind)
 	}
 	resp := func(s ocspSpec) map[string]confHTTPReply { return reply(confOCSPResponse(p.ca04, leaf, fresh(s))) }
 	add("good", "04 өөрөө зурсан good, thisUpdate now−1ц, nextUpdate now+23ц", resp(ocspSpec{}), "good", "")
@@ -986,8 +1156,22 @@ func (g *confGen) ocspScenarios(p *confPKI) {
 	add("no-reply", "replay-д байхгүй хүсэлт → 404", map[string]confHTTPReply{}, "unknown", "http_status")
 	trylater := []byte{0x30, 0x03, 0x0a, 0x01, 0x03}
 	add("try-later", "responseStatus tryLater (3)", reply(trylater), "unknown", "responder_status")
+	// ── rp-conformance/2 ──
+	add("delegated-by-other-ca", "id-kp-OCSPSigning responder-ийг 05 (өөр CA) олгосон, шигтгэсэн", resp(ocspSpec{signer: p.responder05,
+		embed: []*confCert{p.responder05}}), "unknown", "signature")
+	add("delegated-expired", "04-ийн олгосон responder-ийн хугацаа (2025–2026-01-01) дууссан", resp(ocspSpec{signer: p.responderExpired,
+		embed: []*confCert{p.responderExpired}}), "unknown", "signature")
+	add("delegated-weak-key", "04-ийн олгосон responder RSA 1024 бит", resp(ocspSpec{signer: p.responderWeak,
+		embed: []*confCert{p.responderWeak}}), "unknown", "signature")
+	add("certid-hash-mismatch", "04 зурсан, serial таарна, CertID-ийн issuerNameHash/issuerKeyHash нь 05-ийнх", resp(ocspSpec{certIDIssuer: p.ca05}),
+		"unknown", "invalid")
+	add("certid-sha256", "CertID SHA-256 (хүсэлт SHA-1 байсан ч)", resp(ocspSpec{certIDHash: crypto.SHA256}), "good", "")
+	add("certid-sha512", "CertID SHA-512", resp(ocspSpec{certIDHash: crypto.SHA512}), "good", "")
+	other := p.leaves["auth-under-05"]
+	addFor("leaf-not-issued-by-issuer", "leaf-ийг 05 гаргасан, issuer-ээр 04 өгсөн; replay-д 04-ийн зурсан «good» байгаа ч асуухгүй (кэш/сүлжээнээс өмнө)",
+		"pki/leaf-auth-under-05.pem", "pki/04-eid.pem", reply(confOCSPResponse(p.ca04, other, fresh(ocspSpec{}))), "unknown", "no_issuer")
 	g.putJSON("ocsp/cases.json", map[string]any{
-		"version": "ocsp-checker/1",
+		"version": "ocsp-checker/2",
 		"comment": "README.md §ocsp. HTTP replay: түлхүүр «METHOD URL», жагсаалтад байхгүй → 404.",
 		"cases":   cases,
 	})

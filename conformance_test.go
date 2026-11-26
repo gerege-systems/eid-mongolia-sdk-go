@@ -146,6 +146,8 @@ var confReasons = []struct {
 	{regexp.MustCompile(`(?i)хариунд гарын үсэг алга`), "response.no_signature"},
 	{regexp.MustCompile(`(?i)documentNumber алга`), "response.no_document_number"},
 	{regexp.MustCompile(`(?i)гэрчилгээ (задарсангүй|base64 буруу)`), "cert.malformed"},
+	{regexp.MustCompile(`(?i)RSA түлхүүр сул`), "cert.weak_key"},
+	{regexp.MustCompile(`(?i)SERIALNUMBER эсвэл CN давхардсан`), "subject.duplicate_identity"},
 	{regexp.MustCompile(`(?i)гинжийн гэрчилгээний хугацаа`), "chain.expired"},
 	{regexp.MustCompile(`(?i)хүчинтэй болоогүй`), "cert.not_yet_valid"},
 	{regexp.MustCompile(`(?i)гэрчилгээний хугацаа дууссан`), "cert.expired"},
@@ -259,8 +261,9 @@ func TestConformanceRPValidate(t *testing.T) {
 			switch c.Kind {
 			case "auth":
 				var id *VerifiedIdentity
+				ucv, hasUCV := o["userChallengeVerifier"] // байгаа бол "" ч тулгана (README §rp-validate)
 				id, err = v.ValidateAuth(r, c.ACSP, ValidateAuthOptions{ExpectedFlowType: FlowType(o["expectedFlowType"]),
-					UserChallengeVerifier: o["userChallengeVerifier"]})
+					UserChallengeVerifier: ucv, VerifyUserChallenge: hasUCV})
 				if err == nil {
 					cert = id.Certificate
 					if id.DocumentNumber != eo.DocumentNumber || id.CertificateLevel != eo.CertificateLevel {

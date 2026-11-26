@@ -261,6 +261,9 @@ func (h *httpDoer) withTimeout(ctx context.Context, t time.Duration) (context.Co
 
 // send — амжилттай (< 300) хариуг буцаана; бусад статусыг төрөлжсөн алдаа болгоно (бие нь хаагдана).
 func (h *httpDoer) send(ctx context.Context, method, path string, body io.Reader, ctype string) (*http.Response, error) {
+	if err := checkPathParams(path); err != nil {
+		return nil, fmt.Errorf("eid: request %s %s: %w", method, maskPath(path), err)
+	}
 	req, err := http.NewRequestWithContext(ctx, method, h.base+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("eid: request %s %s: %w", method, maskPath(path), unwrapURL(err))

@@ -53,7 +53,7 @@ shape is identical to the TS `createEidLogin`.
 
 | | Request | Response |
 |---|---|---|
-| `POST /auth/eid/start` | `{"mode":"qr"}` or `{"mode":"push","idCode":"УБ12345678"}` (JSON required) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: eid_login` |
+| `POST /auth/eid/start` | `{"mode":"qr"}` or `{"mode":"push","idCode":"УБ12345678"}` (JSON required) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: __Host-eid_login` |
 | `GET /auth/eid/start?mode=web2app` | mobile browser (button navigation) | `302` → eID app (Web2App) |
 | `GET /auth/eid/status` | cookie | `PENDING` (`vc`, `expiresIn`, + a new `qr`) · `WAIT_CALLBACK` · `OK` (`redirect`, `data`) · `FAILED` (`error`) · `EXPIRED` |
 | `GET /auth/eid/callback` | the app returns: `?sessionId&userChallengeVerifier` | `303` → `Success.Redirect` / `SuccessRedirect`, on error `FailureRedirect?eid_error=<code>` |
@@ -122,7 +122,7 @@ On desktop a dialog (the QR refreshes every second + push by registry number); o
   (eID's own JSON 4xx — unknown / unusable number), the handler gives a response **identical** to a real push: `{mode, vc
   (random 5 digits — same shape as eID's), expiresIn}`, same cookie; `status` holds `PENDING` for the `Poll` duration without asking eID,
   then `EXPIRED` after the TTL — indistinguishable from a citizen who did not pick up their phone (a real push's CA `TIMEOUT` also becomes `EXPIRED`). Every push start response (real, decoy, 502)
-  takes at least `PushFloor` (default 1 s) — so the decoy cannot be told apart by timing. The limits (`push:<idCode>`, `start:<ip>`)
+  takes at least `PushFloor` (default 1 s) — so the decoy cannot be told apart by timing. The limits (`push:<pushKey>`, `start:<ip>`)
   also apply to the decoy; 429 and 400 (`invalid_id` — a format error, independent of registration) have no floor.
   eID's 5xx, connection errors, non-JSON 4xx (a proxy in front of eID, e.g. an mTLS rejection), 401/403 (the RP's secret/permission) and 429 are
   **not decoyed** — `502 eid_unavailable` / `429` (the eID portal's behaviour: hiding an outage behind a decoy would leave the citizen with an endless spinner;
@@ -155,11 +155,11 @@ the value **n-th from the right** in `X-Forwarded-For` (n = the number of your p
 Without a proxy, `eidlogin.RemoteAddrIP`. If nil, no per-IP limiting is applied (`New` writes a one-time Warn). The same rules as the TS SDK's
 `trustProxy` / `getClientIp`.
 
-**Rate limiting.** Keys: `start:<ip>` (if ClientIP is provided), `push:<idCode>`; when rejected: 429 + `Retry-After: 60`.
+**Rate limiting.** Keys: `start:<ip>` (if ClientIP is provided; IPv6 → its `/64` prefix, an empty ClientIP → the shared `start:unknown` bucket), `push:<pushKey>` (since v0.32.0 the audit HMAC, never the id number); when rejected: 429 + `Retry-After: 60`.
 The default `eidlogin.DefaultRateLimit()` = `{"start": {Max: 20, Window: time.Minute}, "push": {Max: 3, Window: time.Minute}}`
 — 20 starts per minute from one IP (since v0.6.0; if `ClientIP` is provided), 3 notifications per minute to one number (MFA fatigue). The in-memory
-limiter holds ≤ 10 000 keys per type: when full, it purges expired windows, and if it is still not empty it rejects a **new** key with
-429 (fail-closed) — existing counters are never evicted, so the limit cannot be bypassed by filling it with many IPs/numbers.
+limiter holds ≤ 10 000 keys per type (`RateRule.MaxKeys`): when full, it purges expired windows, and if it is still full it counts **new** keys in
+one shared overflow bucket (since v0.32.0; before: 429) — existing counters are never evicted, so the limit cannot be bypassed by filling it with many IPs/numbers.
 `NewMemoryStore()` is likewise ≤ `eidlogin.MemoryStoreMax` (10 000): when full, start returns 503 `{"error":"busy"}`
 (`eidlogin.ErrStoreFull`) and does not delete logins already in progress. With multiple instances, use a Redis store/limiter.
 

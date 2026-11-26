@@ -1,9 +1,9 @@
-# RP SDK conformance corpus (`rp-conformance/1`)
+# RP SDK conformance corpus (`rp-conformance/2`)
 
 One set of language-neutral vectors that every eID Mongolia relying-party SDK (Go — reference, TypeScript, .NET,
 Java) must pass. The Go SDK generates it (`conformance_gen_test.go`) and runs it (`conformance_test.go`,
 `eidlogin/conformance_test.go`); other SDKs vendor this folder byte-for-byte from a pinned Go commit (tag
-`rp-conformance-vN`) and run their own harness against it.
+`rp-conformance-vN`) and run their own harness against it. What changed since version 1: [§Changes](#changes).
 
 > **TEST DATA ONLY.** `pki/` is a generated test PKI (`TEST ONLY Conformance …`) — it chains to nothing real. No real
 > citizen data: the subject is `TESTOV TEST`, `PNOMN-999999990001`. `pki/keys/*.key.pem` are the generator's private
@@ -52,10 +52,12 @@ standard RFC 4648 with padding unless stated; times are RFC 3339 UTC; certificat
 | `anchors` | PEM paths → trust anchors. `[]` = no anchor (must fail `trust.no_anchor`; never "allow untrusted") |
 | `intermediates` | PEM paths → intermediate pool. Pass exactly this list (`[]` is not "use the SDK's built-in 02–04") |
 | `allowedIssuerSkis` | hex SKIs of CAs allowed to issue citizen certificates |
-| `requiredLevel` | absent = `QUALIFIED` |
+| `requiredLevel` | absent = `QUALIFIED`; any other value than `ADVANCED`/`QUALIFIED`/`QSCD` must be a configuration error of the SDK (never silently `QUALIFIED`; not exercised by a case) |
 | `clockSkewSeconds` | absent = 0 |
 
-Key-usage checking is on (SDK default), issuer allowlist as given, scheme name default (`smart-id`).
+Key-usage checking is on (SDK default), issuer allowlist as given, scheme name default (`smart-id`). A trust pool
+certificate (anchor or intermediate) with a weak RSA key (see `cert.weak_key`) must be rejected when the SDK is
+configured (configuration error; the corpus profiles contain none).
 
 **Case**:
 
@@ -68,7 +70,7 @@ Key-usage checking is on (SDK default), issuer allowlist as given, scheme name d
 | `session` | the raw RP-API `GET /session/{id}` JSON body — parse it with the SDK's own session parser |
 | `acsp` | (auth) the stored ACSP context returned at session start: `rpChallenge`, `relyingPartyName`, `brokeredRpName`, `interactions` (base64 string — use as is, never re-encode), `initialCallbackUrl`, `flowTypes`, `signatureAlgorithm`, `hashAlgorithm` |
 | `digest`, `hashAlgorithm` | (sign) the digest sent at session start (base64) and its hash |
-| `options` | auth: `expectedFlowType`, `userChallengeVerifier`; sign: `expectedFlowType`, `expectedAlgorithm`, `expectedCertificate` (base64 DER) |
+| `options` | auth: `expectedFlowType`, `userChallengeVerifier` (a PRESENT member is compared even when `""` — absent and `""` are different; Go: `VerifyUserChallenge: true`); sign: `expectedFlowType`, `expectedAlgorithm`, `expectedCertificate` (base64 DER) |
 | `certChoiceSessionId` | (certificateChoice) returned on the signer object |
 | `expect` | exactly one of `ok` or `error` |
 
@@ -92,6 +94,8 @@ returned certificate DER), `subject` {`serialNumber`, `givenName`, `surname`, `c
 | `response.no_certificate`, `response.no_signature` | `cert.value` / `signature.value` missing (no signature check for certificateChoice) |
 | `response.no_document_number` | `result.documentNumber` missing |
 | `cert.malformed` | certificate is not base64 DER X.509 |
+| `cert.weak_key` | (v2) leaf RSA key: modulus < 2048 bits, or public exponent even or < 3 (EC keys are not affected) |
+| `subject.duplicate_identity` | (v2) leaf subject has more than one SERIALNUMBER (2.5.4.5) or more than one CN (2.5.4.3) attribute, counted over every AttributeTypeAndValue of every RDN, whatever the value's string type |
 | `cert.not_yet_valid`, `cert.expired` | leaf validity vs `now ± skew` (`notAfter == now` is valid) |
 | `purpose.auth_digital_signature`, `purpose.auth_client_auth` | auth leaf: KeyUsage digitalSignature; EKU clientAuth or anyExtendedKeyUsage |
 | `purpose.sign_non_repudiation` | sign / certificateChoice leaf: KeyUsage nonRepudiation (contentCommitment) |
@@ -102,8 +106,8 @@ returned certificate DER), `subject` {`serialNumber`, `givenName`, `surname`, `c
 | `chain.eku` | leaf or CA EKU present and lacks the purpose (auth → clientAuth, sign → emailProtection) and anyExtendedKeyUsage |
 | `chain.not_ca` | issuer not CA:TRUE or KeyUsage without keyCertSign |
 | `chain.expired` | a CA is outside its validity at the chain time (`now` clamped into the leaf validity) |
-| `chain.untrusted` | no path from the leaf to an anchor |
-| `issuer.not_allowed` | direct issuer SKI (or leaf AKI) not in `allowedIssuerSkis` |
+| `chain.untrusted` | no path from the leaf to an anchor (includes: a signature that does not verify, a tampered TBS, and — v2 — a chain signature with SHA-1 or MD5) |
+| `issuer.not_allowed` | the direct issuer's key identifier not in `allowedIssuerSkis`. v2: when the issuer is found in the pool, use ONLY its SKI, or — when it has no SKI extension — the RFC 5280 §4.2.1.2 method-1 identifier SHA-1(subjectPublicKey BIT STRING contents); the leaf's AKI is used only when no issuer is found (allow-untrusted mode) |
 | `level.qc_malformed` | qcStatements extension not a SEQUENCE OF SEQUENCE |
 | `level.claimed_higher` | `cert.certificateLevel` higher than the level derived from the certificate |
 | `level.insufficient` | effective level below `requiredLevel` |
@@ -135,7 +139,10 @@ Notification), else the RP's callback.
 Chain rule (fail-closed, owner decision 2026-11-26): build the path yourself (do not use OS chain engines); for every
 certificate on the path reject critical extensions outside `{2.5.29.14, .15, .17, .19, .30, .31, .32, .35, .37,
 1.3.6.1.5.5.7.1.1}`; reject any CA (anchor included) that has nameConstraints (2.5.29.30), critical or not; if
-several paths exist, any fully valid one succeeds. Certificate policies are not evaluated.
+several paths exist, any fully valid one succeeds. Certificate policies are not evaluated. Certificate signatures on
+the path (v2): accept only sha256/384/512WithRSAEncryption, RSASSA-PSS with SHA-256/384/512, ecdsa-with-SHA256/384/512
+and Ed25519 — SHA-1 and MD5 (and anything else) never verify. ECDSA signatures (certificates and session signatures)
+must satisfy 0 < r, s < n before verification (check it yourself where the platform does not).
 
 Levels: qcStatements present → QcCompliance absent = ADVANCED, with QcSSCD = QSCD, else QUALIFIED. Absent → auth
 (ACSP_V2) leaf with KeyUsage keyEncipherment, or EKU clientAuth+emailProtection with policy 2.16.496.1.101.1.2.8 →
@@ -147,6 +154,13 @@ leaves; `05-other` (alien issuer under 02); under 02 also `ca-name-constraints` 
 by the leaves, rejected anyway), `ca-unknown-critical`, `ca-critical-inhibit-any-policy` (critical 2.5.29.54),
 `ca-eku-server-auth`, `ca-expired`; `ca-below-pathlen-zero` under 04. Leaves `leaf-<name>.pem` where `<name>` is the
 generator's profile name (auth = P-CITIZEN-AUTH, sign = P-CITIZEN-SIGN, token-auth-ec = P-CITIZEN-AUTH-TOKEN, …).
+v2 additions: `ca-no-ski` (under 02, pathLen 0, **no** SKI extension), OCSP responders `ocsp-responder-05` (issued by
+05), `ocsp-responder-expired` (04, valid 2025-01-01…2026-01-01), `ocsp-responder-rsa-1024` (04, RSA 1024); leaves
+`auth-forged-signature` (issuer name and AKI of 04, signed by another key), `auth-tampered-tbs` (`leaf-auth` with one
+TBS byte changed: CN `TESTOV TESX`), `auth-sha1-signature` (04, sha1WithRSAEncryption), `auth-duplicate-serialnumber`,
+`sign-duplicate-cn`, `auth-rsa-1024`, `sign-rsa-even-exponent` (e = 65536), `auth-under-no-ski-forged-aki` (issued by
+`ca-no-ski`, AKI = 04's SKI). Trust profiles `with-no-ski-ca` (= `default` + `ca-no-ski`) and `no-ski-ca-allowed`
+(same pool, allowlist = method-1 identifier of `ca-no-ski`).
 
 ## wire
 
@@ -216,12 +230,17 @@ the certificate's AIA, `POST`), value {`status`, `contentType`, `bodyB64`}; any 
 is not compared (CertID hash choice is the SDK's).
 
 `status`: `good`, `revoked` (also for OCSP `unknown` — the issuer never issued that serial), or `unknown` (no
-acceptable answer; the validator's revocation mode decides). Acceptance rules: signed by the issuer, or by a delegated
-responder certificate issued by the issuer with id-kp-OCSPSigning valid at `now` (embedded in the response); a response
-that embeds the issuer itself is issuer-signed; the single response is for the leaf's serial; `thisUpdate ∈ [now − 48 h,
-now + 5 min]`; `nextUpdate` absent or not before `now`; body ≤ 16 KiB; HTTP 200 only, no redirects. `errorKind`
-(optional, for SDKs that classify like Go `OCSPError.Kind`): `signature`, `invalid`, `http_status`,
-`responder_status`, `parse`, `network`, `timeout`, `no_responder`, `no_issuer`.
+acceptable answer; the validator's revocation mode decides). Acceptance rules, in this order: (v2) BEFORE any cache
+lookup or network call, the given issuer must have issued the leaf (issuer name = subject, AKI/SKI when both present,
+issuer is a CA, signature verifies, issuer RSA key not weak) — else `no_issuer`; signed by the issuer, or by a delegated
+responder certificate issued by the issuer with id-kp-OCSPSigning valid at `now` (embedded in the response) — (v2) a
+delegated responder with a weak RSA key (`cert.weak_key` rule) is `signature`; a response that embeds the issuer itself
+is issuer-signed; the single response is for the leaf's serial; (v2) every SingleResponse for the leaf's serial has a
+CertID whose `issuerNameHash` = H(issuer subject DER) and `issuerKeyHash` = H(issuer subjectPublicKey BIT STRING
+contents), H = the CertID's hashAlgorithm (SHA-1, SHA-256, SHA-384 or SHA-512; anything else fails) — else
+`invalid`; `thisUpdate ∈ [now − 48 h, now + 5 min]`; `nextUpdate` absent or not before `now`; body ≤ 16 KiB; HTTP 200
+only, no redirects. `errorKind` (optional, for SDKs that classify like Go `OCSPError.Kind`): `signature`, `invalid`,
+`http_status`, `responder_status`, `parse`, `network`, `timeout`, `no_responder`, `no_issuer`.
 
 ## eidlogin
 
@@ -229,30 +248,91 @@ now + 5 min]`; `nextUpdate` absent or not before `now`; body ≤ 16 KiB; HTTP 20
 fake RP-API. `{config, upstream, scenarios}`; a scenario may override `config` keys and prepend `upstream` rules.
 
 - `config`: client `rpName`, `rpUUID`, `apiSecret`; handler `callbackUrl` (`""` = Web2App off), `successRedirect`,
-  `failureRedirect`, `ttlSeconds`, `pollMs`, `pushFloorMs` (0 = off), `cookieName`, `revocation: "disabled"`, `decoy`,
-  `recordRateLimitKeys` (install a rate-limit hook that records every key and allows it; it may add to
-  (Go `RateLimit`) or replace (TS `rateLimit` function) the defaults — that scenario never reaches a limit). Otherwise the default rate
-  limits are on (start: 20 / 60 s per client IP; push: 3 / 60 s per normalised id). The client IP is the request's
-  `ip` (absent = unknown → no start limit). Trust: SDK default without anchors. `onSuccess` returns redirect
-  `/dashboard`. The handler is mounted at `/auth/eid/{start,status,callback}`; requests use the host
-  `https://rp.conformance.test`.
+  `failureRedirect`, `ttlSeconds`, `pollMs`, `pushFloorMs` (0 = off), `cookieName` (passed to the SDK's cookie-name
+  option; `""` = not set → the SDK default), (v2) `wireCookieName` (the name the harness expects in `Set-Cookie` and
+  sends in `Cookie`; absent = `cookieName`), `cookieDomain`, `cookiePath` (absent/`""` = SDK default), `clientIp`
+  (`"none"` = configure NO client-IP source at all; otherwise the harness configures one that returns the request's
+  `ip`), `auditKeyHex` (the push-audit HMAC key as hex; absent = SDK default random key), `rateLimits` ({`start`|`push`:
+  {`max`, `windowSeconds`, `maxKeys`}} replacing that kind's default in-memory window; `maxKeys` = the limiter's table
+  size), `revocation: "disabled"`, `decoy`, `recordRateLimitKeys` (install a rate-limit hook that records every key and
+  allows it; it may add to (Go `RateLimit`) or replace (TS `rateLimit` function) the defaults — that scenario never
+  reaches a limit). Otherwise the default rate limits are on (start: 20 / 60 s per client IP; push: 3 / 60 s per
+  normalised id). Trust: SDK default without anchors. `onSuccess` returns redirect `/dashboard`. The handler is mounted
+  at `/auth/eid/{start,status,callback}`; requests use the host `https://rp.conformance.test`.
+- Login cookie (v2): the default name is `__Host-eid_login` when the cookie is Secure, has no Domain and Path is `/`;
+  otherwise (insecure dev cookie, a Domain, or another Path) `eid_login`; a name the RP sets is used as given. Reading:
+  split every `Cookie` header on `;`, trim each part, name = text before the first `=` (trimmed), value = the rest
+  (trimmed). When MORE THAN ONE part carries the login cookie's name — whatever their values — the request has no login
+  cookie (status → `EXPIRED` with the cookie cleared; callback → `eid_error=expired`), so a cookie planted from a
+  sibling host or another path cannot shadow the real one. The browser component does not read the (HttpOnly) cookie.
+- Rate-limit keys (v2): `start:<value>` — with a client-IP source configured: `unknown` when it yields an empty
+  (trimmed) value (one shared bucket, never "no limit"); an IPv6 literal (optional `[…]`, `%zone` dropped, no DNS) →
+  its /64 prefix written as the first four hextets in lowercase hex without leading zeros and without `::` compression,
+  followed by `::/64` (`2001:db8:1:2::/64`, `fe80:0:0:0::/64`); IPv4-mapped IPv6 → the dotted IPv4; anything else
+  (IPv4, unparsable) unchanged. Without any client-IP source: no `start` key at all (the SDK warns once). `push:<pushKey>`
+  — the same keyed hash as the audit `pushKey`: lowercase hex of the first 16 bytes of HMAC-SHA256(auditKey, UTF-8
+  `"eid-push-audit:" + normalised id`); the citizen's id never reaches the limiter or a user hook. The in-memory
+  window limiter keeps at most `maxKeys` keys per kind (default 10 000): when a NEW key arrives on a full table, keys
+  whose window has passed are dropped; if it is still full, the new key is counted in ONE shared overflow bucket (same
+  limit and window) — existing counters are never evicted, and new keys are not refused outright.
 - `upstream` rules (fake RP-API): first match wins on `method` and `path` (exact, query ignored) or `pathPrefix`;
   answer `status` with `body` (JSON) or `bodyText` and `contentType` (default `application/json`);
   `expiresAtInSeconds` adds `expiresAt` = real now + N s (RFC 3339, seconds). No match → 404 `{"error":"not found"}`.
   A step's `upstream` rules are prepended for that step and every later step.
 - `steps[]`: `request` {`method`, `path` (with query), `headers`, `json` (sent with `Content-Type:
-  application/json`) or `text` (raw, no content type), `cookieFrom` (send `<cookieName>=<value>` from step N's
-  Set-Cookie), `ip`}; `repeat` N sends it N times, each must meet `expect`; `expect`:
+  application/json`) or `text` (raw, no content type), `cookieFrom` (send `<wireCookieName>=<value>` from step N's
+  Set-Cookie), (v2) `cookieHeader` (with `cookieFrom`: the exact `Cookie` header to send, `$cookieFrom` replaced by
+  that `<wireCookieName>=<value>` pair), `ip`}; `repeat` N sends it N times, each must meet `expect`; `expect`:
   - `status`; `json` — subset match of the JSON body; `jsonKeys` — exact key set; `sameKeysAs: N` — same key set as
     step N; `location` — Location header; `headers` — exact values;
-  - `setCookie` — the `<cookieName>` Set-Cookie: `value`, `attributes` (`Path`, `Max-Age` strings; `HttpOnly`,
-    `Secure`: `true` = flag present; `SameSite`), or `cleared: true` (empty value, `Max-Age=0`); `noSetCookie: true`.
+  - `setCookie` — the `<wireCookieName>` Set-Cookie: `value`, `attributes` (`Path`, `Max-Age`, `Domain` strings;
+    `HttpOnly`, `Secure`: `true` = flag present; `SameSite`), (v2) `absentAttributes` (attribute names that must not
+    appear), or `cleared: true` (empty value, `Max-Age=0`); `noSetCookie: true`.
   - Matchers anywhere a value is expected: `{"$re": "…"}` (on the string form), `{"$range": [a, b]}` (number),
     `{"$sameAs": "N.json.<key>"}` (string form equal to step N's JSON member). Numbers compare by value.
 - `events` (when present): the exact ordered list of audit events (`OnEvent` / `onEvent`): `kind`, optional
   `sessionId` (`null` ≡ `""`), `meta` subset (`mode`, `decoy`, `reason`, `endResult`, `pushKey` = 32 lowercase hex,
   never the id number).
-- `rateLimitKeys`: exact ordered list of keys passed to the recording hook (`start:<ip>`, `push:<normalised id>`).
+- `rateLimitKeys`: exact ordered list of keys passed to the recording hook (`start:<value>`, `push:<pushKey>`).
 
 Not covered here (timing and real signatures): the push response floor and the OK path with a real ACSP signature —
 those stay in each SDK's own tests.
+
+## Changes
+
+### Version 2 (`rp-conformance/2`)
+
+Adopt mechanically: re-vendor the folder from the pinned Go commit, check `manifest.json` (`version` =
+`rp-conformance/2`), add the two reason keys to your error mapping, and extend the harness with the new `eidlogin`
+config/request/expect members listed above. Sub-file versions: `rp-validate/2`, `ocsp-checker/2`, `eidlogin/2`
+(`wire/1`, `interactions/1`, `acsp-v2/1` unchanged). Every version-1 PEM file is byte-identical (new certificates use
+new serials after the old ones).
+
+- New reason keys: `cert.weak_key` and `subject.duplicate_identity` — checked right after `cert.malformed`, in this
+  order, for auth, sign, certificate choice and token authentication (and in the My QR signer check, where both are
+  `QR_CHAIN_INVALID`).
+- Changed scenario (the only one whose expectation changed): `eidlogin` `rate-limit-keys` — push keys are now
+  `push:<pushKey>` instead of `push:<normalised id>`, a request without `ip` now yields `start:unknown` instead of no
+  start key, and the scenario sets `auditKeyHex` and expects the two `push_sent` events' `pushKey`.
+- Changed rule without a changed case: with a client-IP source configured, an empty client IP is the shared
+  `start:unknown` bucket (v1: no start limit). Existing v1 scenarios without `ip` stay within that bucket's limit.
+- New files: `pki/ca-no-ski.pem`, `pki/ocsp-responder-05.pem`, `pki/ocsp-responder-expired.pem`,
+  `pki/ocsp-responder-rsa-1024.pem`, `pki/leaf-auth-forged-signature.pem`, `pki/leaf-auth-tampered-tbs.pem`,
+  `pki/leaf-auth-sha1-signature.pem`, `pki/leaf-auth-duplicate-serialnumber.pem`, `pki/leaf-sign-duplicate-cn.pem`,
+  `pki/leaf-auth-rsa-1024.pem`, `pki/leaf-sign-rsa-even-exponent.pem`, `pki/leaf-auth-under-no-ski-forged-aki.pem`.
+- New trust profiles (`rp-validate/cases.json`): `with-no-ski-ca`, `no-ski-ca-allowed`.
+- New `rp-validate` cases: `auth-leaf-forged-signature`, `auth-leaf-tampered-tbs`, `auth-leaf-sha1-signature` (→
+  `chain.untrusted`); `auth-duplicate-serialnumber`, `sign-duplicate-cn`, `certchoice-duplicate-cn` (→
+  `subject.duplicate_identity`); `auth-rsa-1024`, `sign-rsa-even-exponent` (→ `cert.weak_key`);
+  `auth-issuer-no-ski-forged-aki` (→ `issuer.not_allowed`); `auth-issuer-no-ski-computed-ski-allowed` (ok);
+  `auth-empty-verifier-compared` (→ `auth.verifier_mismatch`).
+- New `ocsp` cases (all 17 v1 cases unchanged): `delegated-by-other-ca`, `delegated-expired`, `delegated-weak-key`
+  (→ unknown/`signature`), `certid-hash-mismatch` (→ unknown/`invalid`), `certid-sha256`, `certid-sha512` (→ good),
+  `leaf-not-issued-by-issuer` (→ unknown/`no_issuer`, the replay holds a would-be `good` answer that must not be used).
+- New `eidlogin` scenarios: `cookie-host-prefix-default`, `cookie-plain-name-with-domain`,
+  `cookie-plain-name-with-path`, `cookie-duplicate-status-rejected`, `cookie-duplicate-callback-rejected`,
+  `start-unknown-ip-shared-bucket`, `start-no-client-ip-source`, `start-ipv6-prefix-keys`, `start-ipv6-same-64-limited`,
+  `start-limiter-overflow-bucket`.
+- New rules not exercised by a case (SDK unit tests): weak RSA keys in the trust pool and an unknown `requiredLevel`
+  are configuration errors; SHA-1/MD5 rule for every path certificate; ECDSA `0 < r, s < n`; RP-API path parameters
+  that are empty, `.` or `..` are rejected before any request (every service that expands a route template).

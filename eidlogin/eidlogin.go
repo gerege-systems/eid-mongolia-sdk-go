@@ -40,6 +40,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"path"
 	"regexp"
@@ -202,6 +203,10 @@ type RateRule struct {
 	Max    int
 	Window time.Duration
 	Func   func(ctx context.Context, key string) bool
+	// MaxKeys — санах ойн цонхны дээд түлхүүрийн тоо (v0.32.0-аас; 0 = 10 000). Дүүрвэл (цонх нь өнгөрсөн түлхүүрийг
+	// цэвэрлээд ч) ШИНЭ түлхүүрүүд нэг нийтийн overflow bucket-д (ижил Max/Window) тоологдоно; байгаа тоолуурыг
+	// хэзээ ч арилгахгүй.
+	MaxKeys int
 }
 
 // DefaultRateLimit — анхдагч хязгаар (шинэ map): start — нэг IP-ээс 60 секундэд 20 (v0.6.0-аас; ClientIP өгсөн үед);
@@ -262,20 +267,27 @@ type Config struct {
 	// тул хугацааны зөрүү бүртгэлтэй эсэхийн oracle болохгүй. Poll — status-ийн нэг дуудлагад eID-ийг хүлээх (анхдагч 1 с).
 	TTL, Poll time.Duration
 	Store     Store
-	// CookieName (анхдагч eid_login), CookiePath (анхдагч /), CookieDomain. InsecureCookie — зөвхөн http dev-д.
+	// CookieName, CookiePath (анхдагч /), CookieDomain. InsecureCookie — зөвхөн http dev-д. CookieName анхдагч (v0.32.0-аас):
+	// "__Host-eid_login" (Secure, Domain алга, Path=/ — хөтөч дэд домэйн / өөр замаас тарьсан cookie-г энэ нэрээр
+	// хүлээн авахгүй), эс бөгөөс (InsecureCookie, CookieDomain эсвэл Path ≠ /) "eid_login". Өгсөн нэрийг хэвээр
+	// хэрэглэнэ. Хүсэлтэд энэ нэртэй cookie нэгээс олон бол (тарьсан cookie жинхэнийг сүүдэрлэх) холбогдоогүй гэж
+	// үзнэ: status → EXPIRED, callback → eid_error=expired.
 	CookieName, CookiePath, CookieDomain string
 	InsecureCookie                       bool
-	// RateLimits — төрөл тус бүрийн хязгаар ("start" — "start:<ip>", "push" — "push:<idCode>"); DefaultRateLimit()-тэй
+	// RateLimits — төрөл тус бүрийн хязгаар ("start" — "start:<ip>", "push" — "push:<pushKey>"); DefaultRateLimit()-тэй
 	// НЭГТГЭГДЭНЭ: өгсөн төрөл анхдагчийг дарна, өгөөгүй нь анхдагчаараа (start: нэг IP-ээс 60 секундэд 20 (v0.6.0-аас);
 	// push: нэг дугаарт 60 секундэд 3, MFA fatigue). Тухайн төрлийг хязгааргүй болгох бол хоосон RateRule{}. Өөр түлхүүр →
 	// New алдаа.
 	RateLimits map[string]RateRule
-	// RateLimit — бүх түлхүүрт ("start:<ip>", "push:<idCode>") дуудагдах нэмэлт шалгалт; false → 429. Анхдагч
+	// RateLimit — бүх түлхүүрт ("start:<ip>", "push:<pushKey>") дуудагдах нэмэлт шалгалт; false → 429. Анхдагч
 	// хязгаар ДЭЭР нэмэгдэнэ (хоёулаа зөвшөөрөх ёстой) — анхдагчийг солих бол RateLimits-ээр тухайн төрлийг өг.
+	// v0.32.0-аас түлхүүрт регистрийн дугаар ОРОХГҮЙ: push-д pushKey = OnEvent-ийн meta.pushKey (AuditKey-ийн HMAC,
+	// 32 hex); start-д IPv6 клиент /64 угтвараар ("start:2001:db8:1:2::/64"), IP тодорхойгүй бол "start:unknown".
 	RateLimit func(ctx context.Context, key string) bool
 	// ClientIP — "start:<ip>" хязгаарын клиент IP. Итгэмжит reverse proxy-ийн ард ForwardedClientIP(n), шууд
 	// холбогддог бол RemoteAddrIP, эсвэл өөрийн функц. nil бол IP-ээр хязгаарлахгүй (New нэг удаа Warn бичнэ) — TS-ийн
-	// createEidLogin-ий trustProxy / getClientIp-тэй ижил дүрэм.
+	// createEidLogin-ий trustProxy / getClientIp-тэй ижил дүрэм. Өгсөн ч "" буцаавал (proxy-ийн гинж богино г.м.)
+	// v0.32.0-аас хязгааргүй биш — нийтийн "start:unknown" bucket (fail-closed).
 	ClientIP func(*http.Request) string
 	// Logger — дотоод алдаа (анхдагч slog.Default()). Иргэний мэдээлэл бичихгүй.
 	Logger *slog.Logger
@@ -466,11 +478,11 @@ func New(cfg Config) (*Handler, error) {
 	if cfg.Store == nil {
 		cfg.Store = NewMemoryStore()
 	}
-	if cfg.CookieName == "" {
-		cfg.CookieName = "eid_login"
-	}
 	if cfg.CookiePath == "" {
 		cfg.CookiePath = "/"
+	}
+	if cfg.CookieName == "" {
+		cfg.CookieName = defaultCookieName(cfg)
 	}
 	text := cfg.DisplayText
 	if text == "" {
@@ -539,15 +551,24 @@ func buildLimits(user map[string]RateRule) (map[string]func(context.Context, str
 			if r.Window <= 0 {
 				return nil, fmt.Errorf("eidlogin: RateLimits[%q].Window > 0 байх ёстой", k)
 			}
-			out[k] = windowLimiter(r.Max, r.Window, limiterMaxKeys)
+			maxKeys := r.MaxKeys
+			if maxKeys <= 0 {
+				maxKeys = limiterMaxKeys
+			}
+			out[k] = windowLimiter(r.Max, r.Window, maxKeys)
 		}
 	}
 	return out, nil
 }
 
+// limiterOverflowKey — хүснэгт дүүрсэн үед шинэ түлхүүрүүдийн нийтийн bucket (хүчинтэй "kind:value" түлхүүр биш).
+const limiterOverflowKey = "\x00overflow"
+
 // windowLimiter — санах ойн гулсах цонх (түлхүүр тус бүрд), дээд тал нь maxKeys түлхүүр. Дүүрвэл цонх нь өнгөрсөн
-// түлхүүрийг цэвэрлээд, хоосроогүй бол ШИНЭ түлхүүрийг татгалзана (fail-closed) — байгаа түлхүүрийн тоолуурыг хэзээ ч
-// арилгахгүй тул олон түлхүүрээр дүүргэж тухайн дугаарын хязгаарыг тойрох боломжгүй (v0.5.x бүгдийг цэвэрлэдэг байв).
+// түлхүүрийг цэвэрлээд, хоосроогүй бол ШИНЭ түлхүүрийг нэг нийтийн overflow bucket-д (ижил limit/window) тоолно
+// (v0.32.0-аас; өмнө нь шинэ түлхүүр бүрийг татгалздаг байсан — хүснэгт дүүргэх нь бүх шинэ хэрэглэгчийг түгжинэ).
+// Байгаа түлхүүрийн тоолуурыг хэзээ ч арилгахгүй тул олон түлхүүрээр дүүргэж тухайн дугаарын хязгаарыг тойрох
+// боломжгүй. Java SDK 0.2.0 EidLogin.windowLimiter-тэй ижил.
 func windowLimiter(limit int, window time.Duration, maxKeys int) func(context.Context, string) bool {
 	var mu sync.Mutex
 	hits := map[string][]time.Time{}
@@ -562,7 +583,7 @@ func windowLimiter(limit int, window time.Duration, maxKeys int) func(context.Co
 				}
 			}
 			if len(hits) >= maxKeys {
-				return false
+				key = limiterOverflowKey // overflow bucket нь maxKeys-ээс нэгээр илүү байж болно
 			}
 		}
 		var h []time.Time
@@ -628,13 +649,77 @@ func sha256hex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// loadTx — cookie → tx (binding таарсан, хугацаа дотор). Олдохгүй бол (nil, nil).
-func (h *Handler) loadTx(r *http.Request) (*Tx, error) {
-	c, err := r.Cookie(h.cfg.CookieName)
+// defaultCookieName — "__Host-" угтвар зөвхөн хөтөч хүлээн авах нөхцөлд (Secure, Domain алга, Path=/).
+func defaultCookieName(cfg Config) string {
+	if !cfg.InsecureCookie && cfg.CookieDomain == "" && cfg.CookiePath == "/" {
+		return "__Host-eid_login"
+	}
+	return "eid_login"
+}
+
+// startKey — "start:<value>"-ийн value (Config.ClientIP өгсөн үед): хоосон → "unknown" (нийтийн bucket, fail-closed),
+// IPv6 → /64 угтвар, бусад хэвээр. Java SDK 0.2.0 EidLogin.startKey/ipKey-тэй ижил.
+func startKey(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return "unknown"
+	}
+	return ipKey(ip)
+}
+
+// ipKey — IPv6 литерал ("[…]", "%zone" зөвшөөрнө) → "/64" угтвар (2001:db8:1:2::/64 — 4 hextet, жижиг үсэг, тэг
+// хураахгүй); IPv4-mapped (::ffff:a.b.c.d) → a.b.c.d; бусад (IPv4, задрахгүй мөр) хэвээр. DNS асуухгүй.
+func ipKey(ip string) string {
+	if !strings.Contains(ip, ":") {
+		return ip
+	}
+	lit := ip
+	if strings.HasPrefix(lit, "[") && strings.HasSuffix(lit, "]") {
+		lit = lit[1 : len(lit)-1]
+	}
+	if i := strings.IndexByte(lit, '%'); i >= 0 {
+		lit = lit[:i]
+	}
+	a, err := netip.ParseAddr(lit)
 	if err != nil {
+		return ip
+	}
+	if a.Is4In6() {
+		return a.Unmap().String()
+	}
+	if !a.Is6() {
+		return ip
+	}
+	b := a.As16()
+	return fmt.Sprintf("%x:%x:%x:%x::/64", uint16(b[0])<<8|uint16(b[1]), uint16(b[2])<<8|uint16(b[3]),
+		uint16(b[4])<<8|uint16(b[5]), uint16(b[6])<<8|uint16(b[7]))
+}
+
+// loginCookie — Cookie header(үүд)-ийг ";"-ээр хувааж (хэсэг бүрийг trim, нэр = эхний "="-ийн өмнөх) name-тэй cookie
+// ЯГ НЭГ байвал түүний утга. net/http-ийн задлагч буруу утгатай cookie-г алгасдаг тул тоолохдоо ашиглахгүй — тарьсан
+// cookie-ийн утга ямар ч байсан тоологдоно (TS readCookie-тэй ижил дүрэм).
+func loginCookie(r *http.Request, name string) (string, bool) {
+	value, n := "", 0
+	for _, line := range r.Header.Values("Cookie") {
+		for _, part := range strings.Split(line, ";") {
+			k, v, has := strings.Cut(strings.TrimSpace(part), "=")
+			if !has || strings.TrimSpace(k) != name {
+				continue
+			}
+			value, n = strings.TrimSpace(v), n+1
+		}
+	}
+	return value, n == 1
+}
+
+// loadTx — cookie → tx (binding таарсан, хугацаа дотор). Олдохгүй бол (nil, nil). Нэртэй cookie нэгээс олон бол
+// (дэд домэйн / өөр замаас тарьсан cookie жинхэнийг сүүдэрлэх) олдоогүй гэж үзнэ.
+func (h *Handler) loadTx(r *http.Request) (*Tx, error) {
+	value, ok := loginCookie(r, h.cfg.CookieName)
+	if !ok {
 		return nil, nil
 	}
-	sid, binding, ok := strings.Cut(c.Value, ".")
+	sid, binding, ok := strings.Cut(value, ".")
 	if !ok || !uuidRe.MatchString(sid) || !bindingRe.MatchString(binding) {
 		return nil, nil
 	}
@@ -726,13 +811,12 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "60")
 		errJSON(w, http.StatusTooManyRequests, "rate_limited")
 	}
-	if h.cfg.ClientIP != nil {
-		if ip := h.cfg.ClientIP(r); ip != "" && !h.allow(r.Context(), "start", ip) {
-			limited()
-			return
-		}
+	if h.cfg.ClientIP != nil && !h.allow(r.Context(), "start", startKey(h.cfg.ClientIP(r))) {
+		limited()
+		return
 	}
-	if b.Mode == ModePush && !h.allow(r.Context(), "push", idCode) {
+	// Түлхүүрт регистрийн дугаар биш аудитын HMAC (v0.32.0-аас) — хязгаарлагчийн hook/Redis-д PII хадгалагдахгүй.
+	if b.Mode == ModePush && !h.allow(r.Context(), "push", h.pushKey(idCode)) {
 		limited()
 		return
 	}
@@ -968,7 +1052,8 @@ func isValidation(err error) bool {
 
 // finish — COMPLETE/OK-ийг шалгаж нэг удаа OnSuccess дуудна. (nil, nil) = зэрэг хүсэлт аль хэдийн дуусгасан.
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, tx *Tx, res *eid.SessionResult, flow eid.FlowType, verifier string) (*Success, error) {
-	v, err := h.cfg.Client.Validator.ValidateAuth(res, tx.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: flow, UserChallengeVerifier: verifier})
+	v, err := h.cfg.Client.Validator.ValidateAuth(res, tx.ACSP, eid.ValidateAuthOptions{ExpectedFlowType: flow, UserChallengeVerifier: verifier,
+		VerifyUserChallenge: flow == eid.FlowWeb2App})
 	if err != nil {
 		return nil, err
 	}
