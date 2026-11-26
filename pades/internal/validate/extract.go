@@ -3,6 +3,7 @@ package validate
 import (
 	"bytes"
 	"crypto"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -109,6 +111,9 @@ type RawDSS struct {
 	Certs [][]byte `json:"certs,omitempty"`
 	OCSPs [][]byte `json:"ocsps,omitempty"`
 	CRLs  [][]byte `json:"crls,omitempty"`
+	// Задалсан OCSP/CRL ба шалгалтын кэш (ltv.go) — нэг шалгалтын бүх гарын үсэг ижил *RawDSS-ийг хуваалцана.
+	cacheOnce sync.Once
+	cache     *dssCache
 }
 
 // RawTimestamp — RFC 3161 токен. Matches — messageImprint нь гарын үсгийн утгын hash-тай таарсан
@@ -201,12 +206,16 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	}
 	// Задарч, доорх шалгалтад орсон гарын үсгүүд: revision-ийн ангилагч «дараагийн гарын үсэг» гэж зөвхөн
 	// эдгээрийг л тооцно (алгассан DocTimeStamp, бүтэц эвдэрсэн толь тооцогдохгүй).
+	//
+	// Зөвхөн бүрэн бүтэн (Integrity) гарын үсэг л «гарын үсгийн өргөтгөл» болно: криптографаар таараагүй «гарын үсэг»-тэй
+	// revision нь DSS-only горимд орж татгалзагдана (өмнөх гарын үсэг modified_after_signing). name — гэрчилгээний
+	// харуулах нэр: own-signer-ийн харагдах дардасны /Name үүнтэй яг таарах ёстой (appearance.go).
 	known := map[int][]int64{}
 	metas := map[int]sigMeta{}
 	for _, s := range sigs {
-		if !s.Malformed {
+		if !s.Malformed && s.Integrity {
 			known[s.objNum] = s.byteRange
-			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1, seal: sealCertificate(s.Leaf)}
+			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1, seal: sealCertificate(s.Leaf), name: certDisplayName(s.Leaf)}
 		}
 	}
 	for num, m := range metas {
@@ -293,7 +302,7 @@ func extractSignature(doc []byte, obj pdf.Value) RawSignature {
 	s.SubFilter = obj.Key("SubFilter").Name()
 
 	p7, err := pkcs7.Parse(contents)
-	if err != nil || len(p7.Signers) != 1 {
+	if err != nil || len(p7.Signers) != 1 || !boundedCerts(p7.Certificates) {
 		s.Malformed = true
 		return s
 	}
@@ -326,7 +335,9 @@ func extractSignature(doc []byte, obj pdf.Value) RawSignature {
 			s.Certs = append(s.Certs, c.Raw)
 		}
 	}
-	s.WeakDigest = !strongDigestOID(p7.Signers[0].DigestAlgorithm.Algorithm)
+	// SignerInfo-ийн гарын үсгийн алгоритм (sha1WithRSAEncryption, ecdsa-with-SHA1 …) сул бол digest SHA-256 байсан ч
+	// сул (digitorus RSA-д digest-ээр, ECDSA-SHA1-д SHA-1-ээр шалгадаг — аль алинд нь мэдүүлсэн алгоритм сул).
+	s.WeakDigest = !strongDigestOID(p7.Signers[0].DigestAlgorithm.Algorithm) || weakSignatureOID(p7.Signers[0].DigestEncryptionAlgorithm.Algorithm)
 	p7.Content = signed
 	s.Integrity = p7.Verify() == nil
 	s.Timestamp = extractTimestamp(p7)
@@ -356,13 +367,14 @@ func extractTimestamp(p7 *pkcs7.PKCS7) *RawTimestamp {
 		out := &RawTimestamp{}
 		// timestamp.Parse нь токены PKCS#7 гарын үсгийг (гэрчилгээ суулгасан үед) шалгана.
 		ts, err := timestamp.Parse(attr.Value.Bytes)
-		if err != nil {
+		// TSTInfo serialNumber ≤ 160 бит (RFC 3161 §2.4.2 / RFC 5280 «≤ 20 octets»).
+		if err != nil || ts.SerialNumber != nil && ts.SerialNumber.BitLen() > maxSerialBits {
 			return out
 		}
 		out.Time = ts.Time.UTC()
 		out.Serial = hexSerial(ts.SerialNumber)
 		tsp, err := pkcs7.Parse(attr.Value.Bytes)
-		if err != nil || len(tsp.Signers) != 1 {
+		if err != nil || len(tsp.Signers) != 1 || !boundedCerts(tsp.Certificates) {
 			return out
 		}
 		tsa := tsp.GetOnlySigner()
@@ -400,6 +412,58 @@ func strongDigestOID(o asn1.ObjectIdentifier) bool {
 		}
 	}
 	return false
+}
+
+// weakSignatureOIDs — SignerInfo.signatureAlgorithm-д сул гэж үзэх алгоритм (MD2/MD5/SHA-1-тэй RSA, DSA, ECDSA).
+var weakSignatureOIDs = []asn1.ObjectIdentifier{
+	{1, 2, 840, 113549, 1, 1, 2}, // md2WithRSAEncryption
+	{1, 2, 840, 113549, 1, 1, 4}, // md5WithRSAEncryption
+	{1, 2, 840, 113549, 1, 1, 5}, // sha1WithRSAEncryption
+	{1, 2, 840, 10040, 4, 3},     // dsa-with-sha1
+	{1, 2, 840, 10045, 4, 1},     // ecdsa-with-SHA1
+	{1, 3, 14, 3, 2, 29},         // sha1WithRSASignature (OIW)
+}
+
+func weakSignatureOID(o asn1.ObjectIdentifier) bool {
+	for _, w := range weakSignatureOIDs {
+		if o.Equal(w) {
+			return true
+		}
+	}
+	return false
+}
+
+// Баримтад суулгасан гэрчилгээний хязгаар (дайсагнасан оролт): CMS бүрийн гэрчилгээний тоо, RSA модуль/илтгэгч, serial.
+const (
+	maxCMSCerts   = 32
+	maxRSABits    = 8192
+	maxRSAExp     = 1<<32 - 1
+	maxSerialBits = 160 // RFC 5280 §4.1.2.2 «≤ 20 octets» (утгын хэмжээ)
+)
+
+// boundedCerts — CMS-ийн гэрчилгээнүүд хязгаарт багтсан: ≤ maxCMSCerts, тус бүр boundedCert. Эс бөгөөс гарын үсэг
+// malformed (цагийн тэмдгийн токенд — токен задрахгүй).
+func boundedCerts(cs []*x509.Certificate) bool {
+	if len(cs) > maxCMSCerts {
+		return false
+	}
+	for _, c := range cs {
+		if !boundedCert(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// boundedCert — serial ≤ 160 бит; RSA бол модуль ≤ 8192 бит, илтгэгч ≤ 2^32−1.
+func boundedCert(c *x509.Certificate) bool {
+	if c.SerialNumber != nil && c.SerialNumber.BitLen() > maxSerialBits {
+		return false
+	}
+	if k, ok := c.PublicKey.(*rsa.PublicKey); ok && (k.N.BitLen() > maxRSABits || int64(k.E) > maxRSAExp) {
+		return false
+	}
+	return true
 }
 
 func strongHash(h crypto.Hash) bool {
@@ -606,26 +670,38 @@ func validClaimedRole(s string) bool {
 const (
 	maxDSSItems  = 64
 	maxDSSStream = 1 << 20
+	maxDSSTotal  = 8 << 20 // /Certs /OCSPs /CRLs-ийн тайлсан нийт байт
 )
 
 // extractDSS — /DSS-ийн stream-уудыг тайлж уншина. Задрахгүй / хязгаар хэтэрсэн мөрийг алгасна (LTV-д
-// «дутуу» болно — fail-closed). DSS байхгүй бол nil.
+// «дутуу» болно — fail-closed). DSS байхгүй бол nil. Нэг массив дахь ижил объектын давхар заалтыг нэг удаа уншина;
+// /Certs → /OCSPs → /CRLs дарааллаар нийт maxDSSTotal-аас хэтрэх мөрийг алгасна.
 func extractDSS(dss pdf.Value) *RawDSS {
 	if dss.Kind() != pdf.Dict {
 		return nil
 	}
+	total := 0
 	read := func(key string) [][]byte {
 		arr := dss.Key(key)
 		var out [][]byte
+		seen := map[uint32]bool{}
 		for i := 0; i < arr.Len() && i < maxDSSItems; i++ {
 			e := arr.Index(i)
 			if e.Kind() != pdf.Stream {
 				continue
 			}
+			ptr := e.GetPtr()
+			if id := ptr.GetID(); id != 0 {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+			}
 			b, err := io.ReadAll(io.LimitReader(e.Reader(), maxDSSStream+1))
-			if err != nil || len(b) > maxDSSStream {
+			if err != nil || len(b) > maxDSSStream || total+len(b) > maxDSSTotal {
 				continue
 			}
+			total += len(b)
 			out = append(out, b)
 		}
 		return out

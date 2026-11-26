@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"slices"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -26,16 +27,6 @@ var oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 // урьдчилан гаргасан OCSP, CRL); now — шалгагчийн одоо (ирээдүйн thisUpdate-ийг татгалзана).
 func ltvCoverage(dss *RawDSS, at, now time.Time, chains ...[]*x509.Certificate) *LTVInfo {
 	out := &LTVInfo{Missing: []string{}}
-	var ocsps []([]byte)
-	var crls []*x509.RevocationList
-	if dss != nil {
-		ocsps = dss.OCSPs
-		for _, der := range dss.CRLs {
-			if c, err := x509.ParseRevocationList(der); err == nil {
-				crls = append(crls, c)
-			}
-		}
-	}
 	seen := map[string]bool{}
 	for _, chain := range chains {
 		for i := 0; i+1 < len(chain); i++ {
@@ -44,7 +35,7 @@ func ltvCoverage(dss *RawDSS, at, now time.Time, chains ...[]*x509.Certificate) 
 				continue
 			}
 			seen[string(cert.Raw)] = true
-			if !covered(cert, issuer, at, now, ocsps, crls) {
+			if dss == nil || !covered(dss, cert, issuer, at, now) {
 				out.Missing = append(out.Missing, cert.Subject.CommonName)
 			}
 		}
@@ -53,10 +44,10 @@ func ltvCoverage(dss *RawDSS, at, now time.Time, chains ...[]*x509.Certificate) 
 	return out
 }
 
-func covered(cert, issuer *x509.Certificate, at, now time.Time, ocsps [][]byte, crls []*x509.RevocationList) bool {
-	for _, der := range ocsps {
-		resp, err := ocsp.ParseResponseForCert(der, cert, issuer)
-		if err != nil || resp.Status != ocsp.Good || !OCSPCertIDMatches(der, cert, issuer) {
+func covered(dss *RawDSS, cert, issuer *x509.Certificate, at, now time.Time) bool {
+	for i, der := range dss.OCSPs {
+		resp := dss.ocspPlain(i, cert, issuer)
+		if resp == nil || resp.Status != ocsp.Good || !OCSPCertIDMatches(der, cert, issuer) {
 			continue
 		}
 		// Delegated responder: олгогчийн гаргасан, nocheck-тэй байх ёстой (ParseResponse гарын үсэг ба EKU-г шалгасан).
@@ -68,8 +59,12 @@ func covered(cert, issuer *x509.Certificate, at, now time.Time, ocsps [][]byte, 
 			return true
 		}
 	}
-	for _, crl := range crls {
-		if !CRLFor(crl, cert, issuer) || !FreshAt(crl.ThisUpdate, crl.NextUpdate, at, now) {
+	for i := range dss.CRLs {
+		if !dss.CRLMatches(i, cert, issuer) {
+			continue
+		}
+		crl := dss.CRL(i)
+		if !FreshAt(crl.ThisUpdate, crl.NextUpdate, at, now) {
 			continue
 		}
 		if _, listed := CRLListed(crl, cert); listed {
@@ -78,4 +73,84 @@ func covered(cert, issuer *x509.Certificate, at, now time.Time, ocsps [][]byte, 
 		return true
 	}
 	return false
+}
+
+// dssCache — RawDSS-ийн OCSP/CRL-ийг нэг шалгалтад нэг удаа задалж, (нотолгоо, гэрчилгээ, олгогч) бүрийн гарын үсгийн
+// шалгалтыг нэг удаа хийнэ: олон гарын үсэг × гинж × DSS-ийн мөрийн давталтаар ажил өсөхгүй.
+type dssCache struct {
+	mu     sync.Mutex
+	crls   []*x509.RevocationList // nil — задраагүй
+	parsed bool
+	ocsp   map[dssKey]*ocsp.Response
+	crlFor map[dssKey]bool
+}
+
+type dssKey struct {
+	i            int
+	cert, issuer string
+}
+
+func (d *RawDSS) cacheFor() *dssCache {
+	d.cacheOnce.Do(func() {
+		d.cache = &dssCache{ocsp: map[dssKey]*ocsp.Response{}, crlFor: map[dssKey]bool{}}
+	})
+	return d.cache
+}
+
+// CRL — CRLs[i]-ийн задалсан хэлбэр (нэг удаа); задрахгүй бол nil.
+func (d *RawDSS) CRL(i int) *x509.RevocationList {
+	c := d.cacheFor()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.parsed {
+		c.crls = make([]*x509.RevocationList, len(d.CRLs))
+		for k, der := range d.CRLs {
+			if l, err := x509.ParseRevocationList(der); err == nil {
+				c.crls[k] = l
+			}
+		}
+		c.parsed = true
+	}
+	return c.crls[i]
+}
+
+// CRLMatches — CRLFor(CRL(i), cert, issuer) (олгогчийн гарын үсгийн шалгалт) нэг удаа; задрахгүй бол false.
+func (d *RawDSS) CRLMatches(i int, cert, issuer *x509.Certificate) bool {
+	crl := d.CRL(i)
+	if crl == nil {
+		return false
+	}
+	c := d.cacheFor()
+	k := dssKey{i, string(cert.Raw), string(issuer.Raw)}
+	c.mu.Lock()
+	ok, hit := c.crlFor[k]
+	c.mu.Unlock()
+	if hit {
+		return ok
+	}
+	ok = CRLFor(crl, cert, issuer)
+	c.mu.Lock()
+	c.crlFor[k] = ok
+	c.mu.Unlock()
+	return ok
+}
+
+// ocspPlain — ocsp.ParseResponseForCert(OCSPs[i], cert, issuer) нэг удаа; алдаа бол nil.
+func (d *RawDSS) ocspPlain(i int, cert, issuer *x509.Certificate) *ocsp.Response {
+	c := d.cacheFor()
+	k := dssKey{i, string(cert.Raw), string(issuer.Raw)}
+	c.mu.Lock()
+	r, hit := c.ocsp[k]
+	c.mu.Unlock()
+	if hit {
+		return r
+	}
+	r, err := ocsp.ParseResponseForCert(d.OCSPs[i], cert, issuer)
+	if err != nil {
+		r = nil
+	}
+	c.mu.Lock()
+	c.ocsp[k] = r
+	c.mu.Unlock()
+	return r
 }

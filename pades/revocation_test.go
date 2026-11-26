@@ -278,7 +278,8 @@ func TestCheckStructureCorpus(t *testing.T) {
 	n := 0
 	walk := func(root string) error {
 		return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".pdf") || strings.Contains(path, "deep-nesting") {
+			// deep-nesting*, v14-ийн уншигчийн DoS оролт — урьдчилсан шалгалт татгалзах ёстой.
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".pdf") || strings.Contains(path, "deep-nesting") || structureRejects[filepath.Base(path)] {
 				return err
 			}
 			b, err := os.ReadFile(path) // #nosec G304 -- тест
@@ -301,4 +302,12 @@ func TestCheckStructureCorpus(t *testing.T) {
 	if err != nil || n < 20 {
 		t.Fatalf("%v (%d файл)", err, n)
 	}
+}
+
+// structureRejects — CheckStructure-ийн татгалзах ёстой корпусын оролт (validate v14, E2/E3).
+var structureRejects = map[string]bool{
+	"objstm-many-members.pdf":   true,
+	"xref-prev-chain-129.pdf":   true,
+	"xref-stream-w-zero.pdf":    true,
+	"xref-stream-zero-rows.pdf": true,
 }

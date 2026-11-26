@@ -1026,6 +1026,18 @@ for _, s := range rep.Signatures {
   would bring the whole process down with a `fatal error: stack overflow`). This is only one layer of defence — treat an externally supplied
   PDF as untrusted input: limit the size (≤ 10 MiB), set a timeout on every request, and if possible parse it in a separate
   process/container (with CPU/memory limits).
+- **Hardening limits (validate corpus v14).** Before parsing: at most 128 xref sections (trailers + xref streams), every
+  xref stream row width `/W` 0…8 bytes each and > 0 in total, `/Index` start + count ≤ 2^21 and ≤ 2^21 rows over all xref
+  streams, xref/object streams with a single filter, decompressed xref + object streams ≤ 32 MiB together, object-stream
+  member lookups (header pairs × decompressed length, summed) ≤ 1 GiB → otherwise `PDF_INVALID`. Per signature: ≤ 32
+  certificates in the CMS (and in the timestamp token), RSA modulus ≤ 8192 bits, exponent ≤ 2^32−1, certificate/TSTInfo
+  serial ≤ 160 bits → otherwise `malformed_signature` (the timestamp → `timestamp_invalid`). DSS: ≤ 64 items per array,
+  ≤ 1 MiB each, ≤ 8 MiB decoded in total, a stream referenced twice in one array is read once; each OCSP/CRL is parsed and
+  verified once per validation. A SHA-1/MD5 SignerInfo signature algorithm (e.g. `sha1WithRSAEncryption`) →
+  `weak_algorithm` even with a SHA-256 digest. An object of the signed revision that only completes in a later revision
+  (shadow attack) → `modified_after_signing`; a later signature counts as a signature-only extension only if its own
+  integrity holds, and its visible stamp's name must equal its certificate's display name; `platform_attested` is never
+  reported for a document modified after signing.
 - `key_medium`: from the certificate only in the SDK — a citizen SIGN with qcStatements → `phone`, otherwise `unknown`. The CA (`POST
   /v3/validate/pdf`) determines `token` from its own registry, and `server_software` / `server_hsm` for organizational seals issued by eID
   (the key is on the server side; this is not a claim of QSCD) — the values are `pades.KeyMediumToken` | `KeyMediumPhone` |

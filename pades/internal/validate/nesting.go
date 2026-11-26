@@ -38,12 +38,13 @@ func CheckStructure(doc []byte) error {
 				at < len(doc) && !isPDFSpace(doc[at]) && !isPDFDelim(doc[at]) {
 				continue
 			}
+			s.fromTrailer = string(kw) == "trailer"
 			if err := s.object(doc, at, true); err != nil {
 				return err
 			}
 		}
 	}
-	if s.bigSize {
+	if s.bigSize || s.sections > maxXrefSections || s.xrefEntries > maxXrefSize {
 		return ErrStructure
 	}
 	return checkObjStmGraph(doc)
@@ -61,6 +62,11 @@ const (
 	// (Linux-д `fatal error: out of memory`) эсвэл хязгааргүй давталт болно. 10 MiB-ийн хууль ёсны баримтад хэдэн арван
 	// мянгаас хэтрэхгүй.
 	maxXrefSize = 1 << 21
+	// maxObjStmWork — ObjStm-ийн гишүүн хайлтын ажлын дээд хэмжээ: Σ (толгойд уншсан «дугаар offset» хосын тоо ×
+	// задалсан өгөгдлийн урт). gerege-systems/pdf (digitorus) нь ObjStm доторх объект бүрийг хайхдаа stream-ийг дахин
+	// задалж толгойг эхнээс нь уншдаг (индексгүй) тул 100k гишүүнтэй ~1 MB ObjStm нь ~100 GB-ийн ажил болно. Хууль ёсны
+	// баримтад ~100 гишүүн × ≤ 1 MB.
+	maxObjStmWork = 1 << 30
 )
 
 // ErrStructure — PDF-ийн бүтэц хэт гүн давхарласан эсвэл хэт төвөгтэй (CheckStructure).
@@ -70,6 +76,12 @@ type nestScan struct {
 	budget      int
 	inflateLeft int
 	bigSize     bool // дээд түвшний /Size > maxXrefSize
+	// fromTrailer — одоогийн дээд түвшний объект `trailer` түлхүүр үгийн араас (CheckStructure тавина).
+	fromTrailer bool
+	// sections — xref хэсгийн тоо: `trailer`-ийн араах толь + /Type /XRef толь (Prev гинж ≤ maxXrefSections; гинжийн
+	// хэсэг бүр файлд байгаа тул энэ тоо гинжийн уртаас бага биш). xrefEntries — бүх xref stream-ийн мөрийн нийлбэр
+	// (/Index-ийн тоонууд, /Index байхгүй бол /Size) ≤ maxXrefSize. objStmWork — maxObjStmWork-ийг үз.
+	sections, xrefEntries, objStmWork int64
 }
 
 type nestTok int
@@ -192,6 +204,14 @@ type objStmInfo struct {
 	parms         bool
 	indirect      bool // /Type /Filter /DecodeParms /N /First-ийн аль нэг нь лавлагаа (давтахгүй — fail-closed)
 	first, nCount int64
+	// xref stream (/Type /XRef): /W ба /Index массивын бүхэл утгууд (давхар түлхүүрийн сүүлийнх), бүхэл биш элемент
+	// байвал *Bad (уншигч өөрөө алдаа өгнө — энд шийдэхгүй); /Size. length — шууд бүхэл /Length (-1 — байхгүй).
+	w, index       []int64
+	wBad, indexBad bool
+	wSet, indexSet bool
+	size           int64
+	sizeSet        bool
+	length         int64
 }
 
 // object — b[start:]-ээс digitorus readObject-ийн нэг объектыг (давхар `N G obj`-ийг оруулаад) гүнээр шалгана;
@@ -200,7 +220,9 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 	l := &nestLex{b: b, pos: start}
 	defer func() { s.budget -= l.pos - start }()
 	var stack []nestFrame
-	var info objStmInfo
+	info := objStmInfo{length: -1}
+	trailer := s.fromTrailer && allowStream
+	s.fromTrailer = false
 	for {
 		if s.budget-(l.pos-start) < 0 {
 			return ErrStructure
@@ -212,7 +234,15 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 			case tDictEnd:
 				stack = stack[:top]
 				if len(stack) == 0 {
-					if allowStream && (info.typ == "ObjStm" || info.indirect) {
+					if trailer {
+						s.sections++
+					}
+					if allowStream && !trailer && info.typ == "XRef" {
+						if err := s.xrefStm(info); err != nil {
+							return err
+						}
+					}
+					if allowStream && (info.typ == "ObjStm" || info.typ == "XRef" || info.indirect) {
 						return s.objStm(b, l, info)
 					}
 					return nil
@@ -240,6 +270,19 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 			if len(stack) == 1 && stack[0].dict && stack[0].key == "Filter" {
 				info.filter, info.filters = "", 0 // digitorus: давхар түлхүүрийн сүүлийнх; массивын нэрсийг доор тоолно
 			}
+			if len(stack) == 1 && stack[0].dict && stack[0].key == "W" {
+				info.w, info.wSet, info.wBad = nil, true, tok != tArr
+			}
+			if len(stack) == 1 && stack[0].dict && stack[0].key == "Index" {
+				info.index, info.indexSet, info.indexBad = nil, true, tok != tArr
+			}
+			if len(stack) == 2 && stack[0].dict && (stack[0].key == "W" || stack[0].key == "Index") {
+				if stack[0].key == "W" {
+					info.wBad = true // массив доторх массив/толь — бүхэл биш
+				} else {
+					info.indexBad = true
+				}
+			}
 			stack = append(stack, nestFrame{dict: tok == tDict, expectKey: tok == tDict})
 			continue
 		case tArrEnd:
@@ -262,6 +305,15 @@ func (s *nestScan) object(b []byte, start int, allowStream bool) error {
 						// жишээ нь /JBIG2Globals, хууль ёсны тул зөвхөн Filter).
 						if len(stack) == 2 && stack[0].dict && stack[0].key == "Filter" {
 							info.indirect = true
+						}
+						// /W, /Index-ийн лавлагаа (массив эсвэл элемент) — digitorus resolve хийхгүй, алдаа өгнө.
+						if n := len(stack); (n == 1 || n == 2) && stack[0].dict {
+							switch stack[0].key {
+							case "W":
+								info.wSet, info.wBad = true, true
+							case "Index":
+								info.indexSet, info.indexBad = true, true
+							}
 						}
 						break // лавлагаа = нэг утга
 					} else if t3 == tWord && l.val == "obj" {
@@ -306,15 +358,34 @@ func (s *nestScan) noteScalar(stack []nestFrame, info *objStmInfo, tok nestTok, 
 		case "N":
 			info.nCount, _ = strconv.ParseInt(val, 10, 64)
 		case "Size":
-			if n, err := strconv.ParseInt(val, 10, 64); tok == tWord && err == nil && n > maxXrefSize {
+			n, err := strconv.ParseInt(val, 10, 64)
+			if tok == tWord && err == nil && n > maxXrefSize {
 				s.bigSize = true
 			}
+			info.size, info.sizeSet = n, tok == tWord && err == nil
 		case "First":
 			info.first, _ = strconv.ParseInt(val, 10, 64)
+		case "Length":
+			info.length = -1
+			if n, err := strconv.ParseInt(val, 10, 64); tok == tWord && err == nil && n >= 0 {
+				info.length = n
+			}
+		case "W":
+			info.w, info.wSet, info.wBad = nil, true, true
+		case "Index":
+			info.index, info.indexSet, info.indexBad = nil, true, true
 		}
 	case len(stack) == 2 && stack[0].dict && stack[0].key == "Filter" && !stack[1].dict && tok == tName:
 		info.filter = val
 		info.filters++
+	case len(stack) == 2 && stack[0].dict && !stack[1].dict && (stack[0].key == "W" || stack[0].key == "Index"):
+		n, err := strconv.ParseInt(val, 10, 64)
+		ok := tok == tWord && err == nil
+		if stack[0].key == "W" {
+			info.w, info.wBad = append(info.w, n), info.wBad || !ok
+		} else {
+			info.index, info.indexBad = append(info.index, n), info.indexBad || !ok
+		}
 	}
 }
 
@@ -327,7 +398,7 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 	if info.indirect {
 		return ErrStructure // stream-ийн /Type /Filter /N /First лавлагаагаар — хууль ёсны баримтад гардаггүй
 	}
-	if info.typ != "ObjStm" {
+	if info.typ != "ObjStm" && info.typ != "XRef" {
 		return nil
 	}
 	p := l.pos
@@ -337,9 +408,22 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 	if p < len(b) && b[p] == '\n' {
 		p++
 	}
+	if info.typ == "XRef" {
+		return s.xrefData(b[p:], info)
+	}
 	switch {
 	case info.filters == 0:
-		return s.objStmData(b[p:], info) // шахаагүй ObjStm — өгөгдөл нь файлын үлдсэн хэсэг (дээд хязгаар)
+		// Шахаагүй ObjStm — өгөгдөл нь файлын үлдсэн хэсэг (дээд хязгаар); ажлын тооцоонд шууд /Length (байвал).
+		data := b[p:]
+		pairs, err := s.objStmData(data, info)
+		if err != nil {
+			return err
+		}
+		n := int64(len(data))
+		if info.length >= 0 {
+			n = min(n, info.length)
+		}
+		return s.chargeObjStm(pairs, n)
 	case info.filters > 1:
 		return ErrStructure // digitorus [/FlateDecode /FlateDecode …]-г гинжлэн задалдаг — давтахгүй, fail-closed
 	case info.filter != "FlateDecode":
@@ -357,7 +441,79 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 	}
 	s.inflateLeft -= len(data)
 	s.budget -= len(data)
-	return s.objStmData(data, info)
+	pairs, err := s.objStmData(data, info)
+	if err != nil {
+		return err
+	}
+	return s.chargeObjStm(pairs, int64(len(data)))
+}
+
+// chargeObjStm — нэг ObjStm-ийн гишүүн хайлтын ажил (хосын тоо × өгөгдлийн урт)-ыг maxObjStmWork-оос хасна.
+func (s *nestScan) chargeObjStm(pairs, n int64) error {
+	if pairs > 0 && n > 0 && pairs > (maxObjStmWork-s.objStmWork)/n {
+		return ErrStructure
+	}
+	s.objStmWork += pairs * n
+	return nil
+}
+
+// xrefStm — xref stream-ийн толь (/Type /XRef): хэсгийн тоо; /W-ийн элемент 0…8, мөрийн урт > 0; /Index-ийн хос бүр
+// start, count ≥ 0, start+count ≤ maxXrefSize; бүх xref stream-ийн мөрийн нийлбэр (/Index байхгүй бол /Size) ≤
+// maxXrefSize (CheckStructure төгсгөлд). Бүхэл биш / дутуу /W /Index-ийг уншигч өөрөө татгалзана — энд шийдэхгүй.
+// digitorus: /W [0 0 0] + том /Index — хязгааргүй давталт; /W [1 0 0] + 64 MiB тэг — 64M мөр.
+func (s *nestScan) xrefStm(info objStmInfo) error {
+	s.sections++
+	if info.wSet && !info.wBad && len(info.w) >= 3 {
+		var row int64
+		for _, w := range info.w {
+			if w < 0 || w > 8 {
+				return ErrStructure
+			}
+			row += w
+		}
+		if row == 0 {
+			return ErrStructure
+		}
+	}
+	switch {
+	case info.indexSet && !info.indexBad && len(info.index)%2 == 0:
+		for i := 0; i < len(info.index); i += 2 {
+			start, n := info.index[i], info.index[i+1]
+			if start < 0 || n < 0 || start > maxXrefSize || n > maxXrefSize-start {
+				return ErrStructure
+			}
+			s.xrefEntries += n
+		}
+	case !info.indexSet && info.sizeSet && info.size >= 0:
+		s.xrefEntries += min(info.size, maxXrefSize+1)
+	}
+	if s.xrefEntries > maxXrefSize {
+		return ErrStructure
+	}
+	return nil
+}
+
+// xrefData — xref stream-ийн өгөгдөл: олон шүүлтүүр → ErrStructure (digitorus гинжлэн задалдаг); FlateDecode бол задалж
+// (zlib өөрөө төгсөнө; predictor-ийг тооцохгүй — хэмжээ л) ObjStm-тэй хуваалцсан задлалтын төсвөөс хасна.
+func (s *nestScan) xrefData(b []byte, info objStmInfo) error {
+	switch {
+	case info.filters == 0:
+		return nil
+	case info.filters > 1:
+		return ErrStructure
+	case info.filter != "FlateDecode":
+		return nil
+	}
+	zr, err := zlib.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil
+	}
+	data, _ := io.ReadAll(io.LimitReader(zr, int64(s.inflateLeft)+1))
+	if len(data) > s.inflateLeft {
+		return ErrStructure
+	}
+	s.inflateLeft -= len(data)
+	return nil
 }
 
 // objStmData — толгойн «дугаар offset» хос бүрийн объектыг шалгана. Offset-ийг digitorus-тэй яг ижлээр тооцно
@@ -365,13 +521,16 @@ func (s *nestScan) objStm(b []byte, l *nestLex, info objStmInfo) error {
 // `(…)`, EOF) = 0, сөрөг offset ба /First, int64-ийн wrap хэвээр — өмнө нь эдгээрийг алгасдаг байсан тул бүхэл бус
 // offset-оор `first`-ээс, сөрөгөөр толгойн дотроос уншигдах гүн объект шалгалтгүй үлдэж stack overflow өгдөг байв
 // (2026-11-04). Өгөгдлийн төгсгөлөөс цаашхийг digitorus уншихгүй (EOF); сөрөг байрлал → ErrStructure.
-func (s *nestScan) objStmData(data []byte, info objStmInfo) error {
+//
+// pairs — уншсан хосын тоо (эхний токен нь EOF биш давталт): гишүүн хайлтын ажлын тооцоонд (chargeObjStm).
+func (s *nestScan) objStmData(data []byte, info objStmInfo) (pairs int64, err error) {
 	l := &nestLex{b: data}
 	firstDone := false // бүхэл бус offset олон байж болно — `first`-ийг нэг л удаа шалгана
 	for i := int64(0); i < info.nCount; i++ {
 		if l.next() == tEOF {
 			break
 		}
+		pairs++
 		var off int64 // бүхэл биш → 0 (хэт их бүхэлд digitorus panic хийнэ — 0 нь илүү шалгана)
 		if l.next() == tWord {
 			if v, err := strconv.ParseInt(l.val, 10, 64); err == nil {
@@ -382,21 +541,21 @@ func (s *nestScan) objStmData(data []byte, info objStmInfo) error {
 		if at < 0 {
 			// digitorus seekForward-ийн `b.offset-offset` дахин давж, дараагийн 4 KiB хэсгээс уншиж болно — шалгаж
 			// чадахгүй байрлал, хууль ёсны баримтад гардаггүй (fail-closed).
-			return ErrStructure
+			return pairs, ErrStructure
 		}
 		if at >= int64(len(data)) || at == info.first && firstDone {
 			continue
 		}
 		firstDone = firstDone || at == info.first
 		if s.budget < 0 {
-			return ErrStructure
+			return pairs, ErrStructure
 		}
 		if err := s.object(data, int(at), false); err != nil {
-			return err
+			return pairs, err
 		}
 	}
 	if s.budget < 0 {
-		return ErrStructure
+		return pairs, ErrStructure
 	}
-	return nil
+	return pairs, nil
 }

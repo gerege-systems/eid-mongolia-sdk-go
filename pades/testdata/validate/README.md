@@ -1,4 +1,4 @@
-# ValidatePDF conformance (pades-validate/1)
+# ValidatePDF conformance (pades-validate/1, corpus v14)
 
 Нэг багцыг **Go `pades.ValidatePDF`**, **TS `validatePdf`** (`@gerege-systems/eid-mongolia-sdk/validate`) ба CA-ийн
 `validate.ValidatePDF` (`/v3/validate/pdf`) ажиллуулж **ижил JSON тайлан** гаргана. Үнэний эх сурвалж = энэ хавтас
@@ -61,6 +61,33 @@
   differing in one field: `seal-qr-control` (QR seal stamp, e-Seal certificate, rev 2, page docId) and
   `seal-qr-control-nopage` (same on the no-verify-page base). Inputs written by `-update` (Go `vStampRev` with the
   test-only `core.VisibleTamper` hooks `SealRole`, `NoMinModule`, `Body`).
+- **v14** (`manifest.version` = 14; hardening after the .NET/Java port reviews; all 67 earlier cases unchanged, every new
+  case offline, inputs written once by `-update` — Go `hardeningVInputs`). Each row: what the input is, and **what a port
+  must do** to produce the expected report.
+
+  | case | input | what a port must do |
+  |---|---|---|
+  | `shadow-stream-dss` | `golden/input/quartz-pdf13.pdf` + R0 (page 1 `/Contents [3 0 R 19 0 R]`, object 19 a content stream whose `/Length` runs past the signed revision) + citizen B-B + DSS-only revision whose `/Certs` stream data holds `endstream endobj` exactly where 19's `/Length` ends | in the revision classifier, every in-use object whose xref entry is unchanged from the signed base must parse completely inside the base bytes (its object stream too); otherwise `modified_after_signing` (was `valid`) |
+  | `shadow-control` | same pipeline, object 19 complete inside R0 | stays `valid`, `extended_by_signatures_only` |
+  | `later-sig-integrity-failed` | `golden/output/quartz-pdf13.pdf` + citizen B-B second signature with a correct visible stamp but a corrupted RSA signature | only signatures that pass integrity count as later signatures (`known`); the step becomes DSS-only and is rejected → first signature `modified_after_signing` (was `valid` + `visible_later_signature`) |
+  | `later-stamp-name-mismatch` | same base + B-B signature by `validate/pki/citizen-qc.pem` (QUALIFIED TESTOV) whose `/Name` and stamp say `GOLDEN TESTOV` | the own-signer stamp's `/Name` (PDF text string) must equal the display name of that signature's certificate (GIVENNAME SURNAME, else CN) → first signature `modified_after_signing` |
+  | `later-stamp-name-control` | same, `/Name` = `QUALIFIED TESTOV` | both signatures `valid`; first `extended_by_signatures_only`, `visible_later_signature` |
+  | `doc-signer-attested` | `golden/input/quartz-pdf13.pdf` + B-B by `validate/pki/doc-signer.pem` (EKU documentSigning, issued by 04), `/Name` `GOLDEN TESTOV` | `signer_name_source` `platform_attested` (unchanged rule) |
+  | `doc-signer-modified` | `doc-signer-attested` + an `/Info` revision | `platform_attested` only when `covers_whole_document` or `extended_by_signatures_only` → `certificate` with `modified_after_signing` |
+  | `weak-sig-alg-sha1-rsa` | `golden/output/quartz-pdf13.pdf` with the SignerInfo `signatureAlgorithm` OID patched to `sha1WithRSAEncryption` (outside ByteRange; integrity still holds) | a SHA-1/MD5 SignerInfo signature algorithm (1.2.840.113549.1.1.2/.4/.5, 1.2.840.10040.4.3, 1.2.840.10045.4.1, 1.3.14.3.2.29) is `weak_algorithm` exactly like a weak digest → `invalid` |
+  | `xref-stream-w-zero` | xref stream `/W [0 0 0] /Index [0 1000000000]` | structure pre-check: row width 0 (and the 2^21 entry cap) → `PDF_INVALID` quickly; a reader must never loop per row with a zero width |
+  | `xref-stream-zero-rows` | `/W [1 0 0] /Index [0 67108864]`, 64 MiB of zeros (FlateDecode) | entries > 2^21 and the 32 MiB structural inflate budget → `PDF_INVALID` |
+  | `xref-prev-chain-129` | 129 classic xref sections chained by `/Prev`, no signature | > 128 xref sections (trailer dicts + `/Type /XRef` dicts counted by the pre-check) → `PDF_INVALID` (was `PDF_NO_SIGNATURE`) |
+  | `objstm-many-members` | one FlateDecode ObjStm with 200 000 members, all in the xref stream | Σ (header pairs read × decompressed length) > 1 GiB → `PDF_INVALID`; a reader must index an object stream's header once (Go's external reader re-inflates per member — the pre-check guards it) |
+  | `cms-33-certs` | `golden/input/quartz-pdf13.pdf` + citizen B-B whose CMS carries 33 certificates | > 32 certificates in a CMS → `malformed_signature` (also: RSA modulus > 8192 bits, exponent > 2^32−1, serial > 160 bits) |
+
+  Pre-check rules (Go `CheckStructure`, TS `checkStructure` — ports replicate them so reports stay identical): sections =
+  dictionaries after the `trailer` keyword + top-level dictionaries with `/Type /XRef` (> 128 → reject); for an xref stream
+  dictionary with ≥ 3 integer `/W` entries: each 0…8 and the sum > 0; integer `/Index` pairs: start ≥ 0, count ≥ 0,
+  start + count ≤ 2^21; total rows (Index counts, or `/Size` without `/Index`) ≤ 2^21; xref stream with > 1 filter →
+  reject, a FlateDecode xref stream's inflated size is charged to the 32 MiB budget shared with object streams; object
+  stream work = pairs read in its header (first token not EOF) × decompressed length (uncompressed: min(rest of file,
+  direct `/Length`)), summed ≤ 1 GiB.
 - CA-д `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` (бүртгэлээс), `key_medium` (бүртгэлээс) нэмэгдэж болно;
   харьцуулахдаа эдгээрийг хасна. `certificate_level` нь SDK-д (CA-д нэмэх санал).
 
