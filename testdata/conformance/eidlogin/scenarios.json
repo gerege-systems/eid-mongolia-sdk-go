@@ -1,0 +1,448 @@
+{
+  "version": "eidlogin/1",
+  "comment": "Login-button backend (Go eidlogin, TS createEidLogin) — HTTP протоколын сценари. Гараар бичигдсэн; Go eidlogin/security_test.go, eidlogin_test.go-оос. README.md §eidlogin. Цагийн хамгаалалт (pushFloor) ба OK (гарын үсэгтэй) зам энд ОРОХГҮЙ — rp-validate ба SDK-ийн өөрийн тест.",
+  "config": {
+    "rpName": "Тест банк",
+    "rpUUID": "00000000-0000-4000-8000-000000000001",
+    "apiSecret": "rp_sk_conformance_test",
+    "callbackUrl": "https://rp.conformance.test/auth/eid/callback",
+    "successRedirect": "/home",
+    "failureRedirect": "/login",
+    "ttlSeconds": 120,
+    "pollMs": 50,
+    "pushFloorMs": 0,
+    "cookieName": "eid_login",
+    "revocation": "disabled",
+    "decoy": true,
+    "recordRateLimitKeys": false
+  },
+  "upstream": [
+    { "method": "GET", "path": "/.well-known/eid", "status": 200, "body": { "version": "v3" } },
+    {
+      "method": "POST",
+      "path": "/authentication/device-link/anonymous",
+      "status": 200,
+      "body": {
+        "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "vc": "12345"
+      }
+    },
+    {
+      "method": "POST",
+      "pathPrefix": "/authentication/notification/etsi/",
+      "status": 200,
+      "body": { "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "vc": { "type": "alphaNumeric4", "value": "54321" } }
+    },
+    { "method": "GET", "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "status": 200, "body": { "state": "RUNNING" } }
+  ],
+  "scenarios": [
+    {
+      "name": "qr-start-and-pending",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": {
+            "status": 200,
+            "jsonKeys": ["expiresIn", "mode", "qr", "vc"],
+            "json": { "mode": "qr", "vc": "12345", "expiresIn": 120, "qr": { "$re": "^https://eid\\.conformance\\.test/dl\\?" } },
+            "headers": { "Cache-Control": "no-store" },
+            "setCookie": {
+              "value": { "$re": "^0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c\\.[A-Za-z0-9_-]{43}$" },
+              "attributes": { "Path": "/", "Max-Age": "120", "HttpOnly": true, "Secure": true, "SameSite": "Lax" }
+            }
+          }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": {
+            "status": 200,
+            "jsonKeys": ["expiresIn", "qr", "state", "vc"],
+            "json": { "state": "PENDING", "vc": "12345", "qr": { "$re": "^https://eid\\.conformance\\.test/dl\\?" } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "qr-ttl-capped-by-ca-expires-at",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/authentication/device-link/anonymous",
+          "status": 200,
+          "expiresAtInSeconds": 45,
+          "body": {
+            "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+            "sessionToken": "tok_Conformance-0001",
+            "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+            "deviceLinkBase": "https://eid.conformance.test/dl",
+            "vc": "12345"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": {
+            "status": 200,
+            "json": { "expiresIn": { "$range": [43, 45] } },
+            "setCookie": { "attributes": { "Max-Age": { "$sameAs": "0.json.expiresIn" } } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "start-cross-site-refused",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "headers": { "Sec-Fetch-Site": "cross-site" }, "json": { "mode": "qr" } },
+          "expect": { "status": 403, "jsonKeys": ["error"], "json": { "error": "cross_site" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "start-json-required",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "headers": { "Content-Type": "text/plain" }, "text": "{\"mode\":\"qr\"}" },
+          "expect": { "status": 415, "json": { "error": "json_required" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "start-invalid-mode",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "sms" } },
+          "expect": { "status": 400, "json": { "error": "invalid_mode" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "start-push-invalid-id",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "abc" } },
+          "expect": { "status": 400, "json": { "error": "invalid_id" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "start-get-only-web2app",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/auth/eid/start?mode=qr" },
+          "expect": { "status": 405, "json": { "error": "method_not_allowed" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "web2app-not-configured",
+      "config": { "callbackUrl": "" },
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/auth/eid/start?mode=web2app" },
+          "expect": { "status": 400, "json": { "error": "web2app_not_configured" }, "noSetCookie": true }
+        }
+      ]
+    },
+    {
+      "name": "web2app-start-wait-callback-and-unbound-callback",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/auth/eid/start?mode=web2app" },
+          "expect": {
+            "status": 302,
+            "location": { "$re": "^https://eid\\.conformance\\.test/dl\\?" },
+            "headers": { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+            "setCookie": {
+              "value": { "$re": "^0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c\\.[A-Za-z0-9_-]{43}$" },
+              "attributes": { "Path": "/", "Max-Age": "120", "HttpOnly": true, "Secure": true, "SameSite": "Lax" }
+            }
+          }
+        },
+        {
+          "upstream": [
+            {
+              "method": "GET",
+              "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+              "status": 200,
+              "body": { "state": "COMPLETE", "result": { "endResult": "OK", "documentNumber": "PNOMN-999999990001-MOCK-Q" } }
+            }
+          ],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "WAIT_CALLBACK" }, "noSetCookie": true }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/callback?sessionId=11111111-2222-4333-8444-555555555555&userChallengeVerifier=x", "cookieFrom": 0 },
+          "expect": {
+            "status": 303,
+            "location": "/login?eid_error=unbound",
+            "headers": { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+            "setCookie": { "cleared": true }
+          }
+        }
+      ],
+      "events": [{ "kind": "flow_refused", "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "meta": { "mode": "web2app", "reason": "unbound" } }]
+    },
+    {
+      "name": "callback-without-cookie",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/auth/eid/callback?sessionId=0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c&userChallengeVerifier=x" },
+          "expect": { "status": 303, "location": "/login?eid_error=expired", "setCookie": { "cleared": true } }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "status-without-cookie",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status" },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "EXPIRED" }, "setCookie": { "cleared": true } }
+        }
+      ]
+    },
+    {
+      "name": "push-decoy-indistinguishable",
+      "comment": "eID дугаарыг татгалзсан (JSON 4xx) push нь бодит push-тэй ижил хэлбэр: start ба status-ийн талбар, expiresIn, cookie; ялгаа зөвхөн аудитын decoy meta-д. Decoy-ийн status eID-ээс асуудаггүй (асуувал upstream 404 → EXPIRED болж ялгарна).",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": {
+            "status": 200,
+            "jsonKeys": ["expiresIn", "mode", "vc"],
+            "json": { "mode": "push", "vc": "54321", "expiresIn": 120 },
+            "setCookie": {
+              "value": { "$re": "^0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c\\.[A-Za-z0-9_-]{43}$" },
+              "attributes": { "Path": "/", "Max-Age": "120", "HttpOnly": true, "Secure": true, "SameSite": "Lax" }
+            }
+          }
+        },
+        {
+          "upstream": [
+            {
+              "method": "POST",
+              "pathPrefix": "/authentication/notification/etsi/",
+              "status": 400,
+              "body": { "error": "хэрэглэгч олдсонгүй" }
+            }
+          ],
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ87654321" } },
+          "expect": {
+            "status": 200,
+            "sameKeysAs": 0,
+            "json": { "mode": "push", "vc": { "$re": "^[0-9]{5}$" }, "expiresIn": { "$sameAs": "0.json.expiresIn" } },
+            "setCookie": {
+              "value": { "$re": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.[A-Za-z0-9_-]{43}$" },
+              "attributes": { "Path": "/", "Max-Age": "120", "HttpOnly": true, "Secure": true, "SameSite": "Lax" }
+            }
+          }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["expiresIn", "state", "vc"], "json": { "state": "PENDING", "vc": "54321" } }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 1 },
+          "expect": { "status": 200, "sameKeysAs": 2, "json": { "state": "PENDING", "vc": { "$sameAs": "1.json.vc" } } }
+        }
+      ],
+      "events": [
+        { "kind": "push_sent", "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "meta": { "mode": "push", "decoy": false, "pushKey": { "$re": "^[0-9a-f]{32}$" } } },
+        { "kind": "push_sent", "sessionId": { "$re": "^[0-9a-f-]{36}$" }, "meta": { "mode": "push", "decoy": true, "pushKey": { "$re": "^[0-9a-f]{32}$" } } }
+      ]
+    },
+    {
+      "name": "push-ttl-from-discovery",
+      "upstream": [{ "method": "GET", "path": "/.well-known/eid", "status": 200, "body": { "version": "v3", "sessionTtl": { "auth": 60, "sign": 600 } } }],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": { "status": 200, "json": { "expiresIn": 60 }, "setCookie": { "attributes": { "Max-Age": "60" } } }
+        },
+        {
+          "upstream": [{ "method": "POST", "pathPrefix": "/authentication/notification/etsi/", "status": 400, "body": { "error": "хэрэглэгч олдсонгүй" } }],
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ87654321" } },
+          "expect": { "status": 200, "json": { "expiresIn": 60 }, "setCookie": { "attributes": { "Max-Age": "60" } } }
+        }
+      ]
+    },
+    {
+      "name": "push-outage-500-not-decoy",
+      "upstream": [{ "method": "POST", "pathPrefix": "/authentication/notification/etsi/", "status": 500, "body": { "error": "дотоод алдаа" } }],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": { "status": 502, "json": { "error": "eid_unavailable" }, "noSetCookie": true }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "push-proxy-400-not-decoy",
+      "upstream": [
+        { "method": "POST", "pathPrefix": "/authentication/notification/etsi/", "status": 400, "contentType": "text/html", "bodyText": "<html>400 The SSL certificate error</html>" }
+      ],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": { "status": 502, "json": { "error": "eid_unavailable" }, "noSetCookie": true }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "push-401-not-decoy",
+      "upstream": [{ "method": "POST", "pathPrefix": "/authentication/notification/etsi/", "status": 401, "body": { "error": "unauthorized" } }],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": { "status": 502, "json": { "error": "eid_unavailable" }, "noSetCookie": true }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "push-rate-limited-per-id-decoy-too",
+      "upstream": [{ "method": "POST", "pathPrefix": "/authentication/notification/etsi/", "status": 400, "body": { "error": "хэрэглэгч олдсонгүй" } }],
+      "steps": [
+        {
+          "repeat": 3,
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } },
+          "expect": { "status": 200 }
+        },
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "уб 1234 5678" } },
+          "expect": { "status": 429, "json": { "error": "rate_limited" }, "headers": { "Retry-After": "60" }, "noSetCookie": true }
+        }
+      ],
+      "events": [
+        { "kind": "push_sent", "meta": { "mode": "push", "decoy": true } },
+        { "kind": "push_sent", "meta": { "mode": "push", "decoy": true } },
+        { "kind": "push_sent", "meta": { "mode": "push", "decoy": true } },
+        { "kind": "push_limited", "sessionId": null, "meta": { "mode": "push", "pushKey": { "$re": "^[0-9a-f]{32}$" } } }
+      ],
+      "comment": "idCode нь хоосон зайгүй, том үсгээр нормчлогдоно — 4 дэх хүсэлт ижил түлхүүр push:УБ12345678."
+    },
+    {
+      "name": "start-rate-limited-per-ip",
+      "steps": [
+        {
+          "repeat": 20,
+          "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "qr" } },
+          "expect": { "status": 200 }
+        },
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "qr" } },
+          "expect": { "status": 429, "json": { "error": "rate_limited" }, "headers": { "Retry-After": "60" } }
+        },
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.8", "json": { "mode": "qr" } },
+          "expect": { "status": 200 }
+        }
+      ]
+    },
+    {
+      "name": "rate-limit-keys",
+      "config": { "recordRateLimitKeys": true },
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "push", "idCode": " уб12345678 " } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "PNOMN-999999990001" } }, "expect": { "status": 200 } }
+      ],
+      "rateLimitKeys": ["start:203.0.113.7", "start:203.0.113.7", "push:УБ12345678", "push:PNOMN-999999990001"]
+    },
+    {
+      "name": "qr-user-refused",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "upstream": [
+            { "method": "GET", "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "status": 200, "body": { "state": "COMPLETE", "result": { "endResult": "USER_REFUSED" } } }
+          ],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["error", "state"], "json": { "state": "FAILED", "error": "USER_REFUSED" }, "setCookie": { "cleared": true } }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "EXPIRED" } }
+        }
+      ],
+      "events": [{ "kind": "refused", "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "meta": { "mode": "qr", "endResult": "USER_REFUSED" } }]
+    },
+    {
+      "name": "qr-other-failure",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "upstream": [
+            { "method": "GET", "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "status": 200, "body": { "state": "COMPLETE", "result": { "endResult": "WRONG_VC" } } }
+          ],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "json": { "state": "FAILED", "error": "WRONG_VC" } }
+        }
+      ],
+      "events": [{ "kind": "failed", "meta": { "mode": "qr", "endResult": "WRONG_VC" } }]
+    },
+    {
+      "name": "push-timeout-looks-like-decoy",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "УБ12345678" } }, "expect": { "status": 200 } },
+        {
+          "upstream": [
+            { "method": "GET", "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "status": 200, "body": { "state": "COMPLETE", "result": { "endResult": "TIMEOUT" } } }
+          ],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "EXPIRED" }, "setCookie": { "cleared": true } }
+        }
+      ],
+      "events": [
+        { "kind": "push_sent", "meta": { "mode": "push", "decoy": false } },
+        { "kind": "expired", "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "meta": { "mode": "push" } }
+      ]
+    },
+    {
+      "name": "qr-session-gone-404",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "upstream": [{ "method": "GET", "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c", "status": 404, "body": { "error": "session олдсонгүй" } }],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "EXPIRED" }, "setCookie": { "cleared": true } }
+        }
+      ],
+      "events": [{ "kind": "expired", "meta": { "mode": "qr" } }]
+    },
+    {
+      "name": "qr-complete-ok-unverifiable",
+      "comment": "COMPLETE/OK боловч гэрчилгээ/гарын үсэг хүчингүй → FAILED VALIDATION (500 биш), unverified/validation.",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "upstream": [
+            {
+              "method": "GET",
+              "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+              "status": 200,
+              "body": {
+                "state": "COMPLETE",
+                "result": { "endResult": "OK", "documentNumber": "PNOMN-999999990001-MOCK-Q" },
+                "signatureProtocol": "ACSP_V2",
+                "cert": { "value": "AAAA", "certificateLevel": "QUALIFIED" },
+                "signature": { "value": "c2ln", "signatureAlgorithm": "rsassa-pss", "flowType": "QR", "serverRandom": "c2VydmVyLXJhbmRvbS0wMTIzNDU2Nzg5", "userChallenge": "GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00", "signatureAlgorithmParameters": { "hashAlgorithm": "SHA-512" } },
+                "interactionTypeUsed": "displayTextAndPIN"
+              }
+            }
+          ],
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "jsonKeys": ["error", "state"], "json": { "state": "FAILED", "error": "VALIDATION" }, "setCookie": { "cleared": true } }
+        }
+      ],
+      "events": [{ "kind": "unverified", "meta": { "mode": "qr", "reason": "validation" } }]
+    }
+  ]
+}

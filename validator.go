@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
@@ -26,7 +27,8 @@ import (
 //
 //  1. state == COMPLETE && endResult == OK
 //  2. иргэний гэрчилгээг trust anchor (Mongolian National Root CA) хүртэл гинжээр баталгаажуулна — crypto/x509
-//     Verify (RFC 5280: basicConstraints/pathLen, keyCertSign, name constraints, EKU давхарга, critical extension)
+//     Verify (RFC 5280: basicConstraints/pathLen, keyCertSign, EKU давхарга) + fail-closed: name constraints-тэй
+//     CA ба SDK-ийн жагсаалтад байхгүй critical extension → татгалзана (TS SDK-тэй ижил)
 //  3. гэрчилгээ (ба гинжийн CA-ууд) хүчинтэй хугацаанд, шаардсан certLevel хангана
 //  4. гарын үсгийг иргэний public key-ээр шалгана: auth → ACSP_V2 payload, sign → RP-ийн digest
 //
@@ -721,7 +723,16 @@ func (v *Validator) checkLevel(level string) error {
 // clientAuth+emailProtection, P-CITIZEN-SIGN = emailProtection; EKU-гүй leaf-ийг Go "any" гэж үзнэ).
 // certificatePolicies-ийг шалгахгүй (Go 1.22-д VerifyOptions.CertificatePolicies байхгүй) — CA-ийн гинжинд
 // policyConstraints / inhibitAnyPolicy алга.
+//
+// Fail-closed (v0.32.0-аас, TS SDK validator.ts verifyChain/caReason/criticalReason-тэй ижил): leaf ба гинжийн
+// гэрчилгээ бүрийн critical extension нь handledCritical-д байх ёстой (Go-ийн задалдаг policyConstraints /
+// inhibitAnyPolicy / policyMappings ч critical бол татгалзана), гинжийн CA (anchor ч мөн)-д nameConstraints
+// extension байвал нэр нь хангасан ч татгалзана — SDK name constraints-ийг SDK бүрт ижил үнэлж чадахгүй (CA-ийн бодит
+// гинж 01–04-т алга). Хүчинтэй өөр зам (ийм CA-гүй) байвал түүгээр амжина.
 func (v *Validator) verifyChain(leaf *x509.Certificate, now time.Time, usage x509.ExtKeyUsage) error {
+	if criticalUnhandled(leaf) {
+		return invalid("гэрчилгээний гинж хүчингүй: үл таних critical extension")
+	}
 	roots := x509.NewCertPool()
 	for _, a := range v.anchors {
 		roots.AddCert(a)
@@ -730,7 +741,7 @@ func (v *Validator) verifyChain(leaf *x509.Certificate, now time.Time, usage x50
 	for _, c := range v.intermediates {
 		inter.AddCert(c)
 	}
-	_, err := leaf.Verify(x509.VerifyOptions{
+	chains, err := leaf.Verify(x509.VerifyOptions{
 		Roots:         roots,
 		Intermediates: inter,
 		CurrentTime:   chainTime(leaf, now),
@@ -739,7 +750,59 @@ func (v *Validator) verifyChain(leaf *x509.Certificate, now time.Time, usage x50
 	if err != nil {
 		return chainError(err)
 	}
-	return nil
+	reason := ""
+	for _, ch := range chains {
+		bad := ""
+		for _, ca := range ch[1:] {
+			if bad = caFailClosed(ca); bad != "" {
+				break
+			}
+		}
+		if bad == "" {
+			return nil
+		}
+		if reason == "" {
+			reason = bad
+		}
+	}
+	return invalid("гэрчилгээний гинж хүчингүй: %s", reason)
+}
+
+var oidNameConstraints = asn1.ObjectIdentifier{2, 5, 29, 30}
+
+// handledCritical — SDK-ийн ойлгодог critical extension-ууд (TS validator.ts HANDLED_CRITICAL-тэй ижил жагсаалт).
+var handledCritical = []asn1.ObjectIdentifier{
+	{2, 5, 29, 14},              // subjectKeyIdentifier
+	{2, 5, 29, 15},              // keyUsage
+	{2, 5, 29, 17},              // subjectAltName
+	{2, 5, 29, 19},              // basicConstraints
+	{2, 5, 29, 30},              // nameConstraints (CA-д — caFailClosed)
+	{2, 5, 29, 31},              // cRLDistributionPoints
+	{2, 5, 29, 32},              // certificatePolicies
+	{2, 5, 29, 35},              // authorityKeyIdentifier
+	{2, 5, 29, 37},              // extKeyUsage
+	{1, 3, 6, 1, 5, 5, 7, 1, 1}, // authorityInfoAccess
+}
+
+// criticalUnhandled — handledCritical-д байхгүй critical extension байгаа эсэх.
+func criticalUnhandled(c *x509.Certificate) bool {
+	for _, e := range c.Extensions {
+		if e.Critical && !slices.ContainsFunc(handledCritical, e.Id.Equal) {
+			return true
+		}
+	}
+	return false
+}
+
+// caFailClosed — гинжийн CA-г fail-closed дүрмээр татгалзах шалтгаан ("" = зөвшөөрнө).
+func caFailClosed(ca *x509.Certificate) string {
+	if slices.ContainsFunc(ca.Extensions, func(e pkix.Extension) bool { return e.Id.Equal(oidNameConstraints) }) {
+		return "CA-д name constraints байна (SDK үнэлдэггүй — fail-closed)"
+	}
+	if criticalUnhandled(ca) {
+		return "үл таних critical extension"
+	}
+	return ""
 }
 
 // chainTime — гинжийг шалгах мөч: now, ГЭХДЭЭ leaf-ийн хүчинтэй хугацаанд хавчина. leaf-ийн хугацааг checkValidity
