@@ -230,8 +230,9 @@ fake RP-API. `{config, upstream, scenarios}`; a scenario may override `config` k
 
 - `config`: client `rpName`, `rpUUID`, `apiSecret`; handler `callbackUrl` (`""` = Web2App off), `successRedirect`,
   `failureRedirect`, `ttlSeconds`, `pollMs`, `pushFloorMs` (0 = off), `cookieName`, `revocation: "disabled"`, `decoy`,
-  `recordRateLimitKeys` (install an extra rate-limit hook that records every key and allows it). The default rate
-  limits stay on (start: 20 / 60 s per client IP; push: 3 / 60 s per normalised id). The client IP is the request's
+  `recordRateLimitKeys` (install a rate-limit hook that records every key and allows it; it may add to
+  (Go `RateLimit`) or replace (TS `rateLimit` function) the defaults — that scenario never reaches a limit). Otherwise the default rate
+  limits are on (start: 20 / 60 s per client IP; push: 3 / 60 s per normalised id). The client IP is the request's
   `ip` (absent = unknown → no start limit). Trust: SDK default without anchors. `onSuccess` returns redirect
   `/dashboard`. The handler is mounted at `/auth/eid/{start,status,callback}`; requests use the host
   `https://rp.conformance.test`.
