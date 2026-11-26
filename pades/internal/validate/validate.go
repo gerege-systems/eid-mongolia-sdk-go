@@ -467,7 +467,10 @@ func (v *Validator) evaluateSignature(r RawSignature) SignatureReport {
 	// түлхүүрээр зөвхөн платформ зурдаг байсан бөгөөд /Name-ийг иргэний гэрчилгээнээс бичдэг (устсан stamp). Энд
 	// хүрсэн бол гарын үсэг бүрэн бүтэн, hash сул биш. Гинж итгэмжлэгдээгүй, манай issuing CA-аас гараагүй,
 	// эсвэл цуцлагдсан (түлхүүр алдагдсан байж болох — revoked_after_signing биш) бол гэрчилгээний нэр хэвээр.
-	if trusted && info.IssuedByEID && info.Usage == "document_signer" && !slices.Contains(s.Problems, ProblemRevoked) {
+	// Баримт гарын үсгийн дараа (гарын үсгээс өөрөөр) өөрчлөгдсөн бол /Name-ийг платформын баталсан гэж харуулахгүй
+	// (modified_after_signing-тэй хамт хэзээ ч platform_attested биш).
+	if trusted && info.IssuedByEID && info.Usage == "document_signer" && !slices.Contains(s.Problems, ProblemRevoked) &&
+		(r.CoversWhole || r.LaterSignaturesOnly) {
 		s.SignerName, s.SignerNameSource = r.SignerName, SignerNamePlatformAttested
 	}
 	// Манай PAdES хэлбэрт signingTime attr хориотой (цаг /M ба timestamp-д); гадны гарын үсэгт шаардахгүй.

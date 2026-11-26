@@ -778,6 +778,13 @@ func (c *classifier) diff() error {
 			continue
 		}
 		if be == fe && (be.kind == entUse || c.base.xref[be.off] == c.fin.xref[fe.off]) {
+			// Shadow attack: суурийн revision-д бүрэн биш объект (stream-ийн /Length суурийн төгсгөлөөс цааш үргэлжилдэг,
+			// эсвэл агуулагч ObjStm нь тийм) xref-ийн мөр өөрчлөгдөөгүй ч хожмын revision-ийн байтаар «гүйцэж», /Length-ийг
+			// дагадаг viewer шинэ агуулга зурна. Өөрчлөгдөөгүй объект бүр (ба түүний ObjStm) суурийн байт дотор бүтнээрээ
+			// задрах ёстой — base харагдац нь doc[:end] тул задлагч төгсгөлөөс цааш уншихгүй.
+			if _, err := c.base.get(num); err != nil {
+				return errNotSignatureOnly
+			}
 			continue // ижил байт
 		}
 		bo, err := c.base.get(num)

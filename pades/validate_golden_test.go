@@ -46,7 +46,9 @@ type vCase struct {
 }
 
 type vManifest struct {
-	Comment string    `json:"comment"`
+	Comment string `json:"comment"`
+	// Version — корпусын хувилбар (README: v4, v12, v13, v14 …); порт нь дэмждэг хувилбараа шалгаж болно.
+	Version int       `json:"version,omitempty"`
 	Time    time.Time `json:"time"`
 	Roots   []string  `json:"roots"`   // PEM (testdata-аас харьцангуй)
 	Issuers []string  `json:"issuers"` // eID олгогч гэж үзэх тестийн CA
@@ -93,7 +95,7 @@ func vCases() []vCase {
 		{Name: "encrypted-aes-128", Input: "validate/input/encrypted-aes-128.pdf", Offline: true},
 		{Name: "encrypted-aes-256", Input: "validate/input/encrypted-aes-256.pdf", Offline: true},
 		{Name: "encrypted-user-password", Input: "validate/input/encrypted-rc4-128-userpw.pdf", Offline: true},
-	}, append(v4Cases(), sealVCases()...)...)
+	}, append(append(v4Cases(), sealVCases()...), hardeningVCases()...)...)
 }
 
 // vResponses — онлайн тохиолдлын OCSP/CRL хариу (тестийн 04-ийн түлхүүрээр). Шалгах цаг = goldenNow.
@@ -279,11 +281,15 @@ func vUpdate(t *testing.T, mpath string) {
 	for name, b := range sealVInputs(t, p) {
 		write(name+".pdf", b)
 	}
+	for name, b := range hardeningVInputs(t, p) {
+		write(name+".pdf", b)
+	}
 
 	m := vManifest{
 		Comment: "ValidatePDF conformance — ТЕСТИЙН PKI (golden/pki). Go pades.ValidatePDF, TS validatePdf, CA validate.ValidatePDF " +
 			"ижил тайлан (JSON) гаргана. roots/issuers = PEM, time = шалгах цаг; online тохиолдлын HTTP хариу = http/ (key: METHOD URL " +
 			"sha256(body)[:8] hex), жагсаалтад байхгүй хүсэлт → 404.",
+		Version: validateCorpusVersion,
 		Time:    goldenNow.UTC(),
 		Roots:   []string{"golden/pki/root.pem"},
 		Issuers: []string{"golden/pki/04.pem", "validate/pki/05.pem"},
@@ -441,3 +447,6 @@ func (ht handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	ht.h.ServeHTTP(rec, r)
 	return rec.Result(), nil
 }
+
+// validateCorpusVersion — pades/testdata/validate-ийн хувилбар (README); шинэ тохиолдол нэмэх бүрд өсгөнө.
+const validateCorpusVersion = 14

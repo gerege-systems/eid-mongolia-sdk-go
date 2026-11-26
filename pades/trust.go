@@ -93,19 +93,25 @@ func newValidator(roots, extra, extraIssuers []*x509.Certificate, now func() tim
 // Issued=false («unknown» → revocation_unavailable — таамаглахгүй). Гарын үсгийн дараах цуцлалтыг
 // (revoked_after_signing) зөвхөн DSS-д байвал мэднэ.
 type dssStatus struct {
-	ocsps [][]byte
-	crls  [][]byte
-	now   func() time.Time
+	dss *validate.RawDSS
+	now func() time.Time
+	// ocsp — ocspFor(OCSPs[i], cert, issuer)-ийн дүн (нэг шалгалтад нэг удаа задалж, гарын үсгийг нэг удаа шалгана).
+	ocsp map[dssOCSPKey]*ocsp.Response
+}
+
+type dssOCSPKey struct {
+	i            int
+	cert, issuer string
 }
 
 func newDSSStatus(raws []validate.RawSignature, now func() time.Time) *dssStatus {
 	if now == nil {
 		now = time.Now
 	}
-	s := &dssStatus{now: now}
+	s := &dssStatus{now: now, ocsp: map[dssOCSPKey]*ocsp.Response{}}
 	for _, r := range raws {
 		if r.DSS != nil {
-			s.ocsps, s.crls = r.DSS.OCSPs, r.DSS.CRLs
+			s.dss = r.DSS
 			break
 		}
 	}
@@ -121,9 +127,19 @@ func (s *dssStatus) CertStatus(cert, issuer *x509.Certificate, at time.Time) (va
 		}
 	}
 	good := false
-	for _, der := range s.ocsps {
-		resp, ok := ocspFor(der, cert, issuer)
-		if !ok {
+	if s.dss == nil {
+		return validate.CertStatus{}, nil
+	}
+	for i, der := range s.dss.OCSPs {
+		k := dssOCSPKey{i, string(cert.Raw), string(issuer.Raw)}
+		resp, hit := s.ocsp[k]
+		if !hit {
+			if r, ok := ocspFor(der, cert, issuer); ok {
+				resp = r
+			}
+			s.ocsp[k] = resp
+		}
+		if resp == nil {
 			continue
 		}
 		switch resp.Status {
@@ -133,11 +149,11 @@ func (s *dssStatus) CertStatus(cert, issuer *x509.Certificate, at time.Time) (va
 			good = good || validate.FreshAt(resp.ThisUpdate, resp.NextUpdate, at, now)
 		}
 	}
-	for _, der := range s.crls {
-		crl, err := x509.ParseRevocationList(der)
-		if err != nil || !validate.CRLFor(crl, cert, issuer) {
+	for i := range s.dss.CRLs {
+		if !s.dss.CRLMatches(i, cert, issuer) {
 			continue
 		}
+		crl := s.dss.CRL(i)
 		if t, listed := validate.CRLListed(crl, cert); listed {
 			markRevoked(t)
 		} else {
