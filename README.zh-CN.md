@@ -20,7 +20,7 @@
 ## 安装
 
 ```bash
-go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.31.0
+go get github.com/gerege-systems/eid-mongolia-sdk-go@v0.32.0
 ```
 
 `pades` 直接导入已打补丁的 PDF 解析器（`github.com/gerege-systems/pdf`），因此不需要 `replace`。
