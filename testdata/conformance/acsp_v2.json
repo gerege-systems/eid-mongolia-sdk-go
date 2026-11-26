@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "name": "smart-id-doc-sha512",
+      "params": {
+        "brokeredRpName": "Example RP",
+        "flowType": "Web2App",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ",
+        "interactionTypeUsed": "confirmationMessage",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "relyingPartyName": "DEMO",
+        "rpChallenge": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "schemeName": "",
+        "serverRandom": "MTlop6EXCrQ6FOErcKjxUhbV",
+        "userChallenge": "GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00"
+      },
+      "hashAlgorithm": "SHA-512",
+      "payload": "smart-id|ACSP_V2|MTlop6EXCrQ6FOErcKjxUhbV|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00|REVNTw==|RXhhbXBsZSBSUA==|RW2HOCLDvRFNWmAOmpWE+3rt7a8q4JGQD3n75d6xJHM=|confirmationMessage|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|Web2App",
+      "digestB64": "pKOjbNl/5Fy8NfrFqsj6pSn8W8O+Ik8rM33QSsbyD3J9qDJvEm90SboUciuY4wHGWa0Pnq8BgT3NJKmJiUDfKg=="
+    },
+    {
+      "name": "empty-optional-fields-sha256",
+      "params": {
+        "brokeredRpName": "",
+        "flowType": "QR",
+        "initialCallbackUrl": "",
+        "interactionTypeUsed": "confirmationMessage",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "relyingPartyName": "DEMO",
+        "rpChallenge": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "schemeName": "",
+        "serverRandom": "MTlop6EXCrQ6FOErcKjxUhbV",
+        "userChallenge": "GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00"
+      },
+      "hashAlgorithm": "SHA-256",
+      "payload": "smart-id|ACSP_V2|MTlop6EXCrQ6FOErcKjxUhbV|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00|REVNTw==||RW2HOCLDvRFNWmAOmpWE+3rt7a8q4JGQD3n75d6xJHM=|confirmationMessage||QR",
+      "digestB64": "KMjQK2kYN+9EHfOTHIta0eb1g0Z4CudFh44DsVdVANg="
+    },
+    {
+      "name": "scheme-and-cyrillic-rp-sha384",
+      "params": {
+        "brokeredRpName": "Example RP",
+        "flowType": "Web2App",
+        "initialCallbackUrl": "https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ",
+        "interactionTypeUsed": "confirmationMessage",
+        "interactions": "W3sidHlwZSI6ImNvbmZpcm1hdGlvbk1lc3NhZ2UiLCJkaXNwbGF5VGV4dDIwMCI6IkxvbmdlciBkZXNjcmlwdGlvbiBvZiB0aGUgdHJhbnNhY3Rpb24gY29udGV4dCJ9LHsidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6IlNob3J0IGRlc2NyaXB0aW9uIG9mIHRoZSB0cmFuc2FjdGlvbiBjb250ZXh0In1d",
+        "relyingPartyName": "Тест банк",
+        "rpChallenge": "GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==",
+        "schemeName": "eid-mongolia",
+        "serverRandom": "MTlop6EXCrQ6FOErcKjxUhbV",
+        "userChallenge": "GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00"
+      },
+      "hashAlgorithm": "SHA-384",
+      "payload": "eid-mongolia|ACSP_V2|MTlop6EXCrQ6FOErcKjxUhbV|GYS+yoah6emAcVDNIajwSs6UB/M95XrDxMzXBUkwQJ9YFDipXXzGpPc7raWcuc2+TEoRc7WvIZ/7dU/iRXenYg==|GnsWXXEjTCKR89fj9uo5u5ReBZ9JR7_pezLAI5jMS00|0KLQtdGB0YIg0LHQsNC90Lo=|RXhhbXBsZSBSUA==|RW2HOCLDvRFNWmAOmpWE+3rt7a8q4JGQD3n75d6xJHM=|confirmationMessage|https://rp.example.com/callback-url?value=RrKjjT4aggzu27YBddX1bQ|Web2App",
+      "digestB64": "DDtFqGmdJv3ULS64Xa9IgOHzaCqJQTaQE/WZkcdpXUQj3QtNaJ1O6WCNcVb7Ldvd"
+    }
+  ],
+  "comment": "ACSP_V2 payload = scheme|ACSP_V2|serverRandom|rpChallenge|userChallenge|b64(rpName)|b64(brokeredRpName)|b64(SHA-256(interactions))|interactionTypeUsed|initialCallbackUrl|flowType (UTF-8); schemeName \"\" = smart-id. digestB64 = base64(HASH(payload)).",
+  "version": "acsp-v2/1"
+}

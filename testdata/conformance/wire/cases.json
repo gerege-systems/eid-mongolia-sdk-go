@@ -1,0 +1,1681 @@
+{
+  "cases": [
+    {
+      "name": "auth-notification-etsi",
+      "call": {
+        "method": "auth.notificationByEtsi",
+        "args": {
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": {
+          "brokeredRpName": "",
+          "flowTypes": [
+            "Notification"
+          ],
+          "hashAlgorithm": "SHA-512",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": null,
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "auth-notification-document-options",
+      "call": {
+        "method": "auth.notificationByDocument",
+        "args": {
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "options": {
+            "certificateLevel": "ADVANCED",
+            "hashAlgorithm": "SHA-256",
+            "onBehalfOf": " NTRMN-9999999 ",
+            "signatureAlgorithm": "sha256WithRSAEncryption"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/notification/document/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "ADVANCED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "onBehalfOf": "NTRMN-9999999",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "sha256WithRSAEncryption",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": {
+          "brokeredRpName": "",
+          "flowTypes": [
+            "Notification"
+          ],
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+          "signatureAlgorithm": "sha256WithRSAEncryption"
+        },
+        "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": null,
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "auth-device-link-anonymous",
+      "call": {
+        "method": "auth.deviceLinkAnonymous",
+        "args": {
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/device-link/anonymous",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": {
+          "brokeredRpName": "",
+          "flowTypes": [
+            "QR"
+          ],
+          "hashAlgorithm": "SHA-512",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "auth",
+        "sign": null,
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "auth-device-link-anonymous-callback",
+      "comment": "callbackUrl → initialCallbackUrl, flowTypes + App2App, Web2App",
+      "call": {
+        "method": "auth.deviceLinkAnonymous",
+        "args": {
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "options": {
+            "callbackUrl": " https://rp.conformance.test/auth/eid/callback "
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/device-link/anonymous",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": {
+          "brokeredRpName": "",
+          "flowTypes": [
+            "QR",
+            "App2App",
+            "Web2App"
+          ],
+          "hashAlgorithm": "SHA-512",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "auth",
+        "sign": null,
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "auth-device-link-etsi",
+      "call": {
+        "method": "auth.deviceLinkByEtsi",
+        "args": {
+          "id": "ДА99999999",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/device-link/etsi/%D0%94%D0%9099999999",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": {
+          "brokeredRpName": "",
+          "flowTypes": [
+            "QR"
+          ],
+          "hashAlgorithm": "SHA-512",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "$request:/signatureProtocolParameters/rpChallenge",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "auth",
+        "sign": null,
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-digest-etsi",
+      "call": {
+        "method": "sign.digestByEtsi",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-digest-document-options",
+      "call": {
+        "method": "sign.digestByDocument",
+        "args": {
+          "digest": "sQrbw6zw25RrKSrHE/hCv0HtRTRRUKXLXLITjkURO9TWcffQm1nd5FY91zoqR9yei7UgE6GgH4SHw5dPV6eagw==",
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "options": {
+            "certificateLevel": "QSCD",
+            "fileName": " гэрээ.pdf ",
+            "hashAlgorithm": "SHA-512",
+            "onBehalfOf": "NTRMN-9999999",
+            "signatureAlgorithm": "sha512WithRSAEncryption"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/document/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QSCD",
+          "fileName": "гэрээ.pdf",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "onBehalfOf": "NTRMN-9999999",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "sQrbw6zw25RrKSrHE/hCv0HtRTRRUKXLXLITjkURO9TWcffQm1nd5FY91zoqR9yei7UgE6GgH4SHw5dPV6eagw==",
+            "signatureAlgorithm": "sha512WithRSAEncryption",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": {
+          "digest": "sQrbw6zw25RrKSrHE/hCv0HtRTRRUKXLXLITjkURO9TWcffQm1nd5FY91zoqR9yei7UgE6GgH4SHw5dPV6eagw==",
+          "hashAlgorithm": "SHA-512",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "sha512WithRSAEncryption"
+        },
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-text-etsi",
+      "comment": "digest = base64(SHA-256(UTF-8 text))",
+      "call": {
+        "method": "sign.textByEtsi",
+        "args": {
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "text": "Би зөвшөөрч байна"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "/lvNYDDqjBjUu+TgphERX3dHHEeEayDRL9EP0fXICtY=",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": {
+          "digest": "/lvNYDDqjBjUu+TgphERX3dHHEeEayDRL9EP0fXICtY=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-device-link-etsi-callback",
+      "call": {
+        "method": "sign.deviceLinkByEtsi",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "options": {
+            "callbackUrl": "https://rp.conformance.test/auth/eid/callback"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/device-link/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "sign",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-device-link-document",
+      "call": {
+        "method": "sign.deviceLinkByDocument",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/device-link/document/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "sign",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "rsassa-pss"
+        },
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-digest-for-signer-linked",
+      "comment": "certChoiceSessionId → /linked/ + linkedSessionID; анхдагч sha256WithRSAEncryption",
+      "call": {
+        "method": "sign.digestForSigner",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "signer": {
+            "certChoiceSessionId": "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5",
+            "documentNumber": "PNOMN-999999990001-MOCK-Q"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/linked/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "linkedSessionID": "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "sha256WithRSAEncryption",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "sha256WithRSAEncryption"
+        },
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-digest-for-signer-document",
+      "call": {
+        "method": "sign.digestForSigner",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "signer": {
+            "documentNumber": "PNOMN-999999990001-MOCK-Q"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/document/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "sha256WithRSAEncryption",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "sha256WithRSAEncryption"
+        },
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "sign-device-link-for-signer",
+      "call": {
+        "method": "sign.deviceLinkForSigner",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "signer": {
+            "certChoiceSessionId": "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5",
+            "documentNumber": "PNOMN-999999990001-MOCK-Q"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/device-link/document/PNOMN-999999990001-MOCK-Q",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "sha256WithRSAEncryption",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "sign",
+        "sign": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "hashAlgorithm": "SHA-256",
+          "initialCallbackUrl": "",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "signatureAlgorithm": "sha256WithRSAEncryption"
+        },
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "certificate-choice-etsi",
+      "comment": "interactions/initialCallbackUrl илгээхгүй",
+      "call": {
+        "method": "sign.certificateChoiceByEtsi",
+        "args": {
+          "id": "PNOMN-999999990001",
+          "options": {
+            "callbackUrl": "https://rp.conformance.test/auth/eid/callback"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/certificate-choice/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "vc": {
+            "type": "alphaNumeric4",
+            "value": "4927"
+          }
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sign": null,
+        "type": "notification",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "certificate-choice-device-link",
+      "call": {
+        "method": "sign.certificateChoiceDeviceLink",
+        "args": {}
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/certificate-choice/device-link/anonymous",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "callbackUrl": "",
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "relyingPartyName": "Тест банк",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "cert",
+        "sign": null,
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "certificate-choice-device-link-callback",
+      "call": {
+        "method": "sign.certificateChoiceDeviceLink",
+        "args": {
+          "options": {
+            "callbackUrl": "https://rp.conformance.test/auth/eid/callback",
+            "certificateLevel": "ADVANCED"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/certificate-choice/device-link/anonymous",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "ADVANCED",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deviceLinkBase": "https://eid.conformance.test/dl",
+          "expiresAt": "2026-10-14T04:05:00Z",
+          "sessionID": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+          "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+          "sessionToken": "tok_Conformance-0001",
+          "vc": "4927"
+        }
+      },
+      "expect": {
+        "acsp": null,
+        "callbackUrl": "https://rp.conformance.test/auth/eid/callback",
+        "deviceLinkBase": "https://eid.conformance.test/dl",
+        "expiresAt": "2026-10-14T04:05:00Z",
+        "relyingPartyName": "Тест банк",
+        "rpChallenge": "",
+        "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c",
+        "sessionSecret": "c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LTAwMQ==",
+        "sessionToken": "tok_Conformance-0001",
+        "sessionType": "cert",
+        "sign": null,
+        "type": "deviceLink",
+        "vc": "4927"
+      }
+    },
+    {
+      "name": "session-auth-complete",
+      "comment": "onBehalfOf, person (geID 0 / хоосон мөр орохгүй)",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 30000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=30000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "cert": {
+            "certificateLevel": "QUALIFIED",
+            "value": "MIID5DCCAsygAwIBAgICEAswDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAakTlkcfnq0/Upt8Ds89MIJ6iGI4NgdwdRINV4ZyroJqRoSAvoZu/XNEa9Ted/yUQ1LTQ0GXNZKIJARnr2ocrDUgD5f5yiJMCsn+5pc/BPWlfl7kxGca9U+9JiweM4OYIWZyztUuKJ1q90svic6V7WOmRBPAlsOQWM5XmpXbbPpyGCFdoISngVJSJ5d1J+AwwUX6L+0GQSQvdKDDOkgzbchOU4hm63pDprBcfXU26OqGCWmpHzQEz4WH92dPMV4t8vvSl+g5bDtaNzQq8jU2LiKGS4CRHW5NZ7weTMJN6AtF7HMVPMrG1micReRb3eU14Y69dRp5HNHES6840deYXdA=="
+          },
+          "interactionTypeUsed": "displayTextAndPIN",
+          "onBehalfOf": {
+            "orgEtsi": "NTRMN-9999999",
+            "orgName": "Тест ХХК",
+            "rightType": "FULL",
+            "rightTypeLabel": "Бүрэн",
+            "role": "CEO",
+            "roleLabel": "Гүйцэтгэх захирал"
+          },
+          "person": {
+            "birthDate": "1990-01-01",
+            "civilId": "999999990001",
+            "firstName": "Тест",
+            "geID": 0,
+            "gender": "M",
+            "lastName": "Тестов",
+            "regNo": ""
+          },
+          "result": {
+            "documentNumber": "PNOMN-999999990001-MOCK-Q",
+            "endResult": "OK"
+          },
+          "signature": {
+            "flowType": "Web2App",
+            "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+            "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            },
+            "signatureProtocol": "ACSP_V2",
+            "userChallenge": "lATZRFgqex_g6ASKUFLiEWE5FRnTP_vVVcS25tE3Lyw",
+            "value": "opZdltcGcUDAV9cPszaGGGshd+wvPIWn0QLL5EXtAcLMareQxzGAMg7T/1S9HsTbp/nFNTFFK933Pu3BenGbXpD0RmHCtGfxo9tTF8K9T7WEX5MY3eOK1L7EvO6OHs4QOPZoZQuaLAdFNBemBtt808vuz2EXXnW6BPHdJLxJUIoNZPtKb1/XCyS+3hzx6XyEbEUVAxMPU5Oqz3dDIm+MB0wLvR3Qv7FrFhevRB4hsuHvQUyXztXNp5LeHDgtqC8ej3PbvYTmCXjd7r0wxr8StFIbeZU+QYmqk0lSKrqsV99IJDjN+7OTYUyvnHQ57iX53uVCNWNBTV2XHIiB7akZsA=="
+          },
+          "signatureProtocol": "ACSP_V2",
+          "state": "COMPLETE"
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": "MIID5DCCAsygAwIBAgICEAswDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBtzCBtDAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMEMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUaI10AoHkDGa6Dyb6rVT4P01lSdcwPQYIKwYBBQUHAQEEMTAvMC0GCCsGAQUFBzABhiFodHRwOi8vb2NzcC5jb25mb3JtYW5jZS50ZXN0L29jc3AwFQYDVR0gBA4wDDAKBghgg3ABZQECCDANBgkqhkiG9w0BAQsFAAOCAQEAakTlkcfnq0/Upt8Ds89MIJ6iGI4NgdwdRINV4ZyroJqRoSAvoZu/XNEa9Ted/yUQ1LTQ0GXNZKIJARnr2ocrDUgD5f5yiJMCsn+5pc/BPWlfl7kxGca9U+9JiweM4OYIWZyztUuKJ1q90svic6V7WOmRBPAlsOQWM5XmpXbbPpyGCFdoISngVJSJ5d1J+AwwUX6L+0GQSQvdKDDOkgzbchOU4hm63pDprBcfXU26OqGCWmpHzQEz4WH92dPMV4t8vvSl+g5bDtaNzQq8jU2LiKGS4CRHW5NZ7weTMJN6AtF7HMVPMrG1micReRb3eU14Y69dRp5HNHES6840deYXdA==",
+          "certificateLevel": "QUALIFIED",
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK",
+          "flowType": "Web2App",
+          "initialCallbackUrl": "https://rp.conformance.test/auth/eid/callback",
+          "interactionTypeUsed": "displayTextAndPIN",
+          "onBehalfOf": {
+            "orgEtsi": "NTRMN-9999999",
+            "orgName": "Тест ХХК",
+            "rightType": "FULL",
+            "rightTypeLabel": "Бүрэн",
+            "role": "CEO",
+            "roleLabel": "Гүйцэтгэх захирал"
+          },
+          "person": {
+            "birthDate": "1990-01-01",
+            "civilId": "999999990001",
+            "firstName": "Тест",
+            "gender": "M",
+            "lastName": "Тестов"
+          },
+          "serverRandom": "5tr6LE2BmCEiD71VtdR6b8Ko41zpDRQQ",
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": {
+            "hashAlgorithm": "SHA-512"
+          },
+          "signatureProtocol": "ACSP_V2",
+          "signatureValueB64": "opZdltcGcUDAV9cPszaGGGshd+wvPIWn0QLL5EXtAcLMareQxzGAMg7T/1S9HsTbp/nFNTFFK933Pu3BenGbXpD0RmHCtGfxo9tTF8K9T7WEX5MY3eOK1L7EvO6OHs4QOPZoZQuaLAdFNBemBtt808vuz2EXXnW6BPHdJLxJUIoNZPtKb1/XCyS+3hzx6XyEbEUVAxMPU5Oqz3dDIm+MB0wLvR3Qv7FrFhevRB4hsuHvQUyXztXNp5LeHDgtqC8ej3PbvYTmCXjd7r0wxr8StFIbeZU+QYmqk0lSKrqsV99IJDjN+7OTYUyvnHQ57iX53uVCNWNBTV2XHIiB7akZsA==",
+          "state": "COMPLETE",
+          "tokenCertificate": null,
+          "userChallenge": "lATZRFgqex_g6ASKUFLiEWE5FRnTP_vVVcS25tE3Lyw"
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "session-sign-complete-protocol-in-signature",
+      "comment": "signatureProtocol нь signature дотор л",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 5000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=5000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "cert": {
+            "certificateLevel": "QUALIFIED",
+            "value": "MIID9DCCAtygAwIBAgICEAwwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBxzCBxDAOBgNVHQ8BAf8EBAMCBsAwEwYDVR0lBAwwCgYIKwYBBQUHAwQwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRojXQCgeQMZroPJvqtVPg/TWVJ1zA9BggrBgEFBQcBAQQxMC8wLQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLmNvbmZvcm1hbmNlLnRlc3Qvb2NzcDAVBgNVHSAEDjAMMAoGCGCDcAFlAQIIMBgGCCsGAQUFBwEDBAwwCjAIBgYEAI5GAQEwDQYJKoZIhvcNAQELBQADggEBADsWBjUjgfKg+8VA8WcD5bnLzJQ9y1dd9HuKcoQomSU2GO+C9RFA4lqnApHeSKo3VDQkAAF/ma6b+U6yvFkGHYebkrez5ODoxAMmzmDX85q4Z0VFrM0PsHfu+O026M3KH3xKxbux3NgOkhtSHuSmQF+IGffXCfHc3RXZoXBlBxrqPTjXXRXMMFEo2apd2w1ayUbtx0glHFbRsEbMPEOkHcg1pfyg3a1NDSjuR6XqcLmEr37yp2pStUf5aXacNIUHTQxlRAwQv3OfU8l6Eupz/HCAjpADFKazPu1YygwZRijoK4xxbjkHIgXYMzcO8NjPpxFv4oqOolGYHrQONls+S4o="
+          },
+          "result": {
+            "documentNumber": "PNOMN-999999990001-MOCK-Q",
+            "endResult": "OK"
+          },
+          "signature": {
+            "flowType": "Notification",
+            "signatureAlgorithm": "sha256WithRSAEncryption",
+            "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+            "value": "tpgLVIu9A2mBQ54YwidxqMdAntRz3RfL/RYpGwpZcYjokPbxaXFcsmhqNSV6kEBiKTNFDLR6rnTZqyMMUit/pBfdImZKKB9NrSe7NGftVi8uN6QWIUGqaW9Ymz20SFRVjTHovhyHacAxHJYHnycCoFAtqQ7nv5c3L6X9jazNXT7c74CD/0ZCr6MUDHruAALNo8Zr0sw1wTszLBLInSWrQV/3CCnobpoU2amEo+26BBeUtzG8ZD4t/xGjElVEJmstUz9FqDWakvcZX2HJDub3i1Y0Qzjqw+m28BeLC5z1KG+mI/bvAr2Bb0y1EWVvl9p+0DA0XWCFH6zujgeTbS0XcA=="
+          },
+          "state": "COMPLETE"
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": "MIID9DCCAtygAwIBAgICEAwwDQYJKoZIhvcNAQELBQAwUDELMAkGA1UEBhMCTU4xEjAQBgNVBAoTCVRFU1QgT05MWTEtMCsGA1UEAxMkVEVTVCBPTkxZIENvbmZvcm1hbmNlIGVJRCBJc3N1aW5nIENBMB4XDTI2MDEwMTAwMDAwMFoXDTMxMDEwMTAwMDAwMFowYDELMAkGA1UEBhMCTU4xFDASBgNVBAMTC1RFU1RPViBURVNUMRswGQYDVQQFExJQTk9NTi05OTk5OTk5OTAwMDExDzANBgNVBAQTBlRFU1RPVjENMAsGA1UEKhMEVEVTVDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMMcAEdMMgxZVB/Kqru4QtobIw8NuFSgEa22LfEBspM+06CefrKetQJuDdsvut4hZ4CbIq4e7DjgYtFUGMJ12Nrh76fAy66W0bP3gPfhgFexBfCY/82xobZkRcGvyth77OQvRx4bZ5p6V4UTwl2HgXU/vuDdAXfCVNcKykph7Dc3zkSCQEZszEH0fAqePxF4I+tU3duHyqy8EXuyO13sEY9mtulhvyyhmukYTucvvedh4g96u4ZfTg3WgPb31353L7QzSxBCJNmjxl3Pr4yzMANwEhmKKe6p9jeGnsbrF9OBOypGAsmn1ykRbzrJP/w6XOoWI+LThrBBzWlX2mgUtjkCAwEAAaOBxzCBxDAOBgNVHQ8BAf8EBAMCBsAwEwYDVR0lBAwwCgYIKwYBBQUHAwQwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRojXQCgeQMZroPJvqtVPg/TWVJ1zA9BggrBgEFBQcBAQQxMC8wLQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLmNvbmZvcm1hbmNlLnRlc3Qvb2NzcDAVBgNVHSAEDjAMMAoGCGCDcAFlAQIIMBgGCCsGAQUFBwEDBAwwCjAIBgYEAI5GAQEwDQYJKoZIhvcNAQELBQADggEBADsWBjUjgfKg+8VA8WcD5bnLzJQ9y1dd9HuKcoQomSU2GO+C9RFA4lqnApHeSKo3VDQkAAF/ma6b+U6yvFkGHYebkrez5ODoxAMmzmDX85q4Z0VFrM0PsHfu+O026M3KH3xKxbux3NgOkhtSHuSmQF+IGffXCfHc3RXZoXBlBxrqPTjXXRXMMFEo2apd2w1ayUbtx0glHFbRsEbMPEOkHcg1pfyg3a1NDSjuR6XqcLmEr37yp2pStUf5aXacNIUHTQxlRAwQv3OfU8l6Eupz/HCAjpADFKazPu1YygwZRijoK4xxbjkHIgXYMzcO8NjPpxFv4oqOolGYHrQONls+S4o=",
+          "certificateLevel": "QUALIFIED",
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK",
+          "flowType": "Notification",
+          "initialCallbackUrl": null,
+          "interactionTypeUsed": null,
+          "onBehalfOf": null,
+          "person": null,
+          "serverRandom": null,
+          "signatureAlgorithm": "sha256WithRSAEncryption",
+          "signatureAlgorithmParameters": null,
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureValueB64": "tpgLVIu9A2mBQ54YwidxqMdAntRz3RfL/RYpGwpZcYjokPbxaXFcsmhqNSV6kEBiKTNFDLR6rnTZqyMMUit/pBfdImZKKB9NrSe7NGftVi8uN6QWIUGqaW9Ymz20SFRVjTHovhyHacAxHJYHnycCoFAtqQ7nv5c3L6X9jazNXT7c74CD/0ZCr6MUDHruAALNo8Zr0sw1wTszLBLInSWrQV/3CCnobpoU2amEo+26BBeUtzG8ZD4t/xGjElVEJmstUz9FqDWakvcZX2HJDub3i1Y0Qzjqw+m28BeLC5z1KG+mI/bvAr2Bb0y1EWVvl9p+0DA0XWCFH6zujgeTbS0XcA==",
+          "state": "COMPLETE",
+          "tokenCertificate": null,
+          "userChallenge": null
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "session-running",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 30000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=30000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "state": "RUNNING"
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": null,
+          "certificateLevel": null,
+          "documentNumber": null,
+          "endResult": null,
+          "flowType": null,
+          "initialCallbackUrl": null,
+          "interactionTypeUsed": null,
+          "onBehalfOf": null,
+          "person": null,
+          "serverRandom": null,
+          "signatureAlgorithm": null,
+          "signatureAlgorithmParameters": null,
+          "signatureProtocol": null,
+          "signatureValueB64": null,
+          "state": "RUNNING",
+          "tokenCertificate": null,
+          "userChallenge": null
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "session-user-refused",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 30000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=30000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "result": {
+            "endResult": "USER_REFUSED"
+          },
+          "state": "COMPLETE"
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": null,
+          "certificateLevel": null,
+          "documentNumber": null,
+          "endResult": "USER_REFUSED",
+          "flowType": null,
+          "initialCallbackUrl": null,
+          "interactionTypeUsed": null,
+          "onBehalfOf": null,
+          "person": null,
+          "serverRandom": null,
+          "signatureAlgorithm": null,
+          "signatureAlgorithmParameters": null,
+          "signatureProtocol": null,
+          "signatureValueB64": null,
+          "state": "COMPLETE",
+          "tokenCertificate": null,
+          "userChallenge": null
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "session-empty-blocks",
+      "comment": "onBehalfOf orgEtsi-гүй, person хоосон, tokenCertificate status-гүй, pss params hashAlgorithm-гүй → null",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 30000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=30000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "onBehalfOf": {
+            "orgName": "x"
+          },
+          "person": {},
+          "result": {
+            "documentNumber": "PNOMN-999999990001-MOCK-Q",
+            "endResult": "OK"
+          },
+          "signature": {
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {},
+            "value": "c2ln"
+          },
+          "state": "COMPLETE",
+          "tokenCertificate": {}
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": null,
+          "certificateLevel": null,
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK",
+          "flowType": null,
+          "initialCallbackUrl": null,
+          "interactionTypeUsed": null,
+          "onBehalfOf": null,
+          "person": null,
+          "serverRandom": null,
+          "signatureAlgorithm": "rsassa-pss",
+          "signatureAlgorithmParameters": null,
+          "signatureProtocol": null,
+          "signatureValueB64": "c2ln",
+          "state": "COMPLETE",
+          "tokenCertificate": null,
+          "userChallenge": null
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "session-token-certificate",
+      "call": {
+        "method": "session.poll",
+        "args": {
+          "serverPollMs": 30000,
+          "sessionId": "0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/session/0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c?timeoutMs=30000",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "result": {
+            "documentNumber": "PNOMN-999999990001-MOCK-Q",
+            "endResult": "OK"
+          },
+          "state": "COMPLETE",
+          "tokenCertificate": {
+            "authSerialHex": "0a1b",
+            "signSerialHex": "0c2d",
+            "status": "ISSUED"
+          }
+        }
+      },
+      "expect": {
+        "session": {
+          "certificateDerB64": null,
+          "certificateLevel": null,
+          "documentNumber": "PNOMN-999999990001-MOCK-Q",
+          "endResult": "OK",
+          "flowType": null,
+          "initialCallbackUrl": null,
+          "interactionTypeUsed": null,
+          "onBehalfOf": null,
+          "person": null,
+          "serverRandom": null,
+          "signatureAlgorithm": null,
+          "signatureAlgorithmParameters": null,
+          "signatureProtocol": null,
+          "signatureValueB64": null,
+          "state": "COMPLETE",
+          "tokenCertificate": {
+            "authSerialHex": "0a1b",
+            "signSerialHex": "0c2d",
+            "status": "ISSUED"
+          },
+          "userChallenge": null
+        },
+        "type": "session"
+      }
+    },
+    {
+      "name": "error-400-code",
+      "call": {
+        "method": "auth.notificationByEtsi",
+        "args": {
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "code": "REQUEST_INVALID",
+          "error": "буруу хүсэлт"
+        }
+      },
+      "expect": {
+        "error": {
+          "class": "ApiError",
+          "code": "REQUEST_INVALID",
+          "status": 400
+        }
+      }
+    },
+    {
+      "name": "error-403-forbidden-code",
+      "call": {
+        "method": "auth.notificationByEtsi",
+        "args": {
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ],
+          "options": {
+            "onBehalfOf": "NTRMN-9999999"
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "onBehalfOf": "NTRMN-9999999",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "code": "REPRESENTATION_DENIED",
+          "error": "төлөөлөх эрхгүй"
+        }
+      },
+      "expect": {
+        "error": {
+          "class": "ForbiddenError",
+          "code": "REPRESENTATION_DENIED",
+          "status": 403
+        }
+      }
+    },
+    {
+      "name": "error-401",
+      "call": {
+        "method": "sign.digestByEtsi",
+        "args": {
+          "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+          "id": "PNOMN-999999990001",
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/signature/notification/etsi/PNOMN-999999990001",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "RAW_DIGEST_SIGNATURE",
+          "signatureProtocolParameters": {
+            "digest": "NGPUv2jhlB1mSm1Ii5bmm1ZltbgnXUvbYMakvPQ50ns=",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-256"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "unauthorized"
+        }
+      },
+      "expect": {
+        "error": {
+          "class": "AuthenticationError",
+          "code": "",
+          "status": 401
+        }
+      }
+    },
+    {
+      "name": "error-429-retry-after",
+      "call": {
+        "method": "auth.deviceLinkAnonymous",
+        "args": {
+          "interactions": [
+            {
+              "displayText60": "Тест банкинд нэвтрэх",
+              "type": "displayTextAndPIN"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/authentication/device-link/anonymous",
+        "headers": {
+          "Authorization": "Bearer rp_sk_conformance_test",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "certificateLevel": "QUALIFIED",
+          "interactions": "W3sidHlwZSI6ImRpc3BsYXlUZXh0QW5kUElOIiwiZGlzcGxheVRleHQ2MCI6ItCi0LXRgdGCINCx0LDQvdC60LjQvdC0INC90Y3QstGC0YDRjdGFIn1d",
+          "relyingPartyName": "Тест банк",
+          "relyingPartyUUID": "00000000-0000-4000-8000-000000000001",
+          "signatureProtocol": "ACSP_V2",
+          "signatureProtocolParameters": {
+            "rpChallenge": "$volatile",
+            "signatureAlgorithm": "rsassa-pss",
+            "signatureAlgorithmParameters": {
+              "hashAlgorithm": "SHA-512"
+            }
+          }
+        },
+        "volatile": {
+          "/signatureProtocolParameters/rpChallenge": "base64:64"
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": {
+          "Retry-After": "7"
+        },
+        "body": {
+          "code": "RATE_LIMITED",
+          "error": "хэт олон"
+        }
+      },
+      "expect": {
+        "error": {
+          "class": "ApiError",
+          "code": "RATE_LIMITED",
+          "retryAfterSeconds": 7,
+          "status": 429
+        }
+      }
+    }
+  ],
+  "client": {
+    "apiSecret": "rp_sk_conformance_test",
+    "baseUrl": "https://rp.conformance.test",
+    "defaultCertificateLevel": "QUALIFIED",
+    "rpName": "Тест банк",
+    "rpUUID": "00000000-0000-4000-8000-000000000001"
+  },
+  "comment": "README.md §wire.",
+  "version": "wire/1"
+}
