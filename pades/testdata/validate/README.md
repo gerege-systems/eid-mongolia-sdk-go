@@ -1,4 +1,4 @@
-# ValidatePDF conformance (pades-validate/1, corpus v14)
+# ValidatePDF conformance (pades-validate/1, corpus v15)
 
 Нэг багцыг **Go `pades.ValidatePDF`**, **TS `validatePdf`** (`@gerege-systems/eid-mongolia-sdk/validate`) ба CA-ийн
 `validate.ValidatePDF` (`/v3/validate/pdf`) ажиллуулж **ижил JSON тайлан** гаргана. Үнэний эх сурвалж = энэ хавтас
@@ -70,7 +70,7 @@
   | `shadow-stream-dss` | `golden/input/quartz-pdf13.pdf` + R0 (page 1 `/Contents [3 0 R 19 0 R]`, object 19 a content stream whose `/Length` runs past the signed revision) + citizen B-B + DSS-only revision whose `/Certs` stream data holds `endstream endobj` exactly where 19's `/Length` ends | in the revision classifier, every in-use object whose xref entry is unchanged from the signed base must parse completely inside the base bytes (its object stream too); otherwise `modified_after_signing` (was `valid`) |
   | `shadow-control` | same pipeline, object 19 complete inside R0 | stays `valid`, `extended_by_signatures_only` |
   | `later-sig-integrity-failed` | `golden/output/quartz-pdf13.pdf` + citizen B-B second signature with a correct visible stamp but a corrupted RSA signature | only signatures that pass integrity count as later signatures (`known`); the step becomes DSS-only and is rejected → first signature `modified_after_signing` (was `valid` + `visible_later_signature`) |
-  | `later-stamp-name-mismatch` | same base + B-B signature by `validate/pki/citizen-qc.pem` (QUALIFIED TESTOV) whose `/Name` and stamp say `GOLDEN TESTOV` | the own-signer stamp's `/Name` (PDF text string) must equal the display name of that signature's certificate (GIVENNAME SURNAME, else CN) → first signature `modified_after_signing` |
+  | `later-stamp-name-mismatch` | same base + B-B signature by `validate/pki/citizen-qc.pem` (QUALIFIED TESTOV) whose `/Name` and stamp say `GOLDEN TESTOV` | **changed in v15:** the stamp's `/Name` is NOT compared with the certificate's display name → both signatures `valid`; first `extended_by_signatures_only`, `visible_later_signature`; second `signer_name` `QUALIFIED TESTOV`, `claimed_name` `GOLDEN TESTOV` (v14 expected `modified_after_signing`) |
   | `later-stamp-name-control` | same, `/Name` = `QUALIFIED TESTOV` | both signatures `valid`; first `extended_by_signatures_only`, `visible_later_signature` |
   | `doc-signer-attested` | `golden/input/quartz-pdf13.pdf` + B-B by `validate/pki/doc-signer.pem` (EKU documentSigning, issued by 04), `/Name` `GOLDEN TESTOV` | `signer_name_source` `platform_attested` (unchanged rule) |
   | `doc-signer-modified` | `doc-signer-attested` + an `/Info` revision | `platform_attested` only when `covers_whole_document` or `extended_by_signatures_only` → `certificate` with `modified_after_signing` |
@@ -88,6 +88,16 @@
   reject, a FlateDecode xref stream's inflated size is charged to the 32 MiB budget shared with object streams; object
   stream work = pairs read in its header (first token not EOF) × decompressed length (uncompressed: min(rest of file,
   direct `/Length`)), summed ≤ 1 GiB.
+- **v15** (`manifest.version` = 15; no new case, no input changed; only the expected report of `later-stamp-name-mismatch`
+  changed, all other 79 reports byte-identical to v14). **What a port must do:** the own-signer visible stamp's `/Name` is
+  NOT compared with the signing certificate's display name — a later signature that passes integrity and whose widget and
+  appearance match the PAdES writer for its own `/Name` is a signature-only extension whatever that name is (the
+  `/Name` length limit and every other stamp check stay). Why: the released eID Windows desktop client writes the
+  signer's Cyrillic portal name into `/Name` while the certificate name is Latin, integrators may pass a custom
+  `signerName`, so legitimate countersigned documents were reported `modified_after_signing`; and an untrusted signer
+  controls its own certificate name anyway, so the comparison added little. `signer_name` still comes from the
+  certificate; `claimed_name` carries `/Name`. The other half of v14 rule B stays: only later signatures that pass
+  integrity count (`later-sig-integrity-failed` unchanged).
 - CA-д `session_id`, `doc_id`, `on_behalf_of_*`, `stamp_lookup` (бүртгэлээс), `key_medium` (бүртгэлээс) нэмэгдэж болно;
   харьцуулахдаа эдгээрийг хасна. `certificate_level` нь SDK-д (CA-д нэмэх санал).
 

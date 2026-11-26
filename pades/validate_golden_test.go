@@ -448,5 +448,6 @@ func (ht handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-// validateCorpusVersion — pades/testdata/validate-ийн хувилбар (README); шинэ тохиолдол нэмэх бүрд өсгөнө.
-const validateCorpusVersion = 14
+// validateCorpusVersion — pades/testdata/validate-ийн хувилбар (README); шинэ тохиолдол нэмэх эсвэл хүлээгдэх тайлан
+// өөрчлөгдөх бүрд өсгөнө.
+const validateCorpusVersion = 15
