@@ -522,8 +522,14 @@ func (v *Validator) qrChain(leaf, extra *x509.Certificate, now time.Time) (*x509
 	if leaf.IsCA {
 		return nil, bad("x5c[0] нь CA гэрчилгээ")
 	}
-	if pub, ok := leaf.PublicKey.(*rsa.PublicKey); !ok || pub.N.BitLen() < 2048 {
-		return nil, bad("гэрчилгээний түлхүүр RSA ≥ 2048 биш")
+	if _, ok := leaf.PublicKey.(*rsa.PublicKey); !ok || weakRSAKey(leaf.PublicKey) {
+		return nil, bad("гэрчилгээний түлхүүр RSA ≥ 2048 биш (эсвэл exponent буруу)")
+	}
+	if duplicateSubjectIdentity(leaf) {
+		return nil, bad("гэрчилгээний subject-д SERIALNUMBER эсвэл CN давхардсан")
+	}
+	if weakRSAKey(extra.PublicKey) {
+		return nil, bad("x5c[1]-ийн RSA түлхүүр сул")
 	}
 	if now.Add(QRClockSkew).Before(leaf.NotBefore) || now.Add(-QRClockSkew).After(leaf.NotAfter) {
 		return nil, bad("гэрчилгээ хүчинтэй хугацаанд биш (serial %s)", certSerial(leaf))
@@ -589,11 +595,8 @@ func (v *Validator) qrChain(leaf, extra *x509.Certificate, now time.Time) (*x509
 		if len(v.allowedIssuers) == 0 {
 			return is, nil
 		}
-		ski := is.SubjectKeyId
-		if len(ski) == 0 {
-			ski = leaf.AuthorityKeyId
-		}
-		if len(ski) > 0 && v.allowedIssuers[hex.EncodeToString(ski)] {
+		// Олдсон issuer-ийн SKI (алга бол арга 1-ээр тооцсон) — leaf-ийн AKI-д итгэхгүй (checkIssuer-тэй ижил).
+		if ski := issuerKeyID(is); len(ski) > 0 && v.allowedIssuers[hex.EncodeToString(ski)] {
 			return is, nil
 		}
 	}

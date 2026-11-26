@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -153,6 +154,10 @@ type ValidateAuthOptions struct {
 	// UserChallengeVerifier — callback URL-ийн userChallengeVerifier параметр (ижил төхөөрөмжийн урсгалд апп RP руу
 	// буцаахдаа нэмдэг). Өгвөл BASE64URL(SHA-256(verifier)) нь гарын үсэг зурагдсан userChallenge-тэй таарна.
 	UserChallengeVerifier string
+	// VerifyUserChallenge — true бол UserChallengeVerifier-ийг ХООСОН ч гэсэн тулгана (v0.32.0-аас; TS-ийн
+	// `userChallengeVerifier: ""` өгсөнтэй ижил): callback-ийн параметр байгаа ч хоосон бол таарахгүй гэж татгалзана.
+	// false бол "" = өгөөгүй (хуучин зан).
+	VerifyUserChallenge bool
 }
 
 // ValidateSignOptions — ValidateSign-ийн нэмэлт шалгалт.
@@ -186,6 +191,21 @@ func NewValidator(t TrustConfig) (*Validator, error) {
 	inter, err := parseCerts(interPEM)
 	if err != nil {
 		return nil, fmt.Errorf("eid: IntermediatesPEM: %w", err)
+	}
+	// Trust pool-ийн CA сул RSA түлхүүртэй бол тохиргооны алдаа (v0.32.0-аас; .NET ParsePems-тэй ижил).
+	for _, set := range []struct {
+		name  string
+		certs []*x509.Certificate
+	}{{"TrustAnchorsPEM", anchors}, {"IntermediatesPEM", inter}} {
+		for _, c := range set.certs {
+			if weakRSAKey(c.PublicKey) {
+				return nil, fmt.Errorf("eid: %s: RSA түлхүүр сул (< %d бит эсвэл буруу exponent; serial %s)", set.name, minRSABits, certSerial(c))
+			}
+		}
+	}
+	if _, ok := levelRank[string(t.RequiredLevel)]; t.RequiredLevel != "" && !ok {
+		// Үл таних түвшин чимээгүй QUALIFIED болохгүй (v0.32.0-аас) — бичгийн алдаа доод түвшин зөвшөөрч болзошгүй.
+		return nil, fmt.Errorf("eid: RequiredLevel %q үл мэдэх (ADVANCED | QUALIFIED | QSCD)", t.RequiredLevel)
 	}
 	skis := t.AllowedIssuerSKIs
 	if len(skis) == 0 && !t.AllowAnyIssuer && len(anchors) > 0 {
@@ -275,7 +295,7 @@ func (v *Validator) ValidateAuth(r *SessionResult, acsp *ACSPContext, o Validate
 	if sameDevice && o.UserChallengeVerifier == "" {
 		return nil, invalid("%s урсгалд callback-ийн userChallengeVerifier заавал", o.ExpectedFlowType)
 	}
-	if o.UserChallengeVerifier != "" && UserChallengeOf(o.UserChallengeVerifier) != r.UserChallenge {
+	if (o.UserChallengeVerifier != "" || o.VerifyUserChallenge) && UserChallengeOf(o.UserChallengeVerifier) != r.UserChallenge {
 		return nil, invalid("userChallengeVerifier нь гарын үсэг зурагдсан userChallenge-тэй таарсангүй")
 	}
 	if r.InteractionTypeUsed == "" {
@@ -524,6 +544,9 @@ func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate
 	if err != nil {
 		return nil, "", invalid("гэрчилгээ задарсангүй: %v", err)
 	}
+	if err := checkLeafKeyAndSubject(leaf); err != nil {
+		return nil, "", err
+	}
 	now := v.now()
 	if err := v.checkValidity(leaf, now); err != nil {
 		return nil, "", err
@@ -548,6 +571,9 @@ func (v *Validator) leafOf(r *SessionResult, protocol string) (*x509.Certificate
 // verifyTokenAuthCertificate — токены нэвтрэлтийн гэрчилгээ (TokenService.AuthVerify): хугацаа, зориулалт (auth),
 // гинж, issuer. Түвшинг шалгахгүй (2026-11-06-аас өмнө олгосон токен CA-д ADVANCED).
 func (v *Validator) verifyTokenAuthCertificate(leaf *x509.Certificate) error {
+	if err := checkLeafKeyAndSubject(leaf); err != nil {
+		return err
+	}
 	now := v.now()
 	if err := v.checkValidity(leaf, now); err != nil {
 		return err
@@ -687,18 +713,79 @@ func (v *Validator) checkPurpose(leaf *x509.Certificate, protocol string) error 
 	return nil
 }
 
-// checkIssuer — AllowedIssuerSKIs тохируулсан бол leaf-ийн шууд issuer-ийн SKI (issuer-т алга бол leaf-ийн AKI)
-// жагсаалтад байх ёстой.
+// checkIssuer — AllowedIssuerSKIs тохируулсан бол leaf-ийн шууд issuer-ийн түлхүүрийн танигч жагсаалтад байх ёстой.
+// v0.32.0-аас issuer trust pool-оос олдвол ЗӨВХӨН түүний SKI (SKI extension-гүй бол RFC 5280 §4.2.1.2 арга 1-ээр
+// тооцсон) — leaf-ийн өөрөө бичсэн AKI-д хэзээ ч итгэхгүй (өмнө нь SKI-гүй CA-ийн доорх leaf AKI-гаа зөвшөөрөгдсөн
+// SKI болгож allowlist-ийг тойрч болдог байв). Leaf-ийн AKI-г зөвхөн issuer олдоогүй үед (AllowUntrusted) хэрэглэнэ.
 func (v *Validator) checkIssuer(leaf *x509.Certificate) error {
 	if len(v.allowedIssuers) == 0 {
 		return nil
 	}
 	ski := leaf.AuthorityKeyId
-	if is := v.findIssuer(leaf); is != nil && len(is.SubjectKeyId) > 0 {
-		ski = is.SubjectKeyId
+	if is := v.findIssuer(leaf); is != nil {
+		ski = issuerKeyID(is)
 	}
 	if len(ski) == 0 || !v.allowedIssuers[hex.EncodeToString(ski)] {
 		return invalid("гэрчилгээг гаргасан CA зөвшөөрөгдсөн иргэний issuer биш (AllowedIssuerSKIs)")
+	}
+	return nil
+}
+
+// issuerKeyID — CA-ийн SubjectKeyId; extension алга бол RFC 5280 §4.2.1.2 арга 1: SHA-1(subjectPublicKey BIT STRING).
+func issuerKeyID(c *x509.Certificate) []byte {
+	if len(c.SubjectKeyId) > 0 {
+		return c.SubjectKeyId
+	}
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if rest, err := asn1.Unmarshal(c.RawSubjectPublicKeyInfo, &spki); err != nil || len(rest) > 0 {
+		return nil
+	}
+	sum := sha1.Sum(spki.PublicKey.RightAlign())
+	return sum[:]
+}
+
+// minRSABits — SDK-ийн хүлээн авах хамгийн бага RSA modulus (иргэн, CA, OCSP responder).
+const minRSABits = 2048
+
+// weakRSAKey — RSA түлхүүр сул: modulus < 2048 бит, эсвэл public exponent тэгш / < 3 (.NET v0.17.0 ParsedCert.WeakKey,
+// reason key cert.weak_key). RSA бус түлхүүр → false.
+func weakRSAKey(pub crypto.PublicKey) bool {
+	k, ok := pub.(*rsa.PublicKey)
+	return ok && (k.N == nil || k.N.BitLen() < minRSABits || k.E < 3 || k.E%2 == 0)
+}
+
+var (
+	oidAttrCommonName   = asn1.ObjectIdentifier{2, 5, 4, 3}
+	oidAttrSerialNumber = asn1.ObjectIdentifier{2, 5, 4, 5}
+)
+
+// duplicateSubjectIdentity — subject-д SERIALNUMBER (2.5.4.5) эсвэл CN (2.5.4.3) нэгээс олон (бүх RDN-ийн бүх atv).
+// SDK-ууд олон утгатай атрибутаас өөр өөр утга авч болох тул (өөр иргэн) татгалзана.
+func duplicateSubjectIdentity(c *x509.Certificate) bool {
+	var cn, sn int
+	for _, a := range c.Subject.Names {
+		switch {
+		case a.Type.Equal(oidAttrCommonName):
+			cn++
+		case a.Type.Equal(oidAttrSerialNumber):
+			sn++
+		}
+	}
+	return cn > 1 || sn > 1
+}
+
+// checkLeafKeyAndSubject — иргэний гэрчилгээг задалсны дараах эхний шалгалт (v0.32.0-аас, .NET-тэй ижил дараалал):
+// сул RSA түлхүүр (cert.weak_key), дараа нь давхардсан SERIALNUMBER/CN (subject.duplicate_identity). Текстэд
+// subject биш serial.
+func checkLeafKeyAndSubject(leaf *x509.Certificate) error {
+	if weakRSAKey(leaf.PublicKey) {
+		return invalid("гэрчилгээний RSA түлхүүр сул (< %d бит эсвэл буруу exponent; serial %s)", minRSABits, certSerial(leaf))
+	}
+	if duplicateSubjectIdentity(leaf) {
+		return invalid("гэрчилгээний subject-д SERIALNUMBER эсвэл CN давхардсан (serial %s)", certSerial(leaf))
 	}
 	return nil
 }
@@ -708,7 +795,7 @@ var levelRank = map[string]int{"ADVANCED": 1, "QUALIFIED": 2, "QSCD": 3}
 func (v *Validator) checkLevel(level string) error {
 	need, ok := levelRank[string(v.requiredLevel)]
 	if !ok {
-		need = 2
+		return invalid("RequiredLevel %q үл мэдэх", v.requiredLevel)
 	}
 	if levelRank[level] < need {
 		return invalid("гэрчилгээний түвшин хүрэлцэхгүй: %s < %s", level, v.requiredLevel)

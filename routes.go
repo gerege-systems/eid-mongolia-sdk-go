@@ -1,6 +1,7 @@
 package eid
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 )
@@ -92,4 +93,20 @@ func (r rpRoute) expand(args ...string) string {
 	}
 	b.WriteString(rest)
 	return b.String()
+}
+
+// ErrInvalidPathParameter — RP-API замын параметр (ETSI, documentNumber, sessionId г.м.) хоосон, "." эсвэл ".."
+// (v0.32.0-аас). Ийм утга `/session/..`-ийг өөр endpoint болгож задрах тул хүсэлт илгээхгүй.
+var ErrInvalidPathParameter = errors.New("eid: замын параметр хоосон, «.» эсвэл «..» байж болохгүй")
+
+// checkPathParams — expand-аар угсарсан замын (query-гүй) сегмент бүр хоосон / "." / ".." биш. Template-д ийм сегмент
+// байхгүй тул энэ нь параметрийн утгыг шалгана (url.PathEscape "." ба ".."-г хэвээр үлдээдэг).
+func checkPathParams(path string) error {
+	p, _, _ := strings.Cut(path, "?")
+	for _, seg := range strings.Split(strings.TrimPrefix(p, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return ErrInvalidPathParameter
+		}
+	}
+	return nil
 }

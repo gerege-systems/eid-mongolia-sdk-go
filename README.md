@@ -53,7 +53,7 @@ Smart-ID-тэй RP-үүдийн хэв маяг: хөтөчид **нэг тов�
 
 | | Хүсэлт | Хариу |
 |---|---|---|
-| `POST /auth/eid/start` | `{"mode":"qr"}` эсвэл `{"mode":"push","idCode":"УБ12345678"}` (JSON заавал) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: eid_login` |
+| `POST /auth/eid/start` | `{"mode":"qr"}` эсвэл `{"mode":"push","idCode":"УБ12345678"}` (JSON заавал) | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: __Host-eid_login` |
 | `GET /auth/eid/start?mode=web2app` | утасны хөтөч (товчны навигаци) | `302` → eID апп (Web2App) |
 | `GET /auth/eid/status` | cookie | `PENDING` (`vc`, `expiresIn`, +шинэ `qr`) · `WAIT_CALLBACK` · `OK` (`redirect`, `data`) · `FAILED` (`error`) · `EXPIRED` |
 | `GET /auth/eid/callback` | апп буцаана: `?sessionId&userChallengeVerifier` | `303` → `Success.Redirect` / `SuccessRedirect`, алдаа бол `FailureRedirect?eid_error=<код>` |
@@ -122,7 +122,7 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
   (eID-ийн өөрийн JSON 4xx — танихгүй / ашиглах боломжгүй дугаар) handler бодит push-тэй **ижил** хариу өгнө: `{mode, vc
   (санамсаргүй 5 оронтой — eID-тэй ижил хэлбэр), expiresIn}`, ижил cookie; `status` нь eID-ээс асуулгүй `Poll`-ын хугацаанд
   барьж `PENDING`, TTL-ийн дараа `EXPIRED` — утсаа аваагүй иргэнтэй ялгаагүй (бодит push-ийн CA `TIMEOUT` ч `EXPIRED` болно). Push start-ийн хариу бүр (бодит, decoy, 502)
-  `PushFloor`-оос (анхдагч 1 с) хурдан гарахгүй — decoy-г цагаар ялгахгүйн тулд. Хязгаар (`push:<idCode>`, `start:<ip>`)
+  `PushFloor`-оос (анхдагч 1 с) хурдан гарахгүй — decoy-г цагаар ялгахгүйн тулд. Хязгаар (`push:<pushKey>`, `start:<ip>`)
   decoy-д ч үйлчилнэ; 429 ба 400 (`invalid_id` — хэлбэрийн алдаа, бүртгэлээс хамааралгүй) нь floor-гүй.
   eID-ийн 5xx, холболтын алдаа, JSON бус 4xx (eID-ийн өмнөх proxy, ж: mTLS татгалзал), 401/403 (RP-ийн нууц/эрх) ба 429 нь
   **decoy биш** — `502 eid_unavailable` / `429` (eID порталын зан: тасалдлыг decoy-оор нуувал иргэн дуусахгүй spinner харна;
@@ -155,11 +155,11 @@ Desktop дээр цонх (QR секунд тутам шинэчлэгдэнэ +
 Proxy-гүй бол `eidlogin.RemoteAddrIP`. nil бол IP-ээр хязгаарлахгүй (`New` нэг удаа Warn бичнэ). TS SDK-ийн
 `trustProxy` / `getClientIp`-тэй ижил дүрэм.
 
-**Хязгаарлалт.** Түлхүүр: `start:<ip>` (ClientIP өгсөн бол), `push:<idCode>`; татгалзвал 429 + `Retry-After: 60`.
+**Хязгаарлалт.** Түлхүүр: `start:<ip>` (ClientIP өгсөн бол; IPv6 → `/64` угтвар, ClientIP "" буцаавал нийтийн `start:unknown`), `push:<pushKey>` (v0.32.0-аас регистр биш аудитын HMAC); татгалзвал 429 + `Retry-After: 60`.
 Анхдагч `eidlogin.DefaultRateLimit()` = `{"start": {Max: 20, Window: time.Minute}, "push": {Max: 3, Window: time.Minute}}`
 — нэг IP-ээс минутад 20 эхлэл (v0.6.0-аас; `ClientIP` өгсөн бол), нэг дугаарт минутад 3 мэдэгдэл (MFA fatigue). Санах
-ойн хязгаарлагч төрөл тус бүрд ≤ 10 000 түлхүүр: дүүрвэл цонх нь өнгөрсөнийг цэвэрлэж, хоосроогүй бол **шинэ** түлхүүрийг
-429-өөр татгалзана (fail-closed) — байгаа тоолуурыг хэзээ ч арилгахгүй тул олон IP/дугаараар дүүргэж хязгаарыг тойрох
+ойн хязгаарлагч төрөл тус бүрд ≤ 10 000 түлхүүр (`RateRule.MaxKeys`): дүүрвэл цонх нь өнгөрсөнийг цэвэрлэж, хоосроогүй бол **шинэ** түлхүүрүүдийг
+нэг нийтийн overflow bucket-д тоолно (v0.32.0-аас; өмнө нь 429) — байгаа тоолуурыг хэзээ ч арилгахгүй тул олон IP/дугаараар дүүргэж хязгаарыг тойрох
 боломжгүй. `NewMemoryStore()` ч мөн адил ≤ `eidlogin.MemoryStoreMax` (10 000): дүүрвэл start 503 `{"error":"busy"}`
 (`eidlogin.ErrStoreFull`), эхэлсэн нэвтрэлтийг устгахгүй. Олон instance бол Redis store/limiter.
 

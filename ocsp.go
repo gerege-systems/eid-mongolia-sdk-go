@@ -6,16 +6,21 @@ import (
 	stdcrypto "crypto"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/cryptobyte"
+	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -134,7 +139,9 @@ type ocspEntry struct {
 //
 // Хариуг олгогч эсвэл олгогчийн гаргасан id-kp-OCSPSigning EKU-тэй (одоо хүчинтэй, хариунд шигтгэсэн — RFC 6960
 // §4.2.2.2 delegated) responder зурсан, энэ serial-ийн тухай, thisUpdate нь [now−48ц, now+5мин], nextUpdate
-// өнгөрөөгүй байх ёстой.
+// өнгөрөөгүй байх ёстой. v0.32.0-аас: issuer нь leaf-ийг гаргаагүй (эсвэл сул RSA түлхүүртэй) бол кэш/сүлжээнээс өмнө
+// OCSPNoIssuer; хариуны CertID-ийн issuerNameHash/issuerKeyHash issuer-ийнхтэй таарахгүй бол OCSPInvalid; delegated
+// responder-ийн RSA түлхүүр < 2048 бит бол OCSPSignature.
 func NewOCSPChecker(opts OCSPOptions) RevocationChecker {
 	o := &ocspChecker{http: opts.HTTPClient, now: opts.Now, ttl: opts.CacheTTL, observe: opts.Observe, cache: map[string]ocspEntry{}}
 	if o.http == nil {
@@ -164,6 +171,13 @@ type ocspChecker struct {
 func (o *ocspChecker) check(ctx context.Context, leaf, issuer *x509.Certificate) (RevocationStatus, error) {
 	if leaf == nil || issuer == nil {
 		err := &OCSPError{Kind: OCSPNoIssuer}
+		o.emit(OCSPObservation{Status: RevocationUnknown, Err: err})
+		return RevocationUnknown, err
+	}
+	// v0.32.0-аас (.NET/Java-тай ижил): өгсөн issuer энэ гэрчилгээг гаргасан эсэхийг (нэр, AKI/SKI, гарын үсэг, сул
+	// түлхүүргүй) кэш ба сүлжээнээс ӨМНӨ шалгана — буруу issuer өөр хэн нэгний CertID-д холбогдсон «good» авахгүй.
+	if weakRSAKey(issuer.PublicKey) || !issuedBy(leaf, issuer) {
+		err := &OCSPError{Kind: OCSPNoIssuer, Err: errors.New("өгсөн issuer энэ гэрчилгээг гаргаагүй")}
 		o.emit(OCSPObservation{Status: RevocationUnknown, Err: err})
 		return RevocationUnknown, err
 	}
@@ -337,9 +351,15 @@ func (o *ocspChecker) verify(der []byte, leaf, issuer *x509.Certificate) (*ocsp.
 		if now.Before(rc.NotBefore) || now.After(rc.NotAfter) {
 			return nil, &OCSPError{Kind: OCSPSignature, Err: errors.New("responder-ийн гэрчилгээ хугацаандаа биш")}
 		}
+		if weakRSAKey(rc.PublicKey) {
+			return nil, &OCSPError{Kind: OCSPSignature, Err: errors.New("responder-ийн RSA түлхүүр сул")}
+		}
 	}
 	if resp.SerialNumber == nil || resp.SerialNumber.Cmp(leaf.SerialNumber) != 0 {
 		return nil, &OCSPError{Kind: OCSPInvalid, Err: errors.New("хариу өөр serial-ийн тухай")}
+	}
+	if !ocspCertIDMatches(der, leaf, issuer) {
+		return nil, &OCSPError{Kind: OCSPInvalid, Err: errors.New("хариуны CertID issuer-ийнхтэй таарахгүй")}
 	}
 	if resp.ThisUpdate.After(now.Add(ocspClockSkew)) || resp.ThisUpdate.Before(now.Add(-ocspMaxAge)) {
 		return nil, &OCSPError{Kind: OCSPInvalid, Err: errors.New("thisUpdate хүлээн авах хүрээнээс гадуур")}
@@ -348,4 +368,69 @@ func (o *ocspChecker) verify(der []byte, leaf, issuer *x509.Certificate) (*ocsp.
 		return nil, &OCSPError{Kind: OCSPInvalid, Err: errors.New("хариу хуучирсан (nextUpdate өнгөрсөн)")}
 	}
 	return resp, nil
+}
+
+var ocspCertIDHashes = map[string]stdcrypto.Hash{
+	"1.3.14.3.2.26":          stdcrypto.SHA1,
+	"2.16.840.1.101.3.4.2.1": stdcrypto.SHA256,
+	"2.16.840.1.101.3.4.2.2": stdcrypto.SHA384,
+	"2.16.840.1.101.3.4.2.3": stdcrypto.SHA512,
+}
+
+// ocspCertIDMatches — хариуны leaf-ийн serial-тай БҮХ SingleResponse-ийн CertID issuerNameHash = H(issuer subject DER),
+// issuerKeyHash = H(issuer subjectPublicKey BIT STRING) (H = CertID-ийн hashAlgorithm: SHA-1/256/384/512), дор хаяж
+// нэг (v0.32.0-аас; TS pades/revocation.ts ocspCertIDMatches, .NET CertIdMatches-тэй ижил). x/crypto/ocsp хариуг
+// зөвхөн serial-аар сонгодог — өөр олгогчийн ижил serial-ийн хариуг энэ шалгалт татгалзана.
+func ocspCertIDMatches(der []byte, leaf, issuer *x509.Certificate) bool {
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if rest, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &spki); err != nil || len(rest) > 0 {
+		return false
+	}
+	in := cryptobyte.String(der)
+	var resp, rbWrap, rb, basicOct, basic, tbs, singles, skip cryptobyte.String
+	var status int
+	var tag cbasn1.Tag
+	if !in.ReadASN1(&resp, cbasn1.SEQUENCE) || !resp.ReadASN1Enum(&status) || status != 0 ||
+		!resp.ReadASN1(&rbWrap, cbasn1.Tag(0).ContextSpecific().Constructed()) || !rbWrap.ReadASN1(&rb, cbasn1.SEQUENCE) ||
+		!rb.SkipASN1(cbasn1.OBJECT_IDENTIFIER) || !rb.ReadASN1(&basicOct, cbasn1.OCTET_STRING) ||
+		!basicOct.ReadASN1(&basic, cbasn1.SEQUENCE) || !basic.ReadASN1(&tbs, cbasn1.SEQUENCE) ||
+		!tbs.SkipOptionalASN1(cbasn1.Tag(0).ContextSpecific().Constructed()) ||
+		!tbs.ReadAnyASN1(&skip, &tag) || // responderID ([1] byName | [2] byKey)
+		!tbs.ReadAnyASN1(&skip, &tag) || // producedAt
+		!tbs.ReadASN1(&singles, cbasn1.SEQUENCE) {
+		return false
+	}
+	found := false
+	for !singles.Empty() {
+		var single, certID, alg cryptobyte.String
+		var oid asn1.ObjectIdentifier
+		var nameHash, keyHash []byte
+		serial := new(big.Int)
+		if !singles.ReadASN1(&single, cbasn1.SEQUENCE) || !single.ReadASN1(&certID, cbasn1.SEQUENCE) ||
+			!certID.ReadASN1(&alg, cbasn1.SEQUENCE) || !alg.ReadASN1ObjectIdentifier(&oid) ||
+			!certID.ReadASN1Bytes(&nameHash, cbasn1.OCTET_STRING) || !certID.ReadASN1Bytes(&keyHash, cbasn1.OCTET_STRING) ||
+			!certID.ReadASN1Integer(serial) {
+			return false
+		}
+		if serial.Cmp(leaf.SerialNumber) != 0 {
+			continue
+		}
+		h, ok := ocspCertIDHashes[oid.String()]
+		if !ok || !h.Available() {
+			return false
+		}
+		d := h.New()
+		d.Write(issuer.RawSubject)
+		wantName := d.Sum(nil)
+		d = h.New()
+		d.Write(spki.PublicKey.RightAlign())
+		if !bytes.Equal(nameHash, wantName) || !bytes.Equal(keyHash, d.Sum(nil)) {
+			return false
+		}
+		found = true
+	}
+	return found
 }

@@ -264,7 +264,7 @@ func (e *env) do(t *testing.T, method, target, body string, hdr map[string]strin
 func loginCookie(t *testing.T, h http.Header) string {
 	t.Helper()
 	for _, c := range h.Values("Set-Cookie") {
-		if strings.HasPrefix(c, "eid_login=") && !strings.HasPrefix(c, "eid_login=;") {
+		if strings.HasPrefix(c, "__Host-eid_login=") && !strings.HasPrefix(c, "__Host-eid_login=;") {
 			for _, attr := range []string{"HttpOnly", "Secure", "SameSite=Lax"} {
 				if !strings.Contains(c, attr) {
 					t.Fatalf("cookie-д %s алга: %s", attr, c)
@@ -304,7 +304,7 @@ func TestQRFlow(t *testing.T) {
 		e.ids[0].SessionID != sid || e.ids[0].DocumentNumber == "" || e.ids[0].Certificate == nil {
 		t.Fatalf("identity: %+v", e.ids)
 	}
-	if sc := strings.Join(ok.header.Values("Set-Cookie"), "\n"); !strings.Contains(sc, "app_session=s1") || !strings.Contains(sc, "eid_login=;") {
+	if sc := strings.Join(ok.header.Values("Set-Cookie"), "\n"); !strings.Contains(sc, "app_session=s1") || !strings.Contains(sc, "__Host-eid_login=;") {
 		t.Fatalf("Set-Cookie: %s", sc)
 	}
 	again := e.do(t, "GET", "/auth/eid/status", "", map[string]string{"Cookie": cookie})
@@ -317,7 +317,7 @@ func TestStatusBinding(t *testing.T) {
 	e := setup(t, nil)
 	s := e.do(t, "POST", "/auth/eid/start", `{"mode":"qr"}`, nil)
 	cookie := loginCookie(t, s.header)
-	for _, c := range []string{"", "eid_login=" + sid + "." + strings.Repeat("A", 43), cookie[:len(cookie)-1] + "x"} {
+	for _, c := range []string{"", "__Host-eid_login=" + sid + "." + strings.Repeat("A", 43), cookie[:len(cookie)-1] + "x"} {
 		r := e.do(t, "GET", "/auth/eid/status", "", map[string]string{"Cookie": c})
 		if r.body["state"] != "EXPIRED" {
 			t.Fatalf("%q: %v", c, r.body)
@@ -646,8 +646,8 @@ func TestDefaultStartLimit(t *testing.T) {
 	}
 }
 
-// Дүүрсэн хязгаарлагч: олон түлхүүрээр дүүргэж тухайн түлхүүрийн хязгаарыг тойрох боломжгүй; шинэ түлхүүр fail-closed;
-// цонх өнгөрсөн түлхүүр цэвэрлэгдэнэ.
+// Дүүрсэн хязгаарлагч: олон түлхүүрээр дүүргэж тухайн түлхүүрийн хязгаарыг тойрох боломжгүй; шинэ түлхүүрүүд нэг
+// overflow bucket-д (v0.32.0-аас; өмнө нь татгалздаг байсан); цонх өнгөрсөн түлхүүр цэвэрлэгдэнэ.
 func TestWindowLimiterFullFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	lim := windowLimiter(1, 50*time.Millisecond, 3)
@@ -657,8 +657,8 @@ func TestWindowLimiterFullFailsClosed(t *testing.T) {
 	if !lim(ctx, "a") || !lim(ctx, "b") {
 		t.Fatal("a, b")
 	}
-	if lim(ctx, "c") {
-		t.Fatal("дүүрсэн — шинэ түлхүүр татгалзагдах ёстой")
+	if !lim(ctx, "c") || lim(ctx, "d") {
+		t.Fatal("дүүрсэн — шинэ түлхүүрүүд нэг overflow bucket-д (1/цонх)")
 	}
 	if lim(ctx, "push:victim") {
 		t.Fatal("victim-ийн тоолуур арилсан (v0.5.x: бүгдийг цэвэрлэдэг байв)")

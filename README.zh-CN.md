@@ -53,7 +53,7 @@ Smart-ID RP 的常见模式：浏览器中**一个按钮**，所有 eID 调用�
 
 | | 请求 | 响应 |
 |---|---|---|
-| `POST /auth/eid/start` | `{"mode":"qr"}` 或 `{"mode":"push","idCode":"УБ12345678"}`（必须是 JSON） | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: eid_login` |
+| `POST /auth/eid/start` | `{"mode":"qr"}` 或 `{"mode":"push","idCode":"УБ12345678"}`（必须是 JSON） | `{mode, vc, qr?, expiresIn}` + `Set-Cookie: __Host-eid_login` |
 | `GET /auth/eid/start?mode=web2app` | 手机浏览器（按钮跳转） | `302` → eID 应用（Web2App） |
 | `GET /auth/eid/status` | cookie | `PENDING`（`vc`、`expiresIn`，+新的 `qr`）· `WAIT_CALLBACK` · `OK`（`redirect`、`data`）· `FAILED`（`error`）· `EXPIRED` |
 | `GET /auth/eid/callback` | 应用返回：`?sessionId&userChallengeVerifier` | `303` → `Success.Redirect` / `SuccessRedirect`，出错则为 `FailureRedirect?eid_error=<代码>` |
@@ -122,7 +122,7 @@ mux.Handle("/auth/eid/", login)
   （eID 自身的 JSON 4xx——未知 / 无法使用的号码），handler 返回与真实 push **完全相同**的响应：`{mode, vc
   （随机 5 位数字——与 eID 形式相同）, expiresIn}`、相同的 cookie；`status` 在 `Poll` 时间内不询问 eID，保持
   `PENDING`，TTL 后为 `EXPIRED`——与没有接手机的公民无法区分（真实 push 的 CA `TIMEOUT` 也会变为 `EXPIRED`）。每个 push start 的响应（真实、decoy、502）
-  都不会快于 `PushFloor`（默认 1 s）——使 decoy 无法通过时间区分。限制（`push:<idCode>`、`start:<ip>`）
+  都不会快于 `PushFloor`（默认 1 s）——使 decoy 无法通过时间区分。限制（`push:<pushKey>`、`start:<ip>`）
   同样适用于 decoy；429 和 400（`invalid_id`——格式错误，与注册情况无关）没有 floor。
   eID 的 5xx、连接错误、非 JSON 的 4xx（eID 前面的 proxy，如 mTLS 拒绝）、401/403（RP 的 secret/权限）和 429 **不使用
   decoy**——返回 `502 eid_unavailable` / `429`（eID 门户的行为：若用 decoy 掩盖故障，公民会看到无尽的转圈；
@@ -155,10 +155,10 @@ mux.Handle("/auth/eid/", login)
 没有代理时使用 `eidlogin.RemoteAddrIP`。若为 nil，则不按 IP 限制（`New` 会写一次 Warn）。规则与 TS SDK 的
 `trustProxy` / `getClientIp` 相同。
 
-**限流。** 键：`start:<ip>`（提供了 ClientIP 时）、`push:<idCode>`；被拒绝时返回 429 + `Retry-After: 60`。
+**限流。** 键：`start:<ip>`（提供了 ClientIP 时；IPv6 取 `/64` 前缀，ClientIP 返回空则归入共享的 `start:unknown`）、`push:<pushKey>`（自 v0.32.0 起为审计 HMAC，而非号码）；被拒绝时返回 429 + `Retry-After: 60`。
 默认 `eidlogin.DefaultRateLimit()` = `{"start": {Max: 20, Window: time.Minute}, "push": {Max: 3, Window: time.Minute}}`
 ——同一 IP 每分钟 20 次发起（自 v0.6.0 起；提供了 `ClientIP` 时），同一号码每分钟 3 条通知（防 MFA 疲劳攻击）。内存
-限流器每种类型最多 ≤ 10 000 个键：满了就清理已过期的窗口，若仍未腾出空间，则以 429 拒绝**新**键（fail-closed）——
+限流器每种类型最多 ≤ 10 000 个键（`RateRule.MaxKeys`）：满了就清理已过期的窗口，若仍未腾出空间，则把**新**键计入同一个共享 overflow 桶（自 v0.32.0 起；此前为 429）——
 绝不会清除已有计数器，因此无法通过塞满大量 IP/号码来绕过限制。
 `NewMemoryStore()` 同样 ≤ `eidlogin.MemoryStoreMax`（10 000）：满了则 start 返回 503 `{"error":"busy"}`
 （`eidlogin.ErrStoreFull`），不会删除已开始的登录。多实例时请使用 Redis store/limiter。

@@ -1,5 +1,5 @@
 {
-  "version": "eidlogin/1",
+  "version": "eidlogin/2",
   "comment": "Login-button backend (Go eidlogin, TS createEidLogin) — HTTP протоколын сценари. Гараар бичигдсэн; Go eidlogin/security_test.go, eidlogin_test.go-оос. README.md §eidlogin. Цагийн хамгаалалт (pushFloor) ба OK (гарын үсэгтэй) зам энд ОРОХГҮЙ — rp-validate ба SDK-ийн өөрийн тест.",
   "config": {
     "rpName": "Тест банк",
@@ -348,13 +348,18 @@
     },
     {
       "name": "rate-limit-keys",
-      "config": { "recordRateLimitKeys": true },
+      "comment": "eidlogin/2: push түлхүүр = push:<pushKey> (HMAC-SHA256(auditKey, \"eid-push-audit:\" + нормчилсон дугаар)-ын эхний 16 байт, hex) — регистрийн дугаар хязгаарлагч руу очихгүй; ip алга (client-IP эх үүсвэр тохируулсан) → start:unknown.",
+      "config": { "recordRateLimitKeys": true, "auditKeyHex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff" },
       "steps": [
         { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
         { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "push", "idCode": " уб12345678 " } }, "expect": { "status": 200 } },
         { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "push", "idCode": "PNOMN-999999990001" } }, "expect": { "status": 200 } }
       ],
-      "rateLimitKeys": ["start:203.0.113.7", "start:203.0.113.7", "push:УБ12345678", "push:PNOMN-999999990001"]
+      "events": [
+        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "14267e39674e08c56c248ca5212f43e2" } },
+        { "kind": "push_sent", "meta": { "mode": "push", "pushKey": "a9ebffca1760f1fd15062b171536ebe8" } }
+      ],
+      "rateLimitKeys": ["start:203.0.113.7", "start:203.0.113.7", "push:14267e39674e08c56c248ca5212f43e2", "start:unknown", "push:a9ebffca1760f1fd15062b171536ebe8"]
     },
     {
       "name": "qr-user-refused",
@@ -443,6 +448,148 @@
         }
       ],
       "events": [{ "kind": "unverified", "meta": { "mode": "qr", "reason": "validation" } }]
+    },
+    {
+      "name": "cookie-host-prefix-default",
+      "comment": "eidlogin/2: cookie нэр өгөөгүй (SDK анхдагч), Secure, Domain алга, Path=/ → __Host-eid_login.",
+      "config": { "cookieName": "", "wireCookieName": "__Host-eid_login" },
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": {
+            "status": 200,
+            "setCookie": {
+              "value": { "$re": "^0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c\\.[A-Za-z0-9_-]{43}$" },
+              "attributes": { "Path": "/", "Max-Age": "120", "HttpOnly": true, "Secure": true, "SameSite": "Lax" },
+              "absentAttributes": ["Domain"]
+            }
+          }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0 },
+          "expect": { "status": 200, "json": { "state": "PENDING", "vc": "12345" } }
+        }
+      ]
+    },
+    {
+      "name": "cookie-plain-name-with-domain",
+      "comment": "Domain тохируулсан үед __Host- угтвар хүчингүй → eid_login.",
+      "config": { "cookieName": "", "cookieDomain": "rp.conformance.test", "wireCookieName": "eid_login" },
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": { "status": 200, "setCookie": { "attributes": { "Path": "/", "Domain": "rp.conformance.test", "Secure": true } } }
+        }
+      ]
+    },
+    {
+      "name": "cookie-plain-name-with-path",
+      "comment": "Path ≠ / үед __Host- угтвар хүчингүй → eid_login.",
+      "config": { "cookieName": "", "cookiePath": "/auth", "wireCookieName": "eid_login" },
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": { "status": 200, "setCookie": { "attributes": { "Path": "/auth", "Secure": true }, "absentAttributes": ["Domain"] } }
+        }
+      ]
+    },
+    {
+      "name": "cookie-duplicate-status-rejected",
+      "comment": "Нэвтрэлтийн cookie-ийн нэртэй cookie хоёр (тарьсан нь өмнө эсвэл ард) → холбогдоогүй (EXPIRED); жинхэнэ tx устахгүй — ганц cookie-оор дахин PENDING.",
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0, "cookieHeader": "eid_login=planted; $cookieFrom" },
+          "expect": { "status": 200, "jsonKeys": ["state"], "json": { "state": "EXPIRED" }, "setCookie": { "cleared": true } }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0, "cookieHeader": "$cookieFrom; other=1; eid_login=planted" },
+          "expect": { "status": 200, "json": { "state": "EXPIRED" } }
+        },
+        {
+          "request": { "method": "GET", "path": "/auth/eid/status", "cookieFrom": 0, "cookieHeader": "other=1; $cookieFrom" },
+          "expect": { "status": 200, "json": { "state": "PENDING" } }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "cookie-duplicate-callback-rejected",
+      "steps": [
+        { "request": { "method": "GET", "path": "/auth/eid/start?mode=web2app" }, "expect": { "status": 302 } },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/auth/eid/callback?sessionId=0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c&userChallengeVerifier=x",
+            "cookieFrom": 0,
+            "cookieHeader": "$cookieFrom; eid_login=0b5e6a4c-1d2e-4f3a-8b9c-0d1e2f3a4b5c.planted"
+          },
+          "expect": { "status": 303, "location": "/login?eid_error=expired", "setCookie": { "cleared": true } }
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "start-unknown-ip-shared-bucket",
+      "comment": "eidlogin/2: client-IP эх үүсвэр тохируулсан ч утга хоосон → нийтийн start:unknown bucket (хязгааргүй биш).",
+      "steps": [
+        { "repeat": 20, "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        {
+          "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } },
+          "expect": { "status": 429, "json": { "error": "rate_limited" }, "headers": { "Retry-After": "60" } }
+        },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.9", "json": { "mode": "qr" } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "start-no-client-ip-source",
+      "comment": "client-IP эх үүсвэр огт тохируулаагүй (clientIp: none) → IP-ээр хязгаарлахгүй (SDK нэг удаа анхааруулна), start түлхүүр үгүй.",
+      "config": { "clientIp": "none", "recordRateLimitKeys": true },
+      "steps": [{ "repeat": 21, "request": { "method": "POST", "path": "/auth/eid/start", "json": { "mode": "qr" } }, "expect": { "status": 200 } }],
+      "rateLimitKeys": []
+    },
+    {
+      "name": "start-ipv6-prefix-keys",
+      "comment": "IPv6 клиент /64 угтвараар (4 hextet, жижиг үсэг, тэг хураахгүй + \"::/64\"); [..] ба %zone-ийг хасна; IPv4-mapped → IPv4; IPv4 хэвээр.",
+      "config": { "recordRateLimitKeys": true },
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "2001:db8:1:2::1", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "2001:DB8:1:2:FFFF::7", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "[2001:db8:0001:0003::1]", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "fe80::1%eth0", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "::ffff:203.0.113.7", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "203.0.113.7", "json": { "mode": "qr" } }, "expect": { "status": 200 } }
+      ],
+      "rateLimitKeys": [
+        "start:2001:db8:1:2::/64",
+        "start:2001:db8:1:2::/64",
+        "start:2001:db8:1:3::/64",
+        "start:fe80:0:0:0::/64",
+        "start:203.0.113.7",
+        "start:203.0.113.7"
+      ]
+    },
+    {
+      "name": "start-ipv6-same-64-limited",
+      "steps": [
+        { "repeat": 20, "request": { "method": "POST", "path": "/auth/eid/start", "ip": "2001:db8:1:2::1", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "2001:db8:1:2:aaaa::9", "json": { "mode": "qr" } }, "expect": { "status": 429 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "2001:db8:1:3::1", "json": { "mode": "qr" } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "start-limiter-overflow-bucket",
+      "comment": "Хүснэгт дүүрсэн (maxKeys) үед шинэ түлхүүрүүд нэг overflow bucket-д (ижил max/window) — татгалзахгүй; байгаа тоолуур арилахгүй.",
+      "config": { "rateLimits": { "start": { "max": 2, "windowSeconds": 60, "maxKeys": 2 } } },
+      "steps": [
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.1", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.2", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.3", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.4", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.5", "json": { "mode": "qr" } }, "expect": { "status": 429 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.1", "json": { "mode": "qr" } }, "expect": { "status": 200 } },
+        { "request": { "method": "POST", "path": "/auth/eid/start", "ip": "198.51.100.1", "json": { "mode": "qr" } }, "expect": { "status": 429 } }
+      ]
     }
   ]
 }
