@@ -6,7 +6,7 @@
     "source": "ca-eidmongolia-mn server/internal/crypto/testdata/devicelink_golden.json (frozen)"
   },
   "files": {
-    "README.md": "1deab28e49a09b221bbc30d5a87c6cdb60adbb7bb85493786e9a1694b219ebec",
+    "README.md": "e4c8f955297c547a1d485b361d238af412ddf0a08906d28886477b20adedf524",
     "acsp_v2.json": "0dcad7cb4aabec72e79973ea9e51aa34ba0ef7411dc07df201f5c3784d3c2692",
     "eidlogin/scenarios.json": "43fb14245e312f579a9f24a8c583cadeaecd6d4d71b9353e25ba3d6232c6eeb1",
     "interactions_golden.json": "b619e491b8b06a5eba10435f505634066d48cae47a270ddcdcd7273ee8e9758d",
