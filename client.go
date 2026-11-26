@@ -127,7 +127,7 @@ func NewClient(cfg Config) (*Client, error) {
 		PDF:          &PDFService{h: h, timeout: pt},
 		Organization: &OrganizationService{h: h},
 		Person:       &PersonService{h: h},
-		Seal:         &SealService{h: h},
+		Seal:         &SealService{h: h, registerTimeout: pt},
 		Token:        &TokenService{h: h, creds: cfg.Credentials, v: v},
 		QR:           &QRService{h: h, creds: cfg.Credentials, issuer: cfg.QR.Issuer, trust: cfg.Trust},
 		Session:      &SessionService{h: h},

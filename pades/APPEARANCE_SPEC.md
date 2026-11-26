@@ -287,8 +287,10 @@ dictionary has none). §5 step 6 reads the same bytes.
   when the automatic stamp's fonts (~82 KB) push the prepared file over the size limit (`PDF_TOO_LARGE`); an explicit
   `appearance` still returns `REQUEST_INVALID` / `PDF_TOO_LARGE`.
 - The result is `Completed.placement` (null when invisible).
-- The stamp is always the QR-less seal stamp (§6.2): `SealPDF` has no option for §6.5 in this release, and its output is
-  byte-identical to golden v12 (`seal-visible`, `seal-visible-en` DTBS — Go test `TestSealPDFStillQRless`).
+- By default the stamp is the QR-less seal stamp (§6.2), byte-identical to golden v12 (`seal-visible`, `seal-visible-en`
+  DTBS — Go test `TestSealPDFStillQRless`). `qr: true` (Go `SealOptions.QR`) draws the QR seal stamp of §6.5 instead (see
+  §6.5 «Writers»); with the same inputs its output equals golden v13 (`TestSealPDFQRMatchesGolden`). The automatic stamp
+  and its invisible fallback are unchanged (a QR stamp needs H ≥ 45 pt).
 
 ### 6.5 Seal stamp with QR — golden v13
 
@@ -319,10 +321,15 @@ Example (golden `seal-qr-visible`, 220 × 64 pt, `TEST ONLY Golden Org LLC`, mn,
 (seal label), `BT /F1 9 Tf 63.87 16.13 Td` (date).
 
 **Writers.** The QR promises that `/verify/<docId>/<rev>` resolves, so a QR seal stamp may only be emitted by a writer
-that registers the seal. In this release no public API emits it: Go has only an unexported Prepare option, used by the
-golden cases marked `"sealQr": true` in `testdata/golden/manifest.json` (ports enable the variant internally for those
-cases). **Writers must not emit the QR seal stamp until the CA and TS validators ship §6.5 / §6.3.** The QR-less stamp
-(§6.2) stays valid forever — real documents carry it.
+that registers the seal. The CA and TS validators (§6.3, `/verify` bundle TS 0.49.0) and CA seal registration (`POST
+/seal/{orgEtsi}/registrations`, CA V158) have shipped; the only public writer is `SealPDF` with `qr: true` (Go
+`SealOptions.QR`, TS `sealPdf(…, {qr: true})`), which (a) requires a sealer that reserves the position — `POST
+/seal/{orgEtsi}` with `{docId, revIndex}` equal to the stamp's URL (Go `DocumentSealer` / `SealForDocument`, TS
+`sealForDocument`) — and (b) returns the registration body (Go `Completed.SealRegistration`, TS `sealRegistration`) that
+the caller registers within 7 days. `prepare` keeps the variant internal (Go: an unexported option; golden cases marked
+`"sealQr": true` in `testdata/golden/manifest.json`; ports enable it internally for those cases). A signed input with no
+verify page and no marked stamp needs an explicit `docId` (§6.6 step 3), else `REQUEST_INVALID`. The QR-less stamp (§6.2)
+stays valid forever — real documents carry it.
 
 Golden v13 (prepare/complete): `seal-qr-visible` (unsigned 2-page contract, no verify page, mn), `seal-qr-visible-en`,
 `seal-qr-rotated90` (`/Rotate 90`), `citizen-then-seal-qr` (docId from the citizen's verify page),

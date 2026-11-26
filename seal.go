@@ -31,6 +31,8 @@ import (
 // ба CertificateRequest (тэгэхээр WaitForCertificate-ийн асуулга) хэзээ ч унтардаггүй.
 type SealService struct {
 	h *httpDoer
+	// registerTimeout — RegisterSealedPDF-ийн хугацаа (Config.PDFTimeout; CA CMS + TSA-г шалгадаг).
+	registerTimeout time.Duration
 }
 
 // SealCertificate — GET /seal/certificate/{orgEtsi}-ийн хариу (CA dto.SealCertificateResponse). CertificateLevel нь
@@ -199,6 +201,9 @@ const (
 type sealRequest struct {
 	Digest   string `json:"digest"`
 	HashType string `json:"hashType"`
+	// DocID / RevIndex — заавал биш нөөц (CA V158; SealForDocument): хоёулаа эсвэл аль нь ч үгүй.
+	DocID    string `json:"docId,omitempty"`
+	RevIndex int    `json:"revIndex,omitempty"`
 }
 
 type sealResponse struct {
@@ -322,6 +327,10 @@ func (s *SealService) WaitForCertificate(ctx context.Context, orgEtsi, requestID
 // (тамгалалт унтраалттай; *APIError.Service = SealServiceSealing, Retry-After-гүй — давтахгүй), 409 ErrOrgNotActive /
 // ErrSealNotIssued / ErrSealCertRevoked / ErrSealKeyUnavailable / ErrSealCertExpired / ErrSealCertNotYetValid.
 func (s *SealService) Seal(ctx context.Context, orgEtsi string, digest []byte, hash HashAlgorithm) (*SealResult, error) {
+	return s.seal(ctx, orgEtsi, digest, hash, "", 0)
+}
+
+func (s *SealService) seal(ctx context.Context, orgEtsi string, digest []byte, hash HashAlgorithm, docID string, revIndex int) (*SealResult, error) {
 	if hash == "" {
 		hash = SHA256
 	}
@@ -333,7 +342,7 @@ func (s *SealService) Seal(ctx context.Context, orgEtsi string, digest []byte, h
 		return nil, invalid("digest нь %s-ийн урт (%d байт) байх ёстой", hash, ch.Size())
 	}
 	var raw json.RawMessage
-	body := sealRequest{Digest: base64.StdEncoding.EncodeToString(digest), HashType: strings.ReplaceAll(string(hash), "-", "")}
+	body := sealRequest{Digest: base64.StdEncoding.EncodeToString(digest), HashType: strings.ReplaceAll(string(hash), "-", ""), DocID: docID, RevIndex: revIndex}
 	if err := s.h.postJSON(ctx, routeSeal.expand(orgEtsi), body, &raw); err != nil {
 		return nil, err
 	}

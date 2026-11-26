@@ -1053,8 +1053,7 @@ done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOpt
 流程：印章证书 → `Prepare`（SignerCert = 印章证书）→ 通过 `POST /seal/{orgEtsi}` 对 32 字节 DTBS 盖章（SHA-256）
 → `Complete`。PDF 不会发送到 eID。**必须包含 RFC 3161 时间戳**（eID TSA，`SealOptions.Complete.TSAURL`）：
 若无法连接 TSA，则返回 `TSA_UNAVAILABLE`，绝不返回没有印章/时间戳的文件；OCSP/CRL + DSS → B-LT，然后
-进行 self-validation。没有验证（QR）页——印章不会进入公民签名的登记（`POST /pdf/signatures`），
-因此不提供 `/verify/{docID}` 链接。
+进行 self-validation。不添加验证页。在 `/verify/{docID}` 登记印章——见下文“在 CA 登记印章”。
 
 **可见图章（默认，Unreleased）。** 印章会在文档最后一页（不是 eID verify 页）留下组织印章的图章：
 组织名称、“eID Mongolia-аар тамгалсан” / “Sealed with eID Mongolia”、盖章时间——没有 QR、链接和角色
@@ -1069,8 +1068,8 @@ done, err := pades.SealPDF(ctx, c.Seal, "NTRMN-6235972", pdfBytes, pades.SealOpt
 **带 QR 的印章图章（Unreleased——仅限验证器）。** `pades/APPEARANCE_SPEC.md` §6.5：与公民图章相同的结构
 （QR + `/verify/<docId>/<rev>`），带有印章的 label 且没有角色行——使没有 verify 页的印章文档（发票、
 证明）可以被扫描验证。**本版本只让验证器（`pades.ValidatePDF`、`Complete` 的
-self-validation）识别带 QR 的印章；写入方（`SealPDF`）仍输出不带 QR 的图章**（与 v0.30.0 字节一致），
-没有生成 QR 的公开选项——将与印章登记一起在后续版本中提供。在 CA 和 TS 验证器发布 §6.5 之前，不要输出带 QR 的印章。
+self-validation）识别带 QR 的印章；写入方（`SealPDF`）默认仍输出不带 QR 的图章**（与 v0.30.0 字节一致）；带 QR 的图章为
+`SealOptions.QR`（与印章登记一起——见下文“在 CA 登记印章”）。
 不带 QR 的图章永远有效。另外，`Prepare` 的 docId（§6.6）：若没有 verify 页的文档中有带 QR（带 marker）的**印章**图章，
 则取其 docId——对可见和**不可见**签名都适用（此前不可见签名取 `opts.docId` 或空），
 若提供了不同的 `opts.docId`，则返回 `REQUEST_INVALID`。不会为已签名文档生成随机 docId：在不带 QR 的
@@ -1082,6 +1081,38 @@ self-validation）识别带 QR 的印章；写入方（`SealPDF`）仍输出不�
 错误：`CodeSignerInvalid`（证书不是 e-Seal，或在盖章期间证书已更换——重试）、
 `CodeSignatureInvalid`、`CodeTSAUnavailable`/`CodeLTVUnavailable`（临时性），RP-API 的错误（`*ForbiddenError`、`*APIError`）
 保持不变——若盖章已关闭，则为 503 `eid.ErrSealServiceDisabled`（§3.10；`SealPDF` 不会重试，也绝不会返回未盖章的文件）。`pades.Sealer` 接口（`*eid.SealService` 实现了它）——可在测试中替换。
+
+#### 在 CA 登记印章——`c.Seal.RegisterSealedPDF`、带 QR 的图章（Unreleased，CA V158）
+
+```go
+done, err := pades.SealPDF(ctx, c.Seal, org, pdfBytes, pades.SealOptions{QR: true, FileName: "Invoice.pdf"})
+// done.PDF — 带 QR 的图章（/verify/<docId>/<revIndex>）；done.SealRegistration — 现成的登记请求体
+reg, err := c.Seal.RegisterSealedPDF(ctx, org, *done.SealRegistration)
+// reg.VerifyURL — https://ca.eidmongolia.mn/verify/<docID>；reg.Created：201 为 true，相同请求体的重放 200 为 false
+```
+
+- `POST /seal/{orgEtsi}/registrations`（`SEAL:<orgEtsi>`）：在 `/verify/{docID}` 上以组织行（不含个人姓名）显示印章——
+  公民 `PDF.RegisterSignature` 的印章版本。请求体（`eid.SealRegistration`）：`docID, revIndex, cms, fileName?, inSha256,
+  sigRevSha256, outSha256, priorCmsSha256?, priorRevisionSha256?`——**不含** `medium`、`sessionID`、`onBehalfOf`、
+  `signerEtsi`、`pageSha256`。`SealRegistration.Validate()` 离线检查 CA 的格式规则。条件：由**本 RP** 请求的盖章、
+  盖章后 **7 天内**、每个 RP 每 10 分钟 600 次。
+- `SealOptions.QR`——带 QR 的印章图章（APPEARANCE_SPEC §6.5）；盖章时通过 `SealForDocument` 预留 `{docId, revIndex}`
+  （`pades.DocumentSealer`——`*eid.SealService` 实现了它）。QR 意味着承诺登记——务必登记。默认（QR 为 false）——不带 QR
+  的图章，与之前字节一致；也可以登记。`SealOptions.DocID`——对没有 verify 页 / 带 QR 印章图章的已签名文档是必需的
+  （否则 `done.SealRegistration` 为 nil；QR 时为 `REQUEST_INVALID`）。
+- 遇到 409 `PRIOR_MISMATCH` 时，按与公民登记相同的组合用 `PriorSignatures` 自动重试。
+
+| 代码（`eid.SealRegisterErrorCodes`） | HTTP | 含义 |
+|---|---|---|
+| `REQUEST_INVALID` / `CMS_INVALID` / `SIGNATURE_INVALID` / `TIMESTAMP_INVALID` | 400 | 格式 / CMS 配置 / 签名 / TST（盖章时间 −5 分钟…+1 小时） |
+| `REQUEST_TOO_LARGE` | 413 | 请求体 > 64 KiB |
+| `SEAL_NOT_FOUND`（`eid.CodeSealNotFound`） | 409 | 未找到本 RP 对该 digest 的盖章，或已超过 7 天 |
+| `SEAL_DOC_MISMATCH`（`eid.CodeSealDocMismatch`） | 409 | 预留的 docId/revIndex 与登记不一致 |
+| `DOC_ID_RESERVED`（`eid.CodeDocIDReserved`） | 409 | 另一个未登记的 QR 印章在更低位置预留了该 docID |
+| `SIGNER_MISMATCH` / `SIGNER_CERT_INVALID` | 409 | 证书的组织与 URL 不符 / 证书无效 |
+| `DOC_ID_CONFLICT` / `PRIOR_MISMATCH` / `REGISTRY_CONFLICT` | 409 | 与公民登记相同的链规则 |
+| `RATE_LIMITED` / `STATE_UNAVAILABLE` | 429 / 503 | `Retryable()`、`RetryAfter` |
+| — | 403 | `*ForbiddenError`——没有 `SEAL:<orgEtsi>` 权限 |
 
 ## 开发
 
