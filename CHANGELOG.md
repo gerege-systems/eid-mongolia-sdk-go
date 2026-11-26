@@ -6,9 +6,8 @@
 
 - **ValidatePDF shadow attack fixed:** an object of the signed revision whose stream ran past the signed bytes and was
   completed by a later revision kept the signature `valid`; it is now `modified_after_signing`.
-- **Later-signature trust:** only later signatures that pass integrity count as signature-only extensions, and an
-  own-signer visible stamp's `/Name` must equal the certificate's display name — a forged later revision with a visible
-  stamp no longer keeps earlier signatures `valid`. `platform_attested` is never reported together with
+- **Later-signature trust:** only later signatures that pass integrity count as signature-only extensions — a forged
+  later revision with a visible stamp no longer keeps earlier signatures `valid` (validate corpus v15). `platform_attested` is never reported together with
   `modified_after_signing`; SHA-1/MD5 SignerInfo signature algorithms are `weak_algorithm`.
 - **Reader DoS limits** in ValidatePDF, Prepare and SealPDF (no signature needed to trigger them) — see «New limits».
 - **Validator / My QR / OCSP hardening** (corpus `rp-conformance/2`): weak RSA citizen keys rejected; duplicate
@@ -27,8 +26,8 @@
   `push:<idCode>` — update any hook that parsed the citizen id from the key.
 - **PDF limits:** documents with more than 128 incremental updates (xref sections) or object streams with very many
   members are `PDF_INVALID` in ValidatePDF and are also refused by `Prepare` / `SealPDF`.
-- **Visible stamp name:** an own-signer visible stamp whose `/Name` differs from the certificate display name (e.g. a
-  custom `PrepareOptions.SignerName`) now makes the earlier signatures `modified_after_signing`.
+- **Later revisions:** a later revision whose signature fails integrity now makes the earlier signatures
+  `modified_after_signing`.
 - **Validator behaviour changes:** chains with a CA carrying nameConstraints or an unknown critical extension, weak RSA
   citizen keys, duplicate SERIALNUMBER/CN and an unknown `TrustConfig.RequiredLevel` are now errors (the production eID
   chain is unaffected).
@@ -145,20 +144,23 @@ ports adopt the same rules mechanically (`testdata/conformance/README.md` §Chan
   `sealregister_test.go`, `pades/seal_register_test.go`, `contract_test.go` (`TestContractSealRegistration`, `TestContractSealDTO`);
   `pades/APPEARANCE_SPEC.md` §6.4/§6.5, README (mn/en/zh-CN) §7.3.
 - **Verified:** `go vet ./...`, `go test ./...` on the macmini; PR CI.
-### Security — ValidatePDF hardening (validate corpus v14)
+### Security — ValidatePDF hardening (validate corpus v15)
 
 Two independent reviews of the .NET and Java ports of `ValidatePDF` found weaknesses that were already in this
 reference implementation (and in the TypeScript SDK). Fixed here together with the TS SDK; 13 new conformance cases in
-`pades/testdata/validate` (`manifest.version` 14, README «v14») let the ports prove the same behaviour. All 67 earlier
-cases keep their exact reports.
+`pades/testdata/validate` (`manifest.version` 15, README «v14», «v15») let the ports prove the same behaviour. All 67
+earlier cases keep their exact reports.
 
 - **Shadow attack** (`pades/internal/validate/revisions.go` `diff`): an object of the signed revision whose stream
   `/Length` ran past the signed bytes, completed by a later (e.g. DSS-only) revision, was never re-parsed because its
   xref entry was unchanged — the signature stayed `valid`. Every unchanged in-use object (and its object stream) must now
   parse completely inside the signed revision, else `modified_after_signing`.
-- **Later-signature trust** (`extract.go`, `appearance.go`): only later signatures that pass integrity count as
-  signature-only extensions, and an own-signer visible stamp's `/Name` must equal the display name of that signature's
-  certificate. A forged later revision with a visible stamp no longer keeps earlier signatures `valid`.
+- **Later-signature trust** (`extract.go`): only later signatures that pass integrity count as signature-only
+  extensions. A forged later revision with a visible stamp no longer keeps earlier signatures `valid`. The stamp's
+  `/Name` is deliberately not compared with the certificate name (corpus v15, `later-stamp-name-mismatch` stays
+  `valid`): the released eID desktop client writes the Cyrillic portal name there while the certificate name is Latin,
+  `PrepareOptions.SignerName` may set any name, and an untrusted signer chooses its own certificate name anyway;
+  `signer_name` always comes from the certificate.
 - **`platform_attested`** (`validate.go`): reported only when the document is covered or extended only by signatures —
   never together with `modified_after_signing`.
 - **Weak signature algorithm** (`extract.go`): a SHA-1/MD5 SignerInfo signature algorithm (`sha1WithRSAEncryption`,
@@ -170,11 +172,12 @@ cases keep their exact reports.
   for every member (a 1.2 MB file took hours). Per signature: > 32 CMS certificates, an RSA modulus > 8192 bits or
   exponent > 2^32−1, or a certificate/TSTInfo serial > 160 bits → `malformed_signature` (timestamp: `timestamp_invalid`).
   DSS: ≤ 8 MiB decoded in total, duplicate references read once, each OCSP/CRL parsed and verified once per validation.
-- Behaviour visible to integrators: documents with more than 128 incremental updates, object streams with very many
-  members, or an own-signer stamp whose `/Name` differs from the certificate name (a custom `PrepareOptions.SignerName`)
-  now get `PDF_INVALID` resp. `modified_after_signing` for the earlier signatures.
+- Behaviour visible to integrators: documents with more than 128 incremental updates or object streams with very many
+  members now get `PDF_INVALID`; a later revision whose signature fails integrity makes the earlier signatures
+  `modified_after_signing`.
 - Checked: `go vet ./...`, `go test ./...` (new `TestValidatePDFReaderDoS` with time bounds, `TestBoundedCert`,
-  `TestExtractDSSDedupe`, `TestValidateGolden` v14; the new corpus inputs run against the previous code: shadow,
+  `TestExtractDSSDedupe`, `TestValidatePDFLaterStampNameNotCompared` (Latin and Cyrillic `/Name` ≠ certificate name),
+  `TestValidateGolden` v15; the new corpus inputs run against the previous code: shadow,
   later-signature, doc-signer, weak-algorithm cases were `valid`/`platform_attested`, `objstm-many-members` did not
   finish in 20 s).
 

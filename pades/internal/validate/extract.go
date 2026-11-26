@@ -208,14 +208,13 @@ func extractWith(doc []byte, p profile) (sigs []RawSignature, err error) {
 	// эдгээрийг л тооцно (алгассан DocTimeStamp, бүтэц эвдэрсэн толь тооцогдохгүй).
 	//
 	// Зөвхөн бүрэн бүтэн (Integrity) гарын үсэг л «гарын үсгийн өргөтгөл» болно: криптографаар таараагүй «гарын үсэг»-тэй
-	// revision нь DSS-only горимд орж татгалзагдана (өмнөх гарын үсэг modified_after_signing). name — гэрчилгээний
-	// харуулах нэр: own-signer-ийн харагдах дардасны /Name үүнтэй яг таарах ёстой (appearance.go).
+	// revision нь DSS-only горимд орж татгалзагдана (өмнөх гарын үсэг modified_after_signing).
 	known := map[int][]int64{}
 	metas := map[int]sigMeta{}
 	for _, s := range sigs {
 		if !s.Malformed && s.Integrity {
 			known[s.objNum] = s.byteRange
-			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1, seal: sealCertificate(s.Leaf), name: certDisplayName(s.Leaf)}
+			metas[s.objNum] = sigMeta{revIndex: 1, roleOK: len(s.ClaimedRoles) <= 1, seal: sealCertificate(s.Leaf)}
 		}
 	}
 	for num, m := range metas {

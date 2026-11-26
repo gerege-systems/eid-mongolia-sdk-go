@@ -1036,8 +1036,10 @@ for _, s := range rep.Signatures {
   ≤ 8 MiB, нэг массивт хоёр удаа заасан stream-ийг нэг удаа; OCSP/CRL бүрийг нэг шалгалтад нэг удаа задалж шалгана.
   SignerInfo-ийн SHA-1/MD5 гарын үсгийн алгоритм (жишээ нь `sha1WithRSAEncryption`) → digest SHA-256 байсан ч
   `weak_algorithm`. Гарын үсэг зурсан revision-ий объект хожмын revision-оор л гүйцдэг бол (shadow attack) →
-  `modified_after_signing`; хожмын гарын үсэг өөрөө бүрэн бүтэн бол л «зөвхөн гарын үсгийн өргөтгөл», харагдах дардасны нэр
-  нь гэрчилгээний харуулах нэртэй яг тэнцүү байх ёстой; гарын үсгийн дараа өөрчлөгдсөн баримтад `platform_attested` хэзээ ч үгүй.
+  `modified_after_signing`; хожмын гарын үсэг өөрөө бүрэн бүтэн бол л «зөвхөн гарын үсгийн өргөтгөл» (дардасны `/Name`-ийг
+  гэрчилгээний нэртэй харьцуулахгүй — eID desktop клиент тэнд порталын кирилл нэр бичдэг, `PrepareOptions.SignerName` дурын
+  нэр өгч болно; `signer_name` үргэлж гэрчилгээнээс, корпус v15); гарын үсгийн дараа өөрчлөгдсөн баримтад
+  `platform_attested` хэзээ ч үгүй.
 - `key_medium`: SDK гэрчилгээнээс л — qcStatements-тэй иргэний SIGN → `phone`, бусад `unknown`. CA (`POST
   /v3/validate/pdf`) бүртгэлээсээ `token`, мөн eID-ийн олгосон байгууллагын тамганд `server_software` / `server_hsm`-ийг
   (түлхүүр сервер талд; QSCD гэсэн мэдэгдэл биш) тогтооно — утгууд `pades.KeyMediumToken` | `KeyMediumPhone` |

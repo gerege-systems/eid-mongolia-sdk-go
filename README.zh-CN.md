@@ -1032,8 +1032,9 @@ for _, s := range rep.Signatures {
   `malformed_signature`（时间戳 → `timestamp_invalid`）。DSS：每个数组 ≤ 64 项，每项 ≤ 1 MiB，解码合计 ≤ 8 MiB，同一数组中
   重复引用的 stream 只读一次；每个 OCSP/CRL 在一次验证中只解析和验证一次。SignerInfo 的 SHA-1/MD5 签名算法（如
   `sha1WithRSAEncryption`）→ 即使摘要为 SHA-256 也为 `weak_algorithm`。已签名修订中的对象若只在后续修订中才完整
-  （shadow attack）→ `modified_after_signing`；后续签名只有其自身完整性成立时才算“仅签名扩展”，其可见印章的名称必须等于其证书的
-  显示名称；签名后被修改的文档永远不会报告 `platform_attested`。
+  （shadow attack）→ `modified_after_signing`；后续签名只有其自身完整性成立时才算“仅签名扩展”（不将其印章的 `/Name` 与
+  证书名称比较——eID 桌面客户端在此写入西里尔文的门户姓名，`PrepareOptions.SignerName` 也可设为任意名称；`signer_name`
+  始终来自证书，语料 v15）；签名后被修改的文档永远不会报告 `platform_attested`。
 - `key_medium`：SDK 中仅来自证书——带 qcStatements 的公民 SIGN → `phone`，其他为 `unknown`。CA（`POST
   /v3/validate/pdf`）根据自己的登记确定 `token`，以及 eID 签发的组织印章的 `server_software` / `server_hsm`
  （密钥位于服务器一侧；这并不声明其为 QSCD）——取值为 `pades.KeyMediumToken` | `KeyMediumPhone` |
